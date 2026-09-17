@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import inspect
 import json
+import types
+import typing
 from typing import Any
 
 from semente.tools.types import Tool, ToolResult
@@ -134,12 +136,19 @@ def tool_schema(tool) -> dict:
         name = getattr(func, "__name__", "tool")
         description = (inspect.getdoc(func) or "").strip()
     sig = inspect.signature(func)
+    # Resolve PEP 563 string annotations (``from __future__ import annotations``
+    # stores ``a: float`` as the string "float") and forward references; fall
+    # back to the raw annotation when resolution fails.
+    try:
+        type_hints = typing.get_type_hints(func)
+    except Exception:
+        type_hints = {}
     properties: dict = {}
     required: list = []
     for pname, p in sig.parameters.items():
         if pname == "run_context":
             continue
-        properties[pname] = _py_type_to_json(p.annotation)
+        properties[pname] = _py_type_to_json(type_hints.get(pname, p.annotation))
         if p.default is inspect.Parameter.empty:
             required.append(pname)
     return {
@@ -149,21 +158,51 @@ def tool_schema(tool) -> dict:
     }
 
 
+_STRING_ANNOTATIONS = {
+    "str": str,
+    "int": int,
+    "float": float,
+    "bool": bool,
+    "list": list,
+    "dict": dict,
+    "None": type(None),
+    "NoneType": type(None),
+}
+
+
 def _py_type_to_json(annotation) -> dict:
-    """Map a Python type annotation to a JSON-schema fragment (dict)."""
+    """Map a Python type annotation to a JSON-schema fragment (dict).
+
+    Handles PEP 563 string annotations and ``Optional``/``Union``/``X | None``
+    (the latter resolve to the non-None member; optionality is expressed by the
+    ``required`` list, not the schema type).
+    """
     if annotation is inspect.Parameter.empty:
         return {"type": "string"}
-    origin = getattr(annotation, "__origin__", None)
+
+    # PEP 563 string annotation (e.g. "float") — best-effort by builtin name.
+    if isinstance(annotation, str):
+        return _py_type_to_json(_STRING_ANNOTATIONS.get(annotation.strip(), str))
+
+    origin = typing.get_origin(annotation)
+    args = typing.get_args(annotation)
+
+    # Optional[X] / X | None -> X; other unions fall back to string.
+    if origin in (typing.Union, types.UnionType):
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1:
+            return _py_type_to_json(non_none[0])
+        return {"type": "string"}
+
     if annotation is str or origin is str:
         return {"type": "string"}
+    if annotation is bool or origin is bool:
+        return {"type": "boolean"}
     if annotation is int or origin is int:
         return {"type": "integer"}
     if annotation is float or origin is float:
         return {"type": "number"}
-    if annotation is bool or origin is bool:
-        return {"type": "boolean"}
     if annotation is list or origin is list:
-        args = getattr(annotation, "__args__", None)
         item = args[0] if args else str
         return {"type": "array", "items": _py_type_to_json(item)}
     if annotation is dict or origin is dict:

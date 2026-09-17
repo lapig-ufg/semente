@@ -34,6 +34,39 @@ def test_tool_schema():
     assert s["parameters"]["properties"]["a"]["type"] == "number"
 
 
+def test_calculator_schema_types_are_numeric():
+    # Regression: semente.tools has `from __future__ import annotations`, so
+    # `a: float` is stored as the string "float"; the schema must still map it
+    # to {"type": "number"} (it previously degraded to {"type": "string"}, which
+    # made the model send "746.28" as a str and crashed divide with TypeError).
+    c = Calculator()
+    for name in ("add", "subtract", "multiply", "divide", "exponentiate"):
+        s = tool_schema(c.functions[name])
+        assert s["parameters"]["properties"]["a"]["type"] == "number", name
+        assert s["parameters"]["properties"]["b"]["type"] == "number", name
+    assert tool_schema(c.functions["square_root"])["parameters"]["properties"]["n"]["type"] == "number"
+    assert tool_schema(c.functions["factorial"])["parameters"]["properties"]["n"]["type"] == "integer"
+
+
+def test_calculator_agno_conversion_numeric():
+    f = _to_agno_function(Calculator().functions["divide"])
+    assert f.parameters["properties"]["a"]["type"] == "number"
+    assert f.parameters["properties"]["b"]["type"] == "number"
+
+
+def test_schema_optional_and_union_types():
+    from typing import Optional
+
+    @tool()
+    def f(a: Optional[int] = None, b: "float | None" = None) -> str:
+        return "ok"
+
+    s = tool_schema(f)
+    assert s["parameters"]["properties"]["a"]["type"] == "integer"
+    assert s["parameters"]["properties"]["b"]["type"] == "number"
+    assert s["parameters"]["required"] == []  # optionality comes from the default
+
+
 def test_agno_function_conversion():
     f = _to_agno_function(add)
     assert f.name == "add"
