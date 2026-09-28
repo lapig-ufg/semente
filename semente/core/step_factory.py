@@ -5,9 +5,7 @@ from semente.core.orchestrator import StepInput, StepOutput, Step
 from semente.logging import log_error, log_debug
 
 from semente.schemas.input_manager import InputManager
-
-
-_INPUT_STEP_NAME = "Input Step"
+from semente.steps.input_step import INPUT_STEP_NAME
 
 
 def _user_text(step_input: StepInput) -> str:
@@ -20,7 +18,7 @@ def _user_text(step_input: StepInput) -> str:
     <input> on every post-onboarding turn and only saw the question one turn
     later via history_context — the "must send twice" bug.)
     """
-    out = step_input.get_step_output(_INPUT_STEP_NAME)
+    out = step_input.get_step_output(INPUT_STEP_NAME)
     if out is not None and out.content:
         return out.content
     return step_input.get_input_as_string() or ""
@@ -115,6 +113,19 @@ def agent_executor_factory(
             step_input, session_state, include_summary, num_runs
         )
 
+        # The last previous output is the Guardrail PII step, which does not
+        # carry media. The converted GeoJSON files live on the Input Step
+        # output, so look it up explicitly (get_step_output searches nested
+        # containers recursively).
+        input_step_output = step_input.get_step_output(step_name=INPUT_STEP_NAME)
+        input_files = input_step_output.files if input_step_output else None
+
+        if input_files:
+            log_debug(
+                f"forwarding files to {getattr(agent, 'name', 'agent')}: "
+                f"{[getattr(f, 'name', None) or getattr(f, 'filename', None) for f in input_files]}"
+            )
+
         try:
             user_id = step_input.workflow_session.user_id
 
@@ -123,6 +134,7 @@ def agent_executor_factory(
                     text=final_input,
                     images=step_input.images or None,
                     audio=step_input.audio or None,
+                    files=input_files,
                     session_state=session_state,
                     user_id=user_id,
                 )

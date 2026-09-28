@@ -53,11 +53,16 @@ class _ToolContextAdapter:
         return getattr(self._tc, "user_id", None)
 
 
-def _adapt_tool(tool, media_bag: dict):
+def _adapt_tool(tool, media_bag: dict, input_files: list | None = None):
     func = unwrap(tool)
     sig = inspect.signature(func)
     has_run_context = "run_context" in sig.parameters
+    wants_files = "files" in sig.parameters
     hooks = getattr(tool, "tool_hooks", None) or []
+
+    # Drop the managed ``files`` param from the visible signature (ADK builds
+    # the tool declaration from it); injected at call time from input_files.
+    visible_params = [p for p in sig.parameters.values() if p.name != "files"]
 
     chain = build_hook_chain(func, hooks, has_run_context)
     needs_ctx = has_run_context or bool(hooks)
@@ -67,9 +72,11 @@ def _adapt_tool(tool, media_bag: dict):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             call_args = bind_args(sig.replace(parameters=list(sig.parameters.values())), args, kwargs)
+            if wants_files:
+                call_args["files"] = list(input_files or [])
             return result_to_str(chain(call_args, None), media_bag)
 
-        wrapper.__signature__ = sig
+        wrapper.__signature__ = sig.replace(parameters=visible_params)
 
     else:
         # Rename run_context -> tool_context in the visible signature: ADK
@@ -80,7 +87,7 @@ def _adapt_tool(tool, media_bag: dict):
         clean_sig = sig.replace(
             parameters=[
                 p.replace(name="tool_context") if p.name == "run_context" else p
-                for p in sig.parameters.values()
+                for p in visible_params
             ]
         )
 
@@ -89,6 +96,8 @@ def _adapt_tool(tool, media_bag: dict):
             call_args = bind_args(clean_sig, args, kwargs)
             tc = call_args.pop("tool_context", None)
             ctx = _ToolContextAdapter(tc) if tc is not None else StateContext({})
+            if wants_files:
+                call_args["files"] = list(input_files or [])
             return result_to_str(chain(call_args, ctx), media_bag)
 
         # ADK builds the tool schema from the signature; make it the clean one.
@@ -130,7 +139,7 @@ class AdkAgentAdapter:
         self.spec = spec
         self.app_name = app_name
 
-    def _resolve_tools(self, session_state: dict, media_bag: dict) -> list:
+    def _resolve_tools(self, session_state: dict, media_bag: dict, input_files: list | None = None) -> list:
         tools_or_callable = self.spec.tools
         if callable(tools_or_callable) and not isinstance(tools_or_callable, list):
             try:
@@ -139,7 +148,7 @@ class AdkAgentAdapter:
                 raw = tools_or_callable()
         else:
             raw = tools_or_callable or []
-        return [_adapt_tool(t, media_bag) for t in expand_tools(list(raw))]
+        return [_adapt_tool(t, media_bag, input_files) for t in expand_tools(list(raw))]
 
     def run(self, input: AgentInput) -> AgentTurn:
         from google.adk.agents import LlmAgent
@@ -168,7 +177,7 @@ class AdkAgentAdapter:
 
         model = self.spec.model.model_id if self.spec.model else "gemini-2.5-flash"
 
-        tools = self._resolve_tools(state, media_bag)
+        tools = self._resolve_tools(state, media_bag, input_files=list(input.files or []))
         if self.spec.knowledge is not None:
             from semente.knowledge import build_search_tool
 

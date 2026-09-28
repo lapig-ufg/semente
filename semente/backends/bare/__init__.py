@@ -21,6 +21,7 @@ from semente.backends.base import Agent, AgentInput, AgentSpec, AgentTurn, Engin
 from semente.backends.toolkit import (
     StateContext,
     expand_tools,
+    new_input_files_bag,
     new_media_bag,
     run_tool,
     tool_schema,
@@ -130,6 +131,7 @@ class BareAgentAdapter:
         # persist) + the real user_id (tools read run_context.user_id).
         ctx = StateContext(state, input.user_id)
         media_bag = new_media_bag()
+        input_files = list(input.files or [])
 
         tools = self._resolve_tools(ctx)
         if self.spec.knowledge is not None:
@@ -187,7 +189,7 @@ class BareAgentAdapter:
                         args = {}
                     tool = tool_by_name.get(name)
                     result_text = (
-                        run_tool(tool, args, ctx, media_bag)
+                        run_tool(tool, args, ctx, media_bag, input_files=input_files)
                         if tool is not None
                         else f"Unknown tool: {name}"
                     )

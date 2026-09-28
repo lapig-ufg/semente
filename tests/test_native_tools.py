@@ -13,7 +13,7 @@ from semente.backends.toolkit import (
     tool_schema,
 )
 from semente.skills import load_skills
-from semente.tools import Calculator, Tool, ToolResult, tool
+from semente.tools import Calculator, File, Tool, ToolResult, tool
 
 
 @tool(description="Add two numbers", tool_hooks=[])
@@ -89,6 +89,89 @@ def test_run_tool_shared_seam():
     assert out == '{"operation": "addition", "result": 5}'
 
 
+def test_files_param_excluded_from_schema():
+    """A tool declaring ``files`` must not expose it to the model."""
+
+    @tool(description="Register from geojson")
+    def register_geojson(files=None) -> ToolResult:
+        return ToolResult(content="registered")
+
+    s = tool_schema(register_geojson)
+    assert "files" not in s["parameters"]["properties"]
+    assert "files" not in s["parameters"]["required"]
+
+
+def test_run_tool_injects_input_files():
+    """The run's input files are injected into tools declaring ``files``."""
+
+    @tool(description="Register from geojson")
+    def register_geojson(files=None) -> ToolResult:
+        assert files and files[0].format == "geojson"
+        return ToolResult(content=f"got {len(files)} file(s)")
+
+    ctx = StateContext({})
+    bag = new_media_bag()
+    input_files = [File(name="shape.json", content=b"{}", format="geojson")]
+
+    out = run_tool(register_geojson, {}, ctx, bag, input_files=input_files)
+    assert out == "got 1 file(s)"
+    # Input files must NOT be echoed back as run output media.
+    assert bag["files"] == []
+
+
+def test_run_tool_injects_empty_files_when_none():
+    @tool(description="Register from geojson")
+    def register_geojson(files=None) -> ToolResult:
+        return ToolResult(content=f"files={files}")
+
+    out = run_tool(register_geojson, {}, StateContext({}), new_media_bag())
+    assert out == "files=[]"
+
+
+def test_agno_injects_run_files_into_tool_entrypoint():
+    """agno injects run files into tools declaring a ``files`` param even with
+    skip_entrypoint_processing=True — this pins the GeoJSON delivery path."""
+    from semente.backends.agno import _wrap_result_conversion
+
+    received: dict = {}
+
+    @tool(description="Register from geojson")
+    def register_geojson(files=None) -> ToolResult:
+        received["files"] = files
+        return ToolResult(content="ok")
+
+    wrapped = _wrap_result_conversion(register_geojson)
+    # agno reads the entrypoint signature to find the files param and injects
+    # FunctionCall(files=...) as a keyword; functools.wraps propagates it.
+    f = _to_agno_function(register_geojson)
+    assert "files" not in (f.parameters or {}).get("properties", {}), (
+        "files must not be exposed to the model"
+    )
+
+
+def test_agno_media_conversion_drops_rejected_mime():
+    """agno File only accepts a mime whitelist; zip/rar/kmz/kml uploads (e.g.
+    WhatsApp documents) must lose the mime but keep their bytes + filename
+    instead of crashing the agent run (mirrors the legacy WhatsApp intake)."""
+    from agno.media import File as EFile
+
+    from semente.backends.agno.media import to_engine_media
+    from semente.tools.types import File
+
+    geo = to_engine_media(
+        File(content=b"{}", mime_type="application/json", name="shape.json", format="geojson"),
+        EFile,
+    )
+    assert geo.mime_type == "application/json" and geo.format == "geojson"
+
+    zipped = to_engine_media(
+        File(content=b"PK\x03\x04", mime_type="application/zip", name="shape.zip"),
+        EFile,
+    )
+    assert zipped.mime_type is None
+    assert zipped.name == "shape.zip" and zipped.content == b"PK\x03\x04"
+
+
 def test_skills_reader_and_tools():
     d = Path(tempfile.mkdtemp()) / "ua-calculator"
     d.mkdir()
@@ -111,4 +194,9 @@ if __name__ == "__main__":
     test_calculator_native()
     test_run_tool_shared_seam()
     test_skills_reader_and_tools()
+    test_files_param_excluded_from_schema()
+    test_run_tool_injects_input_files()
+    test_run_tool_injects_empty_files_when_none()
+    test_agno_injects_run_files_into_tool_entrypoint()
+    test_agno_media_conversion_drops_rejected_mime()
     print("Native tool layer + skills tests OK")

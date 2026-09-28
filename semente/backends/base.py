@@ -41,6 +41,7 @@ class AgentInput:
     text: str
     images: list | None = None
     audio: list | None = None
+    files: list | None = None
     session_state: dict | None = None
     user_id: str | None = None
 

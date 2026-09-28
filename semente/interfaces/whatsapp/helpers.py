@@ -91,6 +91,7 @@ class MessageContent:
     video_id: Optional[str] = None
     audio_id: Optional[str] = None
     doc_id: Optional[str] = None
+    doc_filename: Optional[str] = None
 
 
 def extract_message_content(message: dict) -> Optional[MessageContent]:
@@ -129,6 +130,7 @@ def extract_message_content(message: dict) -> Optional[MessageContent]:
         return MessageContent(
             text=message.get("document", {}).get("caption", ""),
             doc_id=message["document"]["id"],
+            doc_filename=message["document"].get("filename"),
         )
 
     # Interactive replies carry the selected option's title and description
@@ -244,7 +246,9 @@ async def download_event_media_async(parsed: "MessageContent", config: WhatsAppC
         elif label == "audio":
             run_kwargs["audio"] = [Audio(content=content, mime_type=mime)]
         elif label == "document":
-            run_kwargs["files"] = [File(content=content, mime_type=mime)]
+            # WhatsApp may omit the document filename; the input step sniffs
+            # the format from the file's magic bytes when there is no extension.
+            run_kwargs["files"] = [File(content=content, mime_type=mime, name=parsed.doc_filename)]
 
     return run_kwargs, skipped
 

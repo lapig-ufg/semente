@@ -51,6 +51,12 @@ gee = [
     "shapely>=2.0",
     "pillow>=10.0",
 ]
+geo = [
+    "geopandas>=1.1.2",
+    "pyproj>=3.6",
+    "shapely>=2.0",
+    "rarfile>=4.2",
+]
 knowledge = [
     "pgvector>=0.4.2",
     "psycopg[binary]>=3.3.2",

@@ -14,6 +14,7 @@ from typing import Any
 
 from agno.agent import Agent as AgnoAgent
 from agno.media import Audio as EAudio
+from agno.media import File as EFile
 from agno.media import Image as EImage
 from agno.tools.function import Function
 
@@ -97,6 +98,7 @@ class AgnoAgentAdapter:
             input.text,
             images=[to_engine_media(i, EImage) for i in input.images] if input.images else None,
             audio=[to_engine_media(a, EAudio) for a in input.audio] if input.audio else None,
+            files=[to_engine_media(f, EFile) for f in input.files] if input.files else None,
             user_id=input.user_id,
             session_state=input.session_state,
         )

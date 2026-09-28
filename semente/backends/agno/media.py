@@ -19,7 +19,22 @@ def to_engine_media(obj: Any, engine_cls: type) -> Any:
     """Convert one Semente media dataclass to the engine's media type."""
     if obj is None or isinstance(obj, engine_cls):
         return obj
-    return engine_cls(**{k: v for k, v in vars(obj).items() if v is not None})
+    fields = {k: v for k, v in vars(obj).items() if v is not None}
+    try:
+        return engine_cls(**fields)
+    except Exception:
+        # Engine media models validate fields (e.g. agno File only accepts a
+        # mime whitelist — zip/rar/kmz/kml are rejected). Retry without
+        # optional descriptors so the raw bytes survive; formats can be
+        # detected from the filename instead (mirrors the legacy intake).
+        for drop in ("mime_type", "format", "file_type", "detail"):
+            if drop in fields:
+                fields.pop(drop)
+                try:
+                    return engine_cls(**fields)
+                except Exception:
+                    continue
+        raise
 
 
 def to_engine_result(result: Any) -> Any:

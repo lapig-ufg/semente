@@ -54,6 +54,14 @@ def new_media_bag() -> dict:
     return {"images": [], "videos": [], "audios": [], "files": []}
 
 
+def new_input_files_bag() -> list:
+    """Per-run bag of files attached to the run input (e.g. GeoJSON converted
+    by the input step). Injected into tools declaring a ``files`` parameter;
+    kept separate from ``media_bag`` so input files are not echoed back as
+    run output."""
+    return []
+
+
 def result_to_str(result, media_bag: dict) -> str:
     """Convert a tool result to the text the engine feeds back to the LLM,
     stashing any media artifacts in the per-run bag (media never enters the loop)."""
@@ -111,13 +119,25 @@ def build_hook_chain(func, hooks, has_run_context):
     return chain
 
 
-def run_tool(tool, args: dict, ctx, media_bag: dict) -> str:
-    """Execute one tool: hook chain + raw func; media stashed, text returned."""
+# Framework-managed parameters: never exposed to the model; injected at
+# call time by the backend (mirrors agno's handling of ``files``).
+_MANAGED_PARAMS = ("run_context", "files")
+
+
+def run_tool(tool, args: dict, ctx, media_bag: dict, input_files: list | None = None) -> str:
+    """Execute one tool: hook chain + raw func; media stashed, text returned.
+
+    ``input_files`` (the run's attached files) is injected into any tool
+    declaring a ``files`` parameter, mirroring agno's framework injection.
+    """
     func = unwrap(tool)
     sig = inspect.signature(func)
     has_run_context = "run_context" in sig.parameters
+    wants_files = "files" in sig.parameters
     hooks = getattr(tool, "tool_hooks", None) or []
     chain = build_hook_chain(func, hooks, has_run_context)
+    if wants_files:
+        args = {**args, "files": list(input_files or [])}
     return result_to_str(chain(args, ctx), media_bag)
 
 
@@ -146,7 +166,7 @@ def tool_schema(tool) -> dict:
     properties: dict = {}
     required: list = []
     for pname, p in sig.parameters.items():
-        if pname == "run_context":
+        if pname in _MANAGED_PARAMS:
             continue
         properties[pname] = _py_type_to_json(type_hints.get(pname, p.annotation))
         if p.default is inspect.Parameter.empty:
