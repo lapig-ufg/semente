@@ -10,3 +10,10 @@ phone_numbers.in
 node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+
+# AI agent tooling state (opencode, etc.)
+.opencode/
+.claude/
+.aider*
+.cursor/
+.codex/
