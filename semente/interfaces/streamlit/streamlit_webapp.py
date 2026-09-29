@@ -8,6 +8,7 @@ from typing import List
 from semente import Image, Audio, File
 
 from semente.configs.config import config
+from semente.guardrails.pii_gate import redigir_pii
 from semente.interfaces.streamlit.debug_helpers import extract_workflow_debug_data, extract_session_state
 from semente.interfaces.streamlit.debug_panel import render_debug_panel
 from semente.workflows.base_workflow import get_workflow
@@ -224,6 +225,11 @@ def process_uploaded_files(uploaded_files) -> List[str]:
     return file_paths
 
 if user_query:
+    # Mesma redação que o WhatsApp aplica no MessageContent.__post_init__.
+    # Sem isso o texto cru entra no workflow e fica gravado no campo `input`
+    # da run, que é persistido — o guardrail limpa depois, tarde demais.
+    user_query, _pii_removida = redigir_pii(user_query)
+
     st.session_state.messages.append({"role": "user", "content": user_query})
     with st.chat_message("user"):
         st.markdown(user_query)

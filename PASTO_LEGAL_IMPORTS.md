@@ -284,7 +284,7 @@ the deep-copy guarantee that the wired call site relies on.
 
 ---
 
-## Item 7 — TODO — PII redaction instead of blocking + false-positive fixes (branch, not yet on develop)
+## Item 7 — DONE — PII redaction instead of blocking + false-positive fixes (branch, not yet on develop)
 
 **Source:** pasto-legal branch `origin/fix/156-pii-falso-positivo-e-redacao`
 (3 commits, all dated 2026-09-10, **unmerged** into develop — evaluated and
@@ -315,7 +315,7 @@ app/guardrails/pii_gate.py` in pasto-legal; the file is ~310 lines at the
 branch tip — read it whole, not just the diff, the comments carry the
 rationale).
 
-- [ ] **Camada 0 — known-scope exclusion:** `_CAR_RE`
+- [x] **Camada 0 — known-scope exclusion:** `_CAR_RE`
   (`\b[A-Z]{2}-\d{7}-[A-F0-9]{32}\b`, IGNORECASE) + `_ESCOPO_CONHECIDO` list
   + `remover_escopo_conhecido(text)` (substitutes **a space**, not the empty
   string, so surrounding digits don't fuse). `check_pii` calls it first.
@@ -323,30 +323,30 @@ rationale).
   sequences validate; ~1/9 for Luhn), so any long identifier eventually
   contains a "valid" fragment. Removing the fragment before scanning beats
   hardening the regex.
-- [ ] **Boundary guards:** `_NB_L`/`_NB_R` lookaround helpers; documents must
+- [x] **Boundary guards:** `_NB_L`/`_NB_R` lookaround helpers; documents must
   be whole tokens, never fragments of a bigger number.
-- [ ] **Strict formats, three shapes each (never half-and-half):**
+- [x] **Strict formats, three shapes each (never half-and-half):**
   - `_CPF_RE`: `123.456.789-01` | `123 456 789 01` | 11 raw digits
   - `_CNPJ_RE`: `12.345.678/0001-90` | `12 345 678 0001 90` | 14 raw digits
   - `_CARTAO_RE`: visually grouped (`\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{1,4}`) OR
     a real brand prefix (4x Visa, 5[1-5]x Mastercard, 3[47]x Amex,
     6(011|5xx) Discover). Bare 13-16-digit + Luhn is noise — no longer
     detected.
-- [ ] **`redigir_pii(text) -> (texto_redigido, tipos_removidos)`** replaces
+- [x] **`redigir_pii(text) -> (texto_redigido, tipos_removidos)`** replaces
   `mensagem_bloqueio` as the primary primitive: finds spans (CAR spans are
   protected from redaction too), validates check digits per type (RG and
   e-mail have no validator — format is the evidence), replaces
   back-to-front with overlap discard, returns the cleaned text + sorted
   unique types. `_MARCADOR` map: CPF/CNPJ/cartão/RG/e-mail →
   `[X_OCULTO]`.
-- [ ] Keep `check_pii`, `mascarar_pii` (now including Camada 0 +
+- [x] Keep `check_pii`, `mascarar_pii` (now including Camada 0 +
   `_INTENCAO_RE`), and all `detecta_*` (they're used by tests and the
   detection layer). **Remove `mensagem_bloqueio`/`_AVISO_BASE`** — the
   blocking path is gone. Update the module docstring interface list.
 
 ### 7.2 Guardrail step redacts instead of blocking — `semente/steps/guardrails_step.py`
 
-- [ ] Replace the executor: read
+- [x] Replace the executor: read
   `step_input.previous_step_content or step_input.get_input_as_string()`
   (NOT `get_input_as_string()` alone — it returns the ORIGINAL workflow
   input, which would leave audio transcription and image description
@@ -355,34 +355,34 @@ rationale).
   removed types only (never the values), return `StepOutput(content=limpo)`
   — no `stop=True`, no TTS warning path (the whole blocking branch and the
   `generate_speech` import go away).
-- [ ] Update the module docstring (redaction semantics + why the
+- [x] Update the module docstring (redaction semantics + why the
   transcription/description redaction lives in the input step instead —
   step outputs are persisted in `step_results`).
 
 ### 7.3 Redaction at the four entry doors
 
-- [ ] **WhatsApp typed text —** `semente/interfaces/whatsapp/helpers.py`:
+- [x] **WhatsApp typed text —** `semente/interfaces/whatsapp/helpers.py`:
   `MessageContent` gains `pii_removida: list = field(default_factory=list)`
   and a `__post_init__` that runs `redigir_pii(self.text or "")` (redact
   HERE, not per-branch of `extract_message_content`, so the raw text never
   reaches logs, Valkey or the DB — holds for today's branches and any
   future ones).
-- [ ] **WhatsApp webhook log —** in `extract_message_content`, wrap the raw
+- [x] **WhatsApp webhook log —** in `extract_message_content`, wrap the raw
   payload log (`log_info(message)`) and the text branch log with
   `mascarar_pii(str(...))` — the log runs BEFORE redaction.
-- [ ] **Audio transcription + image description —**
+- [x] **Audio transcription + image description —**
   `semente/steps/input_step.py`: wrap `turn.content` of both media agents
   with `redigir_pii(...)` before appending to `parts` (typed text arrives
   already redacted; the step output is persisted, so redacting only in the
   next step would leave a raw copy in the DB).
-- [ ] **Streamlit typed text —** `semente/interfaces/streamlit/streamlit_webapp.py`:
+- [x] **Streamlit typed text —** `semente/interfaces/streamlit/streamlit_webapp.py`:
   `user_query, _pii_removida = redigir_pii(user_query)` right after the
   input is read (same reason: the raw text is persisted into the run's
   `input` field).
 
 ### 7.4 Agent prompt rules — `semente/configs/prompts/defaults/agents.yml`
 
-- [ ] Port the "# Personal Data" block from the branch's
+- [x] Port the "# Personal Data" block from the branch's
   `app/configs/prompts/defaults/agents.yml` into `single_agent.instructions_default`:
   never confirm saving personal data; never repeat it back; don't claim
   removal unless a `[..._OCULTO]` marker is literally present (and then say
@@ -394,7 +394,7 @@ rationale).
 
 ### 7.5 Tests — `tests/guardrails/test_pii_gate.py` (new dir)
 
-- [ ] Port the branch's `tests/ee_scripts/test_pii_gate.py` (~39 tests) —
+- [x] Port the branch's `tests/ee_scripts/test_pii_gate.py` (~39 tests) —
   read it whole from the branch tip
   (`git show origin/fix/156-pii-falso-positivo-e-redacao:tests/ee_scripts/test_pii_gate.py`).
   Keep: all `detecta_*` unit tests, RG format, intention layer, orchestrator,
@@ -404,11 +404,11 @@ rationale).
   the spaced-format tests; Camada 0 tests; the two statistical tests (5000
   random coordinate pins / 5000 random CAR codes, seeded RNG — false
   positives were probabilistic, so the regression tests must be too).
-- [ ] Adapt import paths to `semente.guardrails.pii_gate`; drop
+- [x] Adapt import paths to `semente.guardrails.pii_gate`; drop
   `mensagem_bloqueio` references; add redaction-specific assertions if the
   branch file lacks them (marker text present, non-sensitive tail preserved,
   `tipos` returned correctly, multiple PII in one message all redacted).
-- [ ] Semente has no `tests/guardrails/` yet — create it (no `__init__.py`,
+- [x] Semente has no `tests/guardrails/` yet — create it (no `__init__.py`,
   matching the existing test layout).
 
 **Adaptation notes (read before porting):**
@@ -431,29 +431,76 @@ rationale).
 - The Streamlit demo text ("Minhas coordenadas são …") in the webapp is NOT
   PII and must survive redaction (it is in the corpus already).
 
+**Adaptation notes (done):**
+- All sub-items 7.1–7.5 ported from the branch tip `5caa7dd`. The module
+  docstring in `pii_gate.py` was neutralized ("camada de ingestão" instead
+  of "do Pasto Legal"); the load-bearing rationale comments (Camada 0
+  weak-signal math, three-shape regex rationale, space-not-empty-string
+  substitution) were ported verbatim, per the working rules.
+- `check_pii`/`redigir_pii` semantics identical to the branch; `mensagem_bloqueio`/
+  `_AVISO_BASE` removed and `Tuple` added to the typing imports.
+- Semente's `MessageContent` keeps its extra `doc_filename` field (absent in
+  pasto-legal) alongside the new `pii_removida`; the webhook payload log now
+  coerces with `str(message)` (semente logged the raw dict, not a string).
+- **input_step debug logs moved AFTER redaction** (semente-specific
+  deviation): semente logs the transcription/description via `log_debug`
+  (pasto-legal has no such logs); logging the raw text would leak the datum
+  the redaction just removed, so the logs now show the redacted text.
+- **Prompt block adapted to neutral voice** ("the system identifies the user
+  by their account and channel" replaces pasto-legal's "the property's
+  location and CAR code"; "national ID, tax ID, card number or e-mail"
+  replaces "CPF, CNPJ, RG, cartão ou e-mail"; "contact number" replaces
+  "WhatsApp number"). The marker rules (first line, ONE short sentence,
+  fulfil the rest, never ask what the data was, only claim removal with the
+  literal marker) kept verbatim in spirit.
+- **NOT ported:** the ride-along bullet from the same prompt diff hunk
+  ("Start of the reply: begin directly with the text…") — a reply-format
+  fix unrelated to PII; semente's `output_contract` section already covers
+  reply formatting (user decision).
+- **Regression corpus kept verbatim** including the pasto-flavored strings
+  (fazenda, silagem, boleto, real CAR codes) — they are the original field
+  evidence and inert text to the engine (user decision).
+- **Tests:** all 39 branch tests ported, plus redaction-specific additions
+  (marker text + tail preserved + `tipos`, multiple PII in one message,
+  CAR protected from `redigir_pii`, clean passthrough, empty input, invalid
+  CPF not replaced, spaced-format redaction, RG+cartão, Streamlit demo text
+  survives, and the two corpora re-run against `redigir_pii` —
+  `NAO_DEVE_BLOQUEAR` must come back untouched, `DEVE_BLOQUEAR` entries with
+  a valid datum must be redacted; "meu cpf é 322443" is intention-only and
+  stays for `check_pii`).
+- **Verification:** `pytest tests/` — 190 passed (78 pre-existing + 112 from
+  the new `tests/guardrails/test_pii_gate.py`, parametrized corpora
+  expanded); `python -c "import semente.workflows.base_workflow"` OK; the
+  no-LLM behavioral check passes (CPF → `[CPF_OCULTO]` with the request
+  intact; coordinate pin and CAR untouched); entry-door sanity verified
+  programmatically (`MessageContent.__post_init__`, guardrail executor
+  scanning `previous_step_content` and falling back to the workflow input).
+
 ---
 
 ## Suggested order
 
-Items 1–6 are complete (see per-item notes). The remaining item:
+Items 1–7 are complete (see per-item notes).
 
-1. [ ] Item 7 (PII redaction + false-positive fixes) — the chosen next
-   import, from the unmerged branch `fix/156-pii-falso-positivo-e-redacao`.
+1. [x] Item 7 (PII redaction + false-positive fixes) — DONE, ported from the
+   unmerged branch `fix/156-pii-falso-positivo-e-redacao` (tip `5caa7dd`).
 
 ## Verification
 
-- [x] `pytest tests/` (green — 78 passed, incl. the new gate / migration /
-  media-filter tests).
+- [x] `pytest tests/` (green — 190 passed, incl. the new gate / migration /
+  media-filter / PII gate tests).
 - [x] `python -c "import semente.workflows.base_workflow"` sanity import
   (requires an API key env var, as before — the test conftest provides a
   dummy one; the requirement is pre-existing, verified via git stash).
 - [ ] Manual smoke with the Toy App (`examples/echo_domain/`): onboarding asks
   terms → name → role in stages; `/new` on an old session state does not crash
   (migration path); WhatsApp reply no longer echoes user media (if testing item 1).
-- After Item 7: `pytest tests/` including the new
-  `tests/guardrails/test_pii_gate.py`; manual smoke — send a message with a
-  valid CPF plus a normal request (e.g. "meu cpf é 710.768.971-18, qual a
-  versão do sistema?") and confirm BOTH happen: the marker `[CPF_OCULTO]`
-  reaches the agent and the agent answers the request, warning in one line
-  about the removed data; send a location/coordinate pin and confirm nothing
-  is blocked.
+- After Item 7: [x] `pytest tests/` including the new
+  `tests/guardrails/test_pii_gate.py` (190 passed); behavioral check —
+  `redigir_pii("meu cpf é 710.768.971-18, qual a versão do sistema?")` →
+  `("meu cpf é [CPF_OCULTO], qual a versão do sistema?", ["CPF"])`,
+  coordinate pin and CAR untouched. Manual smoke pending: send a message
+  with a valid CPF plus a normal request and confirm BOTH happen (marker
+  `[CPF_OCULTO]` reaches the agent AND the agent answers the request,
+  warning in one line); send a location/coordinate pin and confirm nothing
+  is blocked — requires a live WhatsApp/Streamlit run with an LLM key.

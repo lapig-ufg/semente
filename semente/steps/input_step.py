@@ -15,6 +15,12 @@ absent, geo files are skipped with a log.
 On transcription/description/conversion failure, logs the error and continues
 with whatever text is available (resilient fallback).
 
+The transcription and the description are redacted HERE, and not in the next
+step (the PII guardrail): each step's output is persisted in the run's step
+results, so redacting one step later would leave a raw copy in the database.
+Typed text arrives already redacted (MessageContent.__post_init__,
+whatsapp/helpers; streamlit_webapp).
+
 External interface:
     input_step       -- Step consumed by base_workflow.
     INPUT_STEP_NAME  -- Name used by downstream consumers to look up this
@@ -31,6 +37,7 @@ from semente.backends.base import AgentInput
 from semente.tools.types import File
 
 from semente.agents.media_agents import audio_transcription_agent, image_description_agent
+from semente.guardrails.pii_gate import redigir_pii
 from semente.services.geospatial.geojson_io import (
     SUPPORTED_EXTENSIONS,
     GeoFileError,
@@ -136,7 +143,10 @@ def _input_processing_executor(step_input: StepInput) -> StepOutput:
     if step_input.images:
         try:
             turn = image_description_agent.run(AgentInput(text="", images=step_input.images))
-            description = turn.content or ""
+            # Redigida AQUI, e não no guardrail: a saída de cada step fica
+            # gravada nos step_results da run, que é persistida. Redigir só
+            # no passo seguinte deixaria uma cópia crua no banco.
+            description, _ = redigir_pii(turn.content or "")
             log_debug(f"Image description: {description}")
             if description:
                 parts.append(f"[IMAGEM]{description}[/IMAGEM]")
@@ -146,7 +156,8 @@ def _input_processing_executor(step_input: StepInput) -> StepOutput:
     if step_input.audio:
         try:
             turn = audio_transcription_agent.run(AgentInput(text="", audio=step_input.audio))
-            transcription = turn.content or ""
+            # Mesma razão da descrição da imagem: redige antes de persistir.
+            transcription, _ = redigir_pii(turn.content or "")
             log_debug(f"Audio transcription: {transcription}")
             if transcription:
                 parts.append(transcription)

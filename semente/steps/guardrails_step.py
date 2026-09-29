@@ -1,41 +1,44 @@
-"""PII guardrail step: scans the consolidated input text for personal data.
+"""PII guardrail step: redacts personal data from the consolidated input text.
 
-Reuses the text assembled by the previous input-processing step. If PII is
-found, blocks execution and returns a warning to the user (as audio when
-the user sent audio, as text otherwise). Otherwise passes the clean text
-through to the following agents.
+Reuses the text assembled by the previous input-processing step, replaces any
+personal datum with a marker (`[CPF_OCULTO]`) and lets the message continue,
+instead of rejecting it. The user keeps the requests they made in the same
+message, and the datum never reaches the agent.
+
+Typed text is already redacted at the entry doors (MessageContent.__post_init__
+in whatsapp/helpers.py, streamlit_webapp.py). This step covers the text that
+only becomes text inside the workflow: the audio transcription and the image
+description, produced by input_step — but those are redacted THERE, not here:
+each step's output is persisted in the run's step results, so redacting only
+in this step would leave a raw copy in the database.
 
 External interface:
-    _guardrail_pii_executor  -- StepExecutor consumed by main_workflow.
+    _guardrail_pii_executor  -- StepExecutor consumed by base_workflow.
 """
-from semente.logging import log_error
+from semente.logging import log_info
 from semente.core.orchestrator import Step
 from semente.core.orchestrator import StepInput, StepOutput
 
-from semente.guardrails.pii_gate import check_pii, mensagem_bloqueio
-from semente.services.audio.tts import generate_speech
+from semente.guardrails.pii_gate import redigir_pii
 
 
 def _guardrail_pii_executor(step_input: StepInput) -> StepOutput:
-    """Guardrail de PII que reusa o texto montado pelo passo anterior."""
-    text = step_input.get_input_as_string() or ""
+    """Redacts personal data from the text consolidated by the previous step.
 
-    pii_types = check_pii(text)
-    if not pii_types:
-        return StepOutput(content=text)
+    Reads `previous_step_content` and not `get_input_as_string()` alone: the
+    latter returns the ORIGINAL workflow input, which would leave the audio
+    transcription and the image description out of the scan.
+    """
+    conteudo = step_input.previous_step_content or step_input.get_input_as_string() or ""
+    text = conteudo if isinstance(conteudo, str) else str(conteudo)
 
-    pii_warning = mensagem_bloqueio(pii_types)
+    limpo, tipos = redigir_pii(text)
 
-    if step_input.audio:
-        try:
-            user_id = step_input.workflow_session.user_id if step_input.workflow_session else "default"
-            audio = generate_speech(pii_warning, user_id=user_id)
-            if audio:
-                return StepOutput(content=pii_warning, audio=[audio], stop=True, success=False)
-        except Exception as e:
-            log_error(f"guardrail TTS failed: {e}")
+    if tipos:
+        # Only the types, never the values.
+        log_info(f"guardrail PII: dados removidos ({', '.join(tipos)})")
 
-    return StepOutput(content=pii_warning, stop=True, success=False)
+    return StepOutput(content=limpo)
 
 
 guardrails_step = Step(
