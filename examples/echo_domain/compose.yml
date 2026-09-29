@@ -1,0 +1,31 @@
+# Semente development instance — Echo Domain toy app.
+#
+#   cp .env.example .env   # then set GOOGLE_API_KEY
+#   docker compose -f examples/echo_domain/compose.yml up --build
+#   open http://localhost:8501
+#
+# Build context is the repository root (see `build.context`), so the image
+# can COPY the framework and the examples dir.
+
+services:
+  semente:
+    image: semente-dev
+    build:
+      context: ../..
+      dockerfile: examples/echo_domain/Dockerfile
+    # init: reap zombies / forward signals as PID 1
+    init: true
+    # Let PRIMARY_MODEL_PROVIDER=ollama reach a host ollama via
+    # OLLAMA_HOST=http://host.docker.internal:11434 (needed on Linux)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: uv run semente streamlit
+    ports:
+      # ${SEMENTE_DEV_PORT:-8501} lets you dodge a busy host port:
+      #   SEMENTE_DEV_PORT=8502 docker compose -f ... up
+      - "${SEMENTE_DEV_PORT:-8501}:8501"
+    env_file:
+      # Created from .env.example; not required so the login page boots
+      # even before credentials are configured.
+      - path: .env
+        required: false

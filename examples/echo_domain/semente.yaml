@@ -7,5 +7,4 @@ features:
   feedback_workflow: false
   summarization: false
   pii_guardrail: true
-models:
-  primary: { provider: google, id: gemini-3.5-flash-lite }
+# Model config comes from .env (PRIMARY_MODEL_PROVIDER/ID) — see .env.example.
