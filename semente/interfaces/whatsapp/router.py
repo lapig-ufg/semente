@@ -24,6 +24,7 @@ from semente.interfaces.whatsapp.helpers import (
     WhatsAppConfig,
     download_event_media_async,
     extract_message_content,
+    filter_generated_media,
     send_whatsapp_message_async,
     typing_indicator_async,
     upload_and_send_media_async,
@@ -361,13 +362,15 @@ def attach_routes(
             finally:
                 typing_task.cancel()
 
+            # Engines may echo run-input media back in the response; only send
+            # media the workflow actually generated (TTS, agent images, ...)
             for attr, media_type in (
                 ("images", "image"),
                 ("videos", "video"),
                 ("files", "document"),
                 ("audio", "audio"),
             ):
-                items = getattr(response, attr, None)
+                items = filter_generated_media(response, run_kwargs).get(attr)
                 if items:
                     await upload_and_send_media_async(items, media_type, phone_number, config)
 
