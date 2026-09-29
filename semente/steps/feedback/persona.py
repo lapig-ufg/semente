@@ -4,9 +4,11 @@ Calls the persona manager agent only when:
 - satisfaction level >= 2, OR
 - satisfaction level < 2 AND remediation effectiveness > 3
 
-The agent returns a PersonaUpdate with preferences (and optionally name,
-role, regionality) to change. The executor applies those changes directly
-to session_state['user_persona'].
+The agent returns a PersonaUpdate with preferences (and optionally
+regionality) to change. The executor applies those changes directly
+to session_state['user_persona']. Name and role never change here: they are
+declared identity (onboarding tools only) — deduction does not overwrite
+declaration.
 
 After applying updates (or skipping), clears user_mood from session_state.
 
@@ -35,7 +37,14 @@ def manage_persona(step_input: StepInput, session_state: Dict[str, Any]) -> Step
     if raw_user_mood is None:
         return
 
-    user_mood = UserMood.model_validate(raw_user_mood)
+    try:
+        user_mood = UserMood.model_validate(raw_user_mood)
+    except Exception as e:
+        # A malformed user_mood would stay in session_state and break every
+        # later run of this step. Drop it and move on.
+        log_error(f"manage_persona: invalid user_mood discarded: {e}")
+        session_state["user_mood"] = None
+        return
 
     if (
         user_mood.satisfaction.level < 3 and
@@ -63,10 +72,6 @@ def manage_persona(step_input: StepInput, session_state: Dict[str, Any]) -> Step
             )
 
             # Apply scalar field updates (only if non-None)
-            if persona_update.name is not None:
-                user_persona.name = persona_update.name
-            if persona_update.role is not None:
-                user_persona.role = persona_update.role
             if persona_update.regionality is not None:
                 user_persona.regionality = persona_update.regionality
 

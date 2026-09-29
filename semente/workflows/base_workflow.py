@@ -1,7 +1,8 @@
 """Base workflow composition — the neutral orchestration engine.
 
-Assembles the root workflow: onboarding check (terms acceptance) → parallel
-feedback/summarization + the single agent → remediation merge → output.
+Assembles the root workflow: onboarding check (terms acceptance +
+identification profile) → parallel feedback/summarization + the single
+agent → remediation merge → output.
 
 Feature toggles (manifest ``features``) control which steps are included:
 ``pii_guardrail``, ``summarization``, ``feedback_workflow``, ``tts``.
@@ -22,42 +23,12 @@ from typing import Any
 from semente.agents.build_agent import build_agent
 from semente.configs.config import config
 from semente.configs.prompts import set_prompts_dir
-from semente.core.orchestrator import Condition, Parallel, Step, StepInput, Workflow
+from semente.core.orchestrator import Condition, Parallel, Step, Workflow
 from semente.core.step_factory import agent_executor_factory
-from semente.database.models import UserTermsAcceptance
-from semente.database.session import SessionLocal
 from semente.database.session_store import store
 from semente.domain import DomainSpec
 from semente.manifest import Manifest
-from semente.schemas.workflow_state import WorkflowState
-
-
-def _needs_onboarding(step_input: StepInput, session_state: dict[str, Any]) -> bool:
-    """Return True if the user needs to go through onboarding (terms not accepted)."""
-    if session_state.get("workflow_state") is None:
-        session_state["workflow_state"] = WorkflowState().model_dump()
-
-    if session_state.get("terms_accepted"):
-        return False
-
-    user_id = session_state.get("user_id")
-    if not user_id:
-        return True
-
-    db_session = SessionLocal()
-    try:
-        record = db_session.query(UserTermsAcceptance).filter(
-            UserTermsAcceptance.user_id == user_id,
-            UserTermsAcceptance.accepted == True,  # noqa: E712
-        ).first()
-
-        if record:
-            session_state["terms_accepted"] = True
-            return False
-
-        return True
-    finally:
-        db_session.close()
+from semente.workflows.onboarding_gate import _needs_onboarding
 
 
 def build_workflow(agent: Any, manifest: Manifest) -> Workflow:
