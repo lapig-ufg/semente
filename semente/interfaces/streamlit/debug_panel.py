@@ -268,12 +268,12 @@ def render_debug_panel() -> None:
             with col2:
                 st.metric("Tool Calls", len(tool_calls))
 
-            # Refresh session state from workflow (live)
+            # Refresh session state from the agent (live)
             if st.button("Refresh State", key="refresh_debug_state"):
                 try:
-                    from semente.workflows.base_workflow import get_workflow
+                    from semente.core.semente_agent import get_agent
                     from semente.interfaces.streamlit.debug_helpers import extract_session_state
-                    live_state = get_workflow().get_session_state(
+                    live_state = get_agent().get_session_state(
                         session_id=st.session_state.session_id
                     )
                     if live_state:

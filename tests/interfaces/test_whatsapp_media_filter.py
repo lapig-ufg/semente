@@ -1,14 +1,14 @@
 """Tests for the WhatsApp router's generated-media filter.
 
-Some engines (e.g. agno's Workflow) return in the run output the same media
-instances passed to ``run()`` (shallow-copied lists), so the router must
-filter them to avoid echoing the user's media back. ``filter_generated_media``
-also drops internal GeoJSON artifacts (``format="geojson"``).
+Some engines return in the run output the same media instances passed to
+``run()`` (shallow-copied lists), so the router must filter them to avoid
+echoing the user's media back. ``filter_generated_media`` also drops
+internal GeoJSON artifacts (``format="geojson"``).
 
     .venv/bin/python -m pytest tests/interfaces/test_whatsapp_media_filter.py -v
 """
 
-from semente.core.orchestrator import StepOutput
+from semente.core.types import StepOutput
 from semente.interfaces.whatsapp.helpers import filter_generated_media
 from semente.tools.types import Audio, File, Image, Video
 

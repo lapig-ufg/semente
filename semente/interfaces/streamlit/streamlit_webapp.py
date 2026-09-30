@@ -11,7 +11,7 @@ from semente.configs.config import config
 from semente.guardrails.pii_gate import redigir_pii
 from semente.interfaces.streamlit.debug_helpers import extract_workflow_debug_data, extract_session_state
 from semente.interfaces.streamlit.debug_panel import render_debug_panel
-from semente.workflows.base_workflow import get_workflow
+from semente.core.semente_agent import get_agent
 
 st.set_page_config(page_title="Semente", page_icon="🌱")
 
@@ -226,7 +226,7 @@ def process_uploaded_files(uploaded_files) -> List[str]:
 
 if user_query:
     # Mesma redação que o WhatsApp aplica no MessageContent.__post_init__.
-    # Sem isso o texto cru entra no workflow e fica gravado no campo `input`
+    # Sem isso o texto cru entra no agente e fica gravado no campo `input`
     # da run, que é persistido — o guardrail limpa depois, tarde demais.
     user_query, _pii_removida = redigir_pii(user_query)
 
@@ -276,7 +276,7 @@ if user_query:
                 run_kwargs["files"] = geo_files
 
             with st.spinner("Analisando dados e gerando resposta..."):
-                response = get_workflow().run(**run_kwargs)
+                response = get_agent().run(**run_kwargs)
             
             if hasattr(response, 'content'):
                 full_response = response.content
@@ -296,9 +296,9 @@ if user_query:
                 st.session_state.debug_metrics.append(debug_data.get("metrics_summary", {}))
                 st.session_state.debug_messages.extend(debug_data.get("message_history", []))
 
-                # Get live session state from the workflow
+                # Get live session state from the agent
                 try:
-                    live_state = get_workflow().get_session_state(
+                    live_state = get_agent().get_session_state(
                         session_id=st.session_state.session_id
                     )
                     if live_state:

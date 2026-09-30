@@ -4,7 +4,7 @@ The manifest (`semente.yaml`) is the app-level configuration. Every field is
 optional except `name` and `domain_module`.
 
 ```yaml
-name: my-app                 # app name (workflow name)
+name: my-app                 # app name
 language: pt-BR              # optional; loads prompts/<lang>/ if present
 domain_module: domain        # import path exposing `domain_spec`
 prompts_dir: domain/prompts  # optional; explicit prompts dir (overrides language)
@@ -14,7 +14,7 @@ features:                    # all default to true
   tts: true                  # attach TTS tool to the welcoming agent
   feedback_workflow: true    # satisfaction/persona feedback loop
   summarization: true        # rolling conversation summary
-  pii_guardrail: true        # PII/LGPD blocking step
+  pii_guardrail: true        # PII/LGPD redaction stage
 models:                      # optional override of env-var model config
   primary: { provider: google, id: gemini-3.5-flash-lite }
   fallback: { provider: ollama, id: gemma4:31b-cloud }
@@ -24,7 +24,7 @@ models:                      # optional override of env-var model config
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `name` | `str` | — | App name; used as the workflow name. |
+| `name` | `str` | — | App name; used as the agent name. |
 | `language` | `str` | `en` | Selects `prompts/<language>/` when it exists. |
 | `domain_module` | `str` | `domain` | Import path of the module exposing `domain_spec`. |
 | `prompts_dir` | `str` | — | Explicit prompts directory (relative to cwd). Overrides `language`. |
@@ -38,9 +38,9 @@ models:                      # optional override of env-var model config
 | Toggle | When `false` |
 |---|---|
 | `tts` | The welcoming agent is built without the TTS tool. |
-| `feedback_workflow` | The satisfaction/persona feedback loop is omitted from the parallel branch. |
-| `summarization` | The rolling conversation summary step is omitted. |
-| `pii_guardrail` | The PII blocking step is omitted. |
+| `feedback_workflow` | The satisfaction/persona feedback loop is omitted from the run. |
+| `summarization` | The rolling conversation summary stage is omitted. |
+| `pii_guardrail` | The PII redaction stage is omitted. |
 
 ## Model resolution
 

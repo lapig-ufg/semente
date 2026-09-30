@@ -1,6 +1,6 @@
 """WhatsApp channel — a FastAPI router factory (engine-free).
 
-Wraps the Semente workflow behind the WhatsApp Business API webhook. No Agno
+Wraps the SementeAgent behind the WhatsApp Business API webhook. No Agno
 ``BaseInterface``/``AgentOS`` — the router is mounted directly on the app.
 """
 
@@ -19,7 +19,7 @@ class Whatsapp:
 
     def __init__(
         self,
-        workflow=None,
+        agent=None,
         prefix: str = "/whatsapp",
         tags: Optional[List[str]] = None,
         show_reasoning: bool = False,
@@ -31,7 +31,7 @@ class Whatsapp:
         enable_encryption: bool = False,
         encryption_key: Optional[str] = None,
     ):
-        self.workflow = workflow
+        self.agent = agent
         self.prefix = prefix
         self.tags = tags or ["Whatsapp"]
         self.show_reasoning = show_reasoning
@@ -53,14 +53,14 @@ class Whatsapp:
             if len(self._encryption_key) != 32:
                 raise ValueError("encryption_key must be exactly 32 bytes (64 hex chars)")
 
-        if workflow is None:
-            raise ValueError("Whatsapp requires a workflow")
+        if agent is None:
+            raise ValueError("Whatsapp requires an agent")
 
     def get_router(self) -> APIRouter:
         router = APIRouter(prefix=self.prefix, tags=self.tags)
         return attach_routes(
             router=router,
-            workflow=self.workflow,
+            agent=self.agent,
             show_reasoning=self.show_reasoning,
             send_user_number_to_context=self.send_user_number_to_context,
             access_token=self.access_token,

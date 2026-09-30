@@ -28,7 +28,7 @@ Pasto Legal is a Semente app. Its `domain/` package supplies:
 | `DomainSpec.skills` | `ua-calculator` — the carrying-capacity skill |
 | `prompts_dir` | `domain/prompts` — pt-BR agent/tool/hook texts |
 
-The domain-neutral engine (workflow, WhatsApp/Streamlit channels, PII
+The domain-neutral engine (agent pipeline, WhatsApp/Streamlit channels, PII
 guardrails, feedback/persona loop, TTS, i18n prompt loader) is exactly what
 became Semente.
 
@@ -38,13 +38,13 @@ became Semente.
 User (WhatsApp)
    │
    ▼
-Semente workflow
-├── Input step (audio/image → text)
-├── PII guardrail (CPF/CNPJ/card/email blocking)
+SementeAgent
+├── Input pre-processing (audio/image → text)
+├── PII guardrail (CPF/CNPJ/card/email redaction)
 ├── Onboarding check (terms acceptance)
-├── Parallel: summarization + feedback loop + Pasto Legal agent
+├── Summarization + feedback loop + Pasto Legal agent
 ├── Remediation merge
-└── Output step (TTS)
+└── Output finalization (TTS)
    │
    ▼
 Pasto Legal domain

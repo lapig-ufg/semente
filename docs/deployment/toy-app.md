@@ -62,9 +62,9 @@ the Echo assistant replies with `Echo: <your message>`.
 1. `semente streamlit` launched the Streamlit webapp bundled with Semente.
 2. The webapp read `SEMENTE_MANIFEST` → `semente.yaml`.
 3. Semente imported the `domain` package (your `domain_spec`), built the single
-   agent with the `echo` tool, and assembled the workflow:
+   agent with the `echo` tool, and assembled the SementeAgent pipeline:
    `Input → PII guardrail → Onboarding → Echo agent → Output`.
-4. The chat UI talks to that workflow.
+4. The chat UI talks to that agent.
 
 ## 6. Deploy to production (WhatsApp)
 

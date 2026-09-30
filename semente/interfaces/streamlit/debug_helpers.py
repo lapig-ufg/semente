@@ -1,8 +1,8 @@
 """Data extraction helpers for the debug panel.
 
-Converts agno framework objects (WorkflowRunOutput, RunOutput, etc.)
-into plain dicts/lists that Streamlit can safely serialize and store
-in st.session_state across reruns.
+Converts agent run objects (StepOutput, agent turns, etc.) into plain
+dicts/lists that Streamlit can safely serialize and store in
+st.session_state across reruns.
 """
 
 from time import time
@@ -284,12 +284,12 @@ def extract_step_results(response: Any) -> List[Dict[str, Any]]:
     step_summaries: List[Dict[str, Any]] = []
 
     # Semente StepOutput nests child steps under `.steps`.
-    raw_steps = getattr(response, "steps", None) or getattr(response, "step_results", None)
+    raw_steps = getattr(response, "steps", None)
     if not raw_steps:
         return step_summaries
 
     for step in raw_steps:
-        # steps can contain lists (from Parallel) or individual StepOutputs
+        # steps can contain lists or individual StepOutputs
         if isinstance(step, list):
             for sub_step in step:
                 step_summaries.append(_extract_single_step(sub_step))
@@ -318,10 +318,10 @@ def extract_workflow_debug_data(
     session_id: str,
     user_query: str,
 ) -> Dict[str, Any]:
-    """Top-level extractor called after pasto_legal_workflow.run().
+    """Top-level extractor called after SementeAgent.run().
 
     Returns a dict with all debug data for this interaction, safe for
-    st.session_state storage (all agno objects converted to plain types).
+    st.session_state storage (all objects converted to plain types).
     """
     result: Dict[str, Any] = {
         "timestamp": int(time()),

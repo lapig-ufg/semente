@@ -1,6 +1,6 @@
-"""Canonical workflow session store (Semente-owned, engine-free)."""
+"""Canonical agent session store (Semente-owned, engine-free)."""
 
-from semente.core.orchestrator import SessionStore
+from semente.core.types import SessionStore
 from semente.database.models import WorkflowSessionRecord
 from semente.database.session import SessionLocal, engine
 

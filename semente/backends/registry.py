@@ -1,7 +1,7 @@
 """Engine backend registry — selects the backend by name.
 
 Resolution order: an explicit argument (the main agent passes the manifest's
-engine) > the pinned engine (``set_engine``, called once by ``get_workflow``
+engine) > the pinned engine (``set_engine``, called once by ``get_agent``
 after loading the manifest so sub-agents built at module import time honor
 it) > the ``SEMENTE_ENGINE`` env var > ``agno``.
 """
@@ -18,7 +18,7 @@ _pinned_engine: str | None = None
 def set_engine(engine: str | None) -> None:
     """Pin the app's engine (from the manifest ``engine`` field).
 
-    Called by ``get_workflow`` before any sub-agent module is imported, so
+    Called by ``get_agent`` before any sub-agent module is imported, so
     every ``get_backend()`` call in the app resolves to the same engine.
     """
     global _pinned_engine

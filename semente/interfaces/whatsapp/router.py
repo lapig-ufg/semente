@@ -16,7 +16,6 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from semente.core.orchestrator import Workflow
 from semente.logging import log_error, log_info, log_warning
 
 from semente.interfaces.whatsapp.security import validate_webhook_signature
@@ -90,8 +89,8 @@ class _DebouceStatus(StrEnum):
     COMPLETE: str = auto()
 
 
-def _resolve_session_config(workflow: Workflow) -> _SessionConfig:
-    store = getattr(workflow, "store", None)
+def _resolve_session_config(agent) -> _SessionConfig:
+    store = getattr(agent, "store", None)
     return _SessionConfig(store=store, has_db=store is not None)
 
 
@@ -132,7 +131,7 @@ def decrypt_phone(token: str, key: bytes) -> str:
 
 def attach_routes(
     router: APIRouter,
-    workflow: Workflow = None,
+    agent=None,
     show_reasoning: bool = False,
     send_user_number_to_context: bool = False,
     access_token: Optional[str] = None,
@@ -142,12 +141,12 @@ def attach_routes(
     enable_encryption: bool = False,
     encryption_key: Optional[bytes] = None,
 ) -> APIRouter:
-    if workflow is None:
-        raise ValueError("A workflow must be provided.")
+    if agent is None:
+        raise ValueError("An agent must be provided.")
 
     # Inner functions capture config via closure to keep each instance isolated
-    entity = workflow
-    entity_name = getattr(entity, "name", "workflow")
+    entity = agent
+    entity_name = getattr(entity, "name", "agent")
     # entity_name labels messages; entity_id namespaces session IDs
     op_suffix = entity_name.lower().replace(" ", "_")
     entity_id = entity_name
@@ -342,7 +341,7 @@ def attach_routes(
                 final_text = notice + final_text
 
             if send_user_number_to_context:
-                # ponytail: semente workflow has no dependencies concept; ignored for now.
+                # ponytail: semente agent has no dependencies concept; ignored for now.
                 pass
 
             # Refresh typing indicator every 20s while the agent runs
@@ -357,13 +356,13 @@ def attach_routes(
 
             typing_task = asyncio.create_task(_keep_typing())
             try:
-                log_warning(f"Running workflow! Kwargs:\n{run_kwargs}")
+                log_warning(f"Running agent! Kwargs:\n{run_kwargs}")
                 response = await asyncio.to_thread(entity.run, input=final_text, **run_kwargs)
             finally:
                 typing_task.cancel()
 
             # Engines may echo run-input media back in the response; only send
-            # media the workflow actually generated (TTS, agent images, ...)
+            # media the agent actually generated (TTS, agent images, ...)
             for attr, media_type in (
                 ("images", "image"),
                 ("videos", "video"),

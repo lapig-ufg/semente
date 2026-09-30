@@ -42,7 +42,7 @@ def accept_terms_and_conditions(run_context: RunContext) -> str:
         session_state["terms_accepted_at"] = now.isoformat()
         
         log_debug(f"accept_terms_and_conditions: aceite registrado para user_id={user_id}")
-        return "Formal acceptance successfully registered! The main workflow has been unlocked. Politely inform the user."
+        return "Formal acceptance successfully registered! The main flow has been unlocked. Politely inform the user."
     except Exception as e:
         db.rollback()
         log_error(f"accept_terms_and_conditions: erro de persistência para user_id={user_id}: {e}")

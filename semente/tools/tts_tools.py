@@ -1,14 +1,14 @@
 """Agent-facing TTS tool shim.
 
-This is a lightweight agno ``@tool`` that tags the agent response with an
+This is a lightweight ``@tool`` that tags the agent response with an
 ``Audio`` carrying only the transcript — it does NOT synthesize audio here.
 The actual speech synthesis happens once, at the end of the run, in
-``app.steps.input.final_output._final_output`` (and the PII guardrail), which
-call the real implementation in ``app.services.audio.tts.generate_speech``.
+``SementeAgent._finalize_output``, which calls the real implementation in
+``semente.services.audio.tts.generate_speech``.
 
 Keeping this as a shim lets the agent "claim" it produced audio so the
-workflow knows to synthesize speech for that turn, without paying the
-synthesis cost on every intermediate agent step.
+pipeline knows to synthesize speech for that turn, without paying the
+synthesis cost on every intermediate agent run.
 """
 
 from semente import Audio

@@ -42,10 +42,10 @@ rebuilds the agent per run, so `_adapt_tool` wrappers can capture a per-run
 wrapper stashes `images/videos/audios/files` in the bag and passes **only the
 text content** to ADK (which is all ADK can consume anyway). After
 `runner.run(...)`, the adapter attaches the bag to `AgentTurn(images=…,
-videos=…, audios=…, files=…)` — and `step_factory` **already maps
-`AgentTurn.media` onto `StepOutput`**, which the WhatsApp router and
-Streamlit already display. Zero changes to channels, orchestrator, or the
-working Agno path.
+videos=…, audios=…, files=…)` — and `SementeAgent._invoke_agent` **already
+maps `AgentTurn.media` onto `StepOutput`**, which the WhatsApp router and
+Streamlit already display. Zero changes to channels, the agent pipeline, or
+the working Agno path.
 
 ```python
 # sketch — inside AdkAgentAdapter.run
@@ -91,7 +91,7 @@ final string.
 **Fix: Semente-level fallback wrapper (engine-agnostic).** Add
 `fallback_model: ModelSpec | None` to `AgentSpec` (populated from the
 manifest's `models.fallback` — currently parsed but discarded). In
-`agent_executor_factory` (the single place every engine's `run` flows
+`SementeAgent._invoke_agent` (the single place every engine's `run` flows
 through): try the agent; on exception or empty content, build a fallback
 agent once (lazily) and retry. This restores the behavior Pasto Legal had on
 Agno and gives every backend the same guarantee.
@@ -108,7 +108,7 @@ it does on Agno. Cosmetic — deferable.
 
 ### Phase A-M — MediaBag on ADK (1 day) ★ unblocks all 6 media tools
 - [x] Per-run media bag in `AdkAgentAdapter` (closure capture, attach to `AgentTurn`)
-- [x] Unit test: a media tool's ToolResult → bag → `StepOutput.images` via `step_factory`
+- [x] Unit test: a media tool's ToolResult → bag → `StepOutput.images` via `SementeAgent._invoke_agent`
 - [ ] Integration (real key): `generate_property_image` on Streamlit/ADK shows the map
 - **Exit:** biomass image + boletim PDF render on ADK.
 
@@ -130,7 +130,7 @@ it does on Agno. Cosmetic — deferable.
 
 ### Phase A-F — Fallback models (1 day, fixes the regression for ALL engines)
 - [ ] `AgentSpec.fallback_model`; populated from manifest `models.fallback`
-- [ ] Retry wrapper in `agent_executor_factory` (build fallback agent lazily, retry once)
+- [ ] Retry wrapper in `SementeAgent._invoke_agent` (build fallback agent lazily, retry once)
 - [ ] Test with a bogus primary model id + working fallback on both engines
 - **Exit:** `PRIMARY_MODEL_ID=invalid` + valid fallback → app still answers on agno AND adk.
 
@@ -157,7 +157,7 @@ A-F, A-P.
 ## 5. Honest residual degradations (even at "full parity")
 
 - **Debug panel richness**: reasoning content and native tool traces are richer on Agno (A-G6 narrows this)
-- **Streaming** (Phase 2 of the orchestrator roadmap) still applies to both engines equally — not ADK-specific
+- **Streaming** (Phase 2 of the agent pipeline roadmap) still applies to both engines equally — not ADK-specific
 - **TTS**: engine-independent (direct `google-genai`), unaffected
 - **ADK `output_schema`+tools model restriction**: our structured-output agents are tool-free (asserted in CI), so it never bites — but the constraint means Semente can never give a *tool-using* agent a schema on ADK where Agno could
 

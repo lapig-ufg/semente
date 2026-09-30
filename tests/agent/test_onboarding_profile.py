@@ -1,48 +1,39 @@
 """Tests of the profile onboarding gate (issue #148).
 
-Covers `_needs_onboarding`, which decides whether the user goes to the
-welcoming agent or proceeds to the normal flow. The gate must require three
-things — terms acceptance, name and role — and, when all exist in the
-database, load the profile into session_state so the agent can personalise
-the reply.
+Covers ``SementeAgent._needs_onboarding``, which decides whether the user
+goes to the welcoming agent or proceeds to the normal flow. The gate must
+require three things — terms acceptance, name and role — and, when all
+exist in the database, load the profile into session_state so the agent can
+personalise the reply.
 
 Ported from pasto-legal `tests/workflows/test_onboarding_profile.py`
-(PR #159 + tip fix `0816be3`), adapted to semente's test layout. The gate
-reads only `step_input.workflow_session.user_id`, so plain dataclass doubles
-suffice — no real StepInput needed. Semente's DB defaults to SQLite
-(`tmp/agno.db`), so the fixture creates the tables and cleans the two gate
-tables per test instead of standing up a separate database.
+(PR #159 + tip fix `0816be3`), adapted to the SementeAgent architecture:
+the gate now takes ``(state, user_id)`` directly, so no StepInput doubles
+are needed. Semente's DB defaults to SQLite (`tmp/agno.db`), so the fixture
+creates the tables and cleans the two gate tables per test instead of
+standing up a separate database.
 """
 
 import datetime
-from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 
+from semente.core.semente_agent import SementeAgent
 from semente.database.models import UserProfile, UserTermsAcceptance
 from semente.database.session import SessionLocal, engine
-from semente.workflows.onboarding_gate import _needs_onboarding
+from semente.manifest import Manifest
 
 
 UID = "test:onboarding:5562900000000"
 
 
-# ---------------------------------------------------------------------
-# Doubles: the gate only reads `step_input.workflow_session.user_id`.
-# ---------------------------------------------------------------------
-@dataclass
-class _FakeWorkflowSession:
-    user_id: Optional[str]
-
-
-@dataclass
-class _FakeStepInput:
-    workflow_session: Optional[_FakeWorkflowSession] = None
-
-
-def _entrada(user_id: Optional[str] = UID) -> _FakeStepInput:
-    return _FakeStepInput(workflow_session=_FakeWorkflowSession(user_id=user_id))
+def _agent() -> SementeAgent:
+    return SementeAgent(
+        agent=object(),
+        welcoming_agent=object(),
+        manifest=Manifest(name="test-app"),
+    )
 
 
 # ---------------------------------------------------------------------
@@ -83,20 +74,20 @@ def _gravar_perfil(sessao, name=None, role=None) -> None:
 def test_sem_user_id_pede_onboarding(db):
     """No identifier: no way to query the database — fail safe."""
     estado: dict[str, Any] = {}
-    assert _needs_onboarding(_entrada(user_id=None), estado) is True
+    assert _agent()._needs_onboarding(estado, None) is True
 
 
 def test_usuario_novo_pede_onboarding(db):
     """Nothing in the database, nothing in the session."""
     estado: dict[str, Any] = {}
-    assert _needs_onboarding(_entrada(), estado) is True
+    assert _agent()._needs_onboarding(estado, UID) is True
 
 
 def test_termos_aceitos_sem_perfil_pede_onboarding(db):
     """The classic bug: accepted the terms and would pass without identifying."""
     _aceitar_termos(db)
     estado: dict[str, Any] = {}
-    assert _needs_onboarding(_entrada(), estado) is True
+    assert _agent()._needs_onboarding(estado, UID) is True
     assert estado["terms_accepted"] is True  # the acceptance was recognized
 
 
@@ -105,7 +96,7 @@ def test_perfil_incompleto_pede_onboarding(db):
     _aceitar_termos(db)
     _gravar_perfil(db, name="João")
     estado: dict[str, Any] = {}
-    assert _needs_onboarding(_entrada(), estado) is True
+    assert _agent()._needs_onboarding(estado, UID) is True
 
 
 def test_perfil_completo_libera_e_carrega_na_sessao(db):
@@ -119,7 +110,7 @@ def test_perfil_completo_libera_e_carrega_na_sessao(db):
     _gravar_perfil(db, name="João", role="Produtor")
     estado: dict[str, Any] = {}
 
-    assert _needs_onboarding(_entrada(), estado) is False
+    assert _agent()._needs_onboarding(estado, UID) is False
 
     assert estado["user_persona"]["name"] == "João"
     assert estado["user_persona"]["role"] == "Produtor"
@@ -135,7 +126,7 @@ def test_sessao_completa_nao_consulta_o_banco(db):
         "terms_accepted": True,
         "user_persona": {"name": "João", "role": "Produtor"},
     }
-    assert _needs_onboarding(_entrada(), estado) is False
+    assert _agent()._needs_onboarding(estado, UID) is False
 
 
 def test_sessao_nao_sobrescreve_nome_recem_gravado(db):
@@ -144,7 +135,7 @@ def test_sessao_nao_sobrescreve_nome_recem_gravado(db):
     _gravar_perfil(db, name="João", role="Produtor")
     estado: dict[str, Any] = {"user_persona": {"name": "Zé do Pasto"}}
 
-    assert _needs_onboarding(_entrada(), estado) is False
+    assert _agent()._needs_onboarding(estado, UID) is False
     assert estado["user_persona"]["name"] == "Zé do Pasto"
     assert estado["user_persona"]["role"] == "Produtor"
 
@@ -160,7 +151,7 @@ def test_persona_sentinela_no_banco_incompleto_pede_onboarding(db):
     estado: dict[str, Any] = {
         "user_persona": {"name": "Ainda não conhecido", "role": "Ainda não conhecido"},
     }
-    assert _needs_onboarding(_entrada(), estado) is True
+    assert _agent()._needs_onboarding(estado, UID) is True
 
 
 def test_sentinela_na_sessao_e_preenchida_pelo_banco(db):
@@ -175,7 +166,7 @@ def test_sentinela_na_sessao_e_preenchida_pelo_banco(db):
         "user_persona": {"name": "Ainda não conhecido", "role": "Ainda não conhecido"},
     }
 
-    assert _needs_onboarding(_entrada(), estado) is False
+    assert _agent()._needs_onboarding(estado, UID) is False
     assert estado["user_persona"]["name"] == "João"
     assert estado["user_persona"]["role"] == "Produtor"
 
@@ -188,7 +179,7 @@ def test_perfil_parcial_sentinela_e_preenchido_sem_apagar_sessao(db):
         "user_persona": {"name": "Zé do Pasto", "role": "Ainda não conhecido"},
     }
 
-    assert _needs_onboarding(_entrada(), estado) is False
+    assert _agent()._needs_onboarding(estado, UID) is False
     assert estado["user_persona"]["name"] == "Zé do Pasto"
     assert estado["user_persona"]["role"] == "Técnico"
 
@@ -203,7 +194,7 @@ def test_estado_antigo_e_migrado_sem_quebrar(db):
         "some_legacy_flag": True,
     }
 
-    assert _needs_onboarding(_entrada(), estado) is False
+    assert _agent()._needs_onboarding(estado, UID) is False
     assert estado["workflow_state"]["schema_version"] == 1
     assert estado["some_legacy_flag"] is True
     assert estado["user_persona"]["name"] == "João"

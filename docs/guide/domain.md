@@ -58,7 +58,7 @@ from semente.agents.build_agent import context_blocks, persona_text
 ```
 
 - `context_blocks(session_state)` — the `<history_context>` and
-  `<conversation_summary>` blocks maintained by the workflow.
+  `<conversation_summary>` blocks maintained by the agent pipeline.
 - `persona_text(session_state)` — the user's tracked persona, or the fallback.
 
 ## Example: the Echo domain

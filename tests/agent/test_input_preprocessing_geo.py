@@ -1,8 +1,8 @@
 """
-Tests for the input pre-processing step's geospatial-file handling
-(Semente-native StepInput/File types, hermetic — no engine, no credentials).
+Tests for the SementeAgent input pre-processing geospatial-file handling
+(Semente-native File types, hermetic — no engine, no credentials).
 
-    .venv/bin/python -m pytest tests/steps/test_input_step_geo.py -v
+    .venv/bin/python -m pytest tests/agent/test_input_preprocessing_geo.py -v
 """
 import json
 import os
@@ -12,9 +12,17 @@ import zipfile
 import geopandas as gpd
 from shapely.geometry import Polygon
 
-from semente.core.orchestrator import StepInput
-from semente.steps.input_step import INPUT_STEP_NAME, _input_processing_executor
+from semente.core.semente_agent import SementeAgent
+from semente.manifest import Manifest
 from semente.tools.types import File
+
+
+def _agent() -> SementeAgent:
+    return SementeAgent(
+        agent=object(),
+        welcoming_agent=object(),
+        manifest=Manifest(name="test-app"),
+    )
 
 
 def _zipped_shapefile_bytes() -> bytes:
@@ -35,69 +43,68 @@ def _zipped_shapefile_bytes() -> bytes:
         return open(zip_path, "rb").read()
 
 
-def test_input_step_name_is_stable():
-    # Downstream consumers (step_factory) look the output up by this name.
-    assert INPUT_STEP_NAME == "Input Step"
-
-
-def test_geo_file_is_converted_and_attached_as_json():
-    step_input = StepInput(
+def test_geo_file_is_converted_and_returned():
+    user_text, geo_files = _agent()._input_preprocessing(
         input="Quero registrar minha propriedade",
+        images=None,
+        audio=None,
         files=[File(content=_zipped_shapefile_bytes(), name="shape.zip")],
     )
 
-    output = _input_processing_executor(step_input)
-
-    assert output.files and len(output.files) == 1
-    converted = output.files[0]
+    assert user_text == "Quero registrar minha propriedade"
+    assert geo_files and len(geo_files) == 1
+    converted = geo_files[0]
     assert converted.format == "geojson"
     assert converted.mime_type == "application/json"
     assert converted.name == "shape.json"
     assert json.loads(converted.content.decode())["type"] == "FeatureCollection"
     # The raw document must not be carried over.
-    assert all(file.format != "zip" for file in output.files)
+    assert all(file.format != "zip" for file in geo_files)
 
 
 def test_invalid_geo_file_appends_error_note_and_no_file():
-    step_input = StepInput(
+    user_text, geo_files = _agent()._input_preprocessing(
         input="Segue o arquivo",
+        images=None,
+        audio=None,
         files=[File(content=b"not a geo file", name="shape.zip")],
     )
 
-    output = _input_processing_executor(step_input)
-
-    assert output.files is None
-    assert output.content
-    assert "[ARQUIVO GEOESPACIAL]" in output.content
+    assert geo_files is None
+    assert user_text
+    assert "[ARQUIVO GEOESPACIAL]" in user_text
 
 
 def test_non_geo_file_is_ignored():
-    step_input = StepInput(
+    user_text, geo_files = _agent()._input_preprocessing(
         input="Olá",
+        images=None,
+        audio=None,
         files=[File(content=b"%PDF-1.4 ...", name="document.pdf")],
     )
 
-    output = _input_processing_executor(step_input)
-
-    assert output.files is None
-    assert output.content == "Olá"
+    assert geo_files is None
+    assert user_text == "Olá"
 
 
 def test_zip_without_filename_is_detected_by_magic_bytes():
-    step_input = StepInput(
+    user_text, geo_files = _agent()._input_preprocessing(
         input="",
+        images=None,
+        audio=None,
         files=[File(content=_zipped_shapefile_bytes())],
     )
 
-    output = _input_processing_executor(step_input)
-
-    assert output.files and output.files[0].format == "geojson"
+    assert geo_files and geo_files[0].format == "geojson"
 
 
 def test_text_passes_through_untouched():
-    step_input = StepInput(input="Olá, tudo bem?")
+    user_text, geo_files = _agent()._input_preprocessing(
+        input="Olá, tudo bem?",
+        images=None,
+        audio=None,
+        files=None,
+    )
 
-    output = _input_processing_executor(step_input)
-
-    assert output.content == "Olá, tudo bem?"
-    assert output.files is None
+    assert user_text == "Olá, tudo bem?"
+    assert geo_files is None

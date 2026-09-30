@@ -1,7 +1,7 @@
 # Channels
 
 Semente ships two channels: **WhatsApp** (production, for end users) and
-**Streamlit** (development, for debugging). Both run the same workflow.
+**Streamlit** (development, for debugging). Both run the same SementeAgent.
 
 ## Streamlit
 
@@ -69,6 +69,6 @@ Point the WhatsApp webhook URL at the ngrok HTTPS URL.
 
 ## Adding a channel
 
-Channels are Agno `BaseInterface` subclasses wired in `semente.build.build_app`.
-To add one, implement the interface and register it in `build_app` based on the
+Channels are FastAPI router factories wired in `semente.build.build_app`.
+To add one, implement the router and register it in `build_app` based on the
 manifest `channels` list.

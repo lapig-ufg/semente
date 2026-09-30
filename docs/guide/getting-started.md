@@ -2,8 +2,8 @@
 
 Semente is a Python framework (3.12+) built on [Agno](https://github.com/agno-agi/agno).
 A Semente app is a **domain** (your tools + knowledge + prompts) plus a
-**manifest** (`semente.yaml`). The framework assembles the multi-agent workflow
-and channels around them.
+**manifest** (`semente.yaml`). The framework assembles the multi-agent
+pipeline (the `SementeAgent`) and channels around them.
 
 ## Install
 
