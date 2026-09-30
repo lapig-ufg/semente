@@ -1,106 +1,791 @@
 # =============================================================================
-# Tool descriptions — NEUTRAL ENGLISH DEFAULT (reference base).
+# Tool descriptions and result texts — ENGLISH DEFAULT (reference base).
 #
 # Grouped by component (tool file), then by tool function name. Each entry has
-# a `description` tag passed to the agno `@tool(description=...)` decorator.
+# a `description` tag passed to the agno `@tool(description=...)` decorator
+# and a `results` mapping keyed by the tool's return branch, consumed via
+# `get_tool_result_text(component, tool_name, key, **kwargs)`.
 #
-# A Semente app overrides these via its own prompts/tools.yml (domain tools +
-# localized language). The framework ships only neutral, domain-free tools here.
+# This file is the fallback used whenever the localized tools.yml is missing
+# or has missing/blank descriptions/results; each missing part is filled from
+# here and logged as a warning.
+#
+# Translate/adjust these texts to localize the product to another language:
+# provide a tools.yml next to this defaults/ folder with the same structure.
+#
+# The docstrings in the Python files stay as developer reference; the
+# description here overrides them at runtime.
 # =============================================================================
+
+analysis_tools:
+  generate_property_image:
+    description: |
+      Generates a high-resolution (RGB) satellite image of the rural property,
+      including the geographic boundary, based on the last two months.
+
+      Use only when the user asks to visualize the property.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          ToolResult: PNG image of the aerial view with the geographic boundary.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      success_contour_legend: |
+        The red outline indicates the geographic boundary of the rural property.
+      error: |
+        Failed to generate image: {error}.
+  generate_biomass_image:
+    description: |
+      Generates a thematic map of the biomass (dry matter) over the rural property boundaries.
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          ToolResult: Map rendered in PNG format.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      success_t2g_legend: |
+        Legend: Accumulated biomass for the reference month. Light blue (High
+        concentration) to Dark purple (Low concentration). Reference date:
+        month {ref_month}, year {ref_year}.
+      success_mapbiomas_legend: |
+        Legend: Accumulated biomass for the reference year. Light blue (High
+        concentration) to Dark purple (Low concentration). Reference date: year 2024.
+      error: |
+        Unexpected error: {error}.
+  generate_biomass_video:
+    description: |
+      Generates an animated MP4 video showing the monthly evolution of the
+      biomass (dry matter, ton/ha) accumulated over the rural property, month
+      by month, on top of the satellite image.
+
+      Each frame corresponds to the accumulation of the month before the
+      reference month (same rule as the biomass map), with a fixed color scale
+      across frames to allow direct comparison between months, and indicates
+      in the upper-left corner the accumulation month of the frame.
+
+      Limitations: data available from 2025 onwards; the final period is
+      limited to the current month. Months without satellite data (UGPP) are
+      omitted; if there are fewer than two months with data, the video is not
+      generated.
+
+      Generation queries the satellite for each month of the interval and can
+      take tens of seconds. Use only when the user explicitly asks for a
+      video, animation or temporal evolution of the biomass.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+          start_year (int): Initial year of the video (minimum 2025).
+          start_month (int): Initial month (1 to 12).
+          end_year (int): Final year (limited to the current month).
+          end_month (int): Final month (1 to 12, limited to the current month).
+
+      Return:
+          ToolResult: MP4 video of the monthly biomass evolution.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      insufficient_data: |
+        There is not enough biomass data (at least two months) to generate the
+        video for the period {start_month}/{start_year} to {end_month}/{end_year}.
+        Inform that the T2G series may not cover the region or the requested
+        period and suggest a more recent period or a biomass map of the current month.
+      success: |
+        Monthly biomass evolution video (ton/ha) from {start} to {end}, over
+        the satellite image and with the property boundary. Each frame is the
+        accumulation of the month indicated in the upper-left corner (MM/YYYY
+        format), with a fixed color scale across frames: Dark purple (Low
+        concentration) to Light blue (High concentration), ranging from {min}
+        to {max} ton/ha. Months without available data were omitted.
+      error: |
+        Unexpected error: {error}.
+  generate_pasture_classification_image:
+    description: |
+      Generates the pasture classification map (pasture x non-pasture) of the rural property,
+      computed on-the-fly for the most recent year available.
+
+      Unlike `get_pasture_stats` (which uses the official MapBiomas mapping, always
+      with at least a one-year lag), this tool classifies the property in real time
+      using the most recent satellite year available, useful when the user wants the
+      most up-to-date land-use mapping possible.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          ToolResult: PNG map (green = pasture) and the pasture area in hectares.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      success_area_legend: |
+        Pasture area classified (year {pred_year}): {pasture_area_ha} hectares.
+        Legend: Green (Pasture).
+      error: |
+        Unexpected error: {error}.
+  generate_soil_texture_image:
+    description: |
+      Generates a thematic map of the soil texture over the rural property boundaries at the 0-30cm depth.
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          ToolResult: Map rendered in PNG format.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      success_soil_legend: |
+        Legend: Rock outcrop (#707070), Very clayey (#9B0F06), Clay (#BFA28C),
+        Silt (#D8F467), Sand (#FFD400) and Medium (#F0CFA1).
+      error: |
+        Unexpected error: {error}.
+  get_pasture_stats:
+    description: |
+      Retrieves the most recent statistics of biomass, vegetative vigor, pasture age and land-use classification.
+      Use this tool when the user asks about:
+      - Pasture health or quality (degradation, vigor).
+      - Amount of available biomass.
+      - Land-use classification (LULC) including: Forestry, Sugarcane, Soybean, Rice, Coffee, Citrus, etc.
+      - Pasture age.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          Dictionary containing the biomass area, pasture vigor, age and land use and cover.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      error: |
+        Unexpected error: {error}.
+  get_topographic_stats:
+    description: |
+      Retrieves topographic statistics of the property (altimetry and slope).
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          Dictionary containing the altimetry and slope information.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      error: |
+        Unexpected error: {error}.
+  generate_property_boletim:
+    description: |
+      Generates a PDF bulletin consolidating the rural property analyses — location,
+      pasture classification, biomass, vigor, soil types, biomass history (2000-present
+      series), topography and climate outlook (forecast rain/temperature) — with the
+      corresponding maps and charts, ready to share with agronomists or partners.
+
+      IMPORTANT: biomass is computed for the current month/year; age, vigor and
+      land use (LULC) reflect the most recent year available in MapBiomas (2024). Warn the
+      user about this time lag when delivering the bulletin.
+
+      Use only when the user explicitly asks for a bulletin, report or PDF
+      to share or download. Generation queries the satellite, the biomass history
+      (pixel-by-pixel export) and weather forecast services, and can take a few minutes
+      the first time (later calls for the same property are faster thanks to the biomass
+      history cache).
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          ToolResult: PDF file of the bulletin with real property data and maps.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      error: |
+        Unexpected error: {error}.
+  get_pasture_biomass_history:
+    description: |
+      Retrieves the historical series (2000 to the most recent available year) of dry
+      pasture biomass for the property, estimated from Global Pasture Watch (GPW), with
+      a trend chart.
+
+      Use when the user asks about the evolution/trend of pasture biomass over the
+      years, not just the most recent value. Native resolution of the source (GPW) is
+      30m, resampled onto a 10m grid — doesn't invent per-field spatial precision
+      finer than the source data.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          ToolResult: Year -> average biomass (t/ha) table and a PNG trend chart.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      error: |
+        Unexpected error: {error}.
+
+  get_pasture_age_on_the_fly:
+    description: |
+      Estimates pasture age (in years) on-the-fly for the most recent possible year,
+      combining MapBiomas age at the latest available year with the on-the-fly pasture
+      classification for the following year (areas that remain pasture gain +1 year;
+      new pasture starts at 1 year). Generates a color-coded age-range map — includes
+      a "≥40 (age unknown)" class for pixels whose source data is censored (pasture
+      already mature before the series started, real age unknown).
+
+      Use when the user asks about pasture age and wants the most current data
+      possible, not locked to MapBiomas's latest year. Native resolution of the age
+      asset is 30m, resampled onto a 10m grid — doesn't invent per-field spatial
+      precision finer than the source data.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          ToolResult: Area (ha) per age range and a PNG map of the property.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      error: |
+        Unexpected error: {error}.
+
+  get_pasture_vigor_on_the_fly:
+    description: |
+      Estimates pasture vigor (Low/Medium/High) on-the-fly for the most recent possible
+      year, using harmonic regression over NDVI (Sentinel-2 + Cloud Score+) calibrated,
+      within the property itself, against MapBiomas's static vigor asset at the latest
+      available year. This is our own heuristic estimate, not MapBiomas's official
+      methodology — warn the user about this when delivering the result, especially if
+      calibration falls back to a fixed threshold.
+
+      Use when the user asks about pasture vigor and wants the most current data
+      possible, not locked to MapBiomas's latest year.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          ToolResult: Area (ha) per vigor class and a PNG map of the property.
+    results:
+      feature_not_found: |
+        Feature not found: {feature_id}.
+      error: |
+        Unexpected error: {error}.
 
 tts_tools:
   generate_speech:
     description: |
       Generates spoken audio (text-to-speech) from a provided text.
 
-      Use ONLY when the user explicitly requests an audio/voice response, or when
-      the session or system preference requires audio responses.
+      WHEN TO USE:
+      - Call this tool ONLY when the user explicitly requests an audio or voice reply.
+      - Call this tool if the current session or the system preference requires audio replies.
 
-      params:
-          text (str): The full text content to be spoken.
+      Args:
+          text (str): The full content text.
 
-      Return:
+      Returns:
           ToolResult: Result object containing the generated speech.
+    results:
+      success: |
+        Audio generated successfully!
+      error: |
+        Failed to generate audio: {error}.
 
 onboarding_tools:
   accept_terms_and_conditions:
     description: |
-      Records the user's formal acceptance of the Terms and Conditions in the database.
-
-      Use when the user clearly accepts the terms (e.g. "I accept", "yes", "I agree").
-
-feedback_tools:
-  record_frustration_feedback:
-    description: |
-      Records a user correction when the assistant provided an incorrect answer.
-      Use strictly when: the user asks, the assistant answers, the user complains,
-      the assistant asks how the correct answer should be, and the user provides it.
-
-      params:
-          reason_frustration (str): Why the user was frustrated.
-          desired_answer (str): The answer the user expected.
-
-  record_analisys_feedback:
-    description: |
-      Records a suggestion for a new feature or data analysis.
-      Use when the user requests an analysis the assistant has no tools to generate.
-
-      params:
-          original_question (str): The user's original request.
-          desired_analysis (str): The analysis the user would like to see.
-
-persona_tools:
-  update_persona_name:
-    description: |
-      Updates the user's name in the session persona. Use only when the user
-      informs or confirms their name naturally during the conversation.
-
-      params:
-          name (str): The user's name.
-
-  update_persona_role:
-    description: |
-      Updates the user's professional role in the session persona. Use when you
-      clearly identify the user's role.
-
-      params:
-          role (str): The identified professional role.
-
-  update_persona_region:
-    description: |
-      Updates the user's region/location in the session persona. Use when the user
-      mentions the city, state or region where they operate.
-
-      params:
-          regionality (str): City, state or region.
-
-  create_persona_preference:
-    description: |
-      Adds a new preference or behavior discovered about the user. Avoid duplicating
-      existing keys; use update_persona_preference if the key already exists.
-
-      params:
-          key (str): Short lowercase keyword identifying the category.
-          description (str): Details about the preference.
-
-  update_persona_preference:
-    description: |
-      Updates an existing preference. Use when the user changes their mind or adds
-      new information about a previously mapped point.
-
-      params:
-          key (str): The exact keyword of the preference to update.
-          description (str): The new description replacing the previous one.
-
-  remove_persona_preference:
-    description: |
-      Removes a specific preference from the user's profile when it is no longer valid.
-
-      params:
-          key (str): The keyword of the preference to remove.
+      Records the user's formal acceptance of the Pasto Legal Terms and Conditions in the database.
+    results:
+      missing_user_id: |
+        Error: User identifier not found in the execution context.
+      success: |
+        Formal acceptance successfully registered! The main workflow has been unlocked. Politely inform the user.
+      error_persistence: |
+        Critical persistence error while saving terms acceptance: {error}
 
 version_tools:
   consult_update_notes:
     description: |
-      Reads and returns the release notes (patch notes) of the system.
-      Use when the user asks about the current version, news or updates.
+      Reads and returns the update notes (patch notes) of the Pasto Legal system.
+      Use this tool when the user asks about the current version, news or updates.
+    results:
+      release_dir_not_found: |
+        Error: The release notes directory was not found in the system.
+      no_release_notes: |
+        Warning: No release note was found in the repository.
+      release_file_not_found: |
+        Error: The update notes were not found.
+      success: |
+        Patch content:
+
+        {content}
+
+        Share this information IN FULL with the user using STRICTLY the WhatsApp
+        text formatting (*bold*, _italic_). Do not use Markdown formatting such
+        as #, ## or **.
+      error: |
+        Unexpected error while trying to read the patch file: {error}
+
+weather_tools:
+  get_monthly_precipitation_forecast:
+    description: |
+      Retrieves the monthly precipitation forecast (mm) for the rural property.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+          months (int): Number of months to forecast, between 1 and 7. Defaults to 7.
+
+      Return:
+          ToolResult: Text with the monthly precipitation forecast (date + mean mm).
+    results:
+      error: |
+        Unexpected error: {error}
+  get_daily_precipitation_forecast:
+    description: |
+      Retrieves the precipitation forecast (mm) for a specific target day of the rural property.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+          forecast_days (int): Target day to forecast, between 1 and 36. Defaults to 1.
+
+      Return:
+          ToolResult: Text with the precipitation forecast for the chosen day.
+    results:
+      error: |
+        Unexpected error: {error}
+  get_rain_season_onset_forecast:
+    description: |
+      Predicts the start date of the rainy season for the rural property.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          ToolResult: Predicted rain onset date (YYYY-MM-DD), or a message
+          indicating the rainy season has already begun / is unavailable.
+    results:
+      error: |
+        Unexpected error: {error}
+  get_dry_season_onset_forecast:
+    description: |
+      Predicts the start date of the dry season (end of rains) for the rural property.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+
+      Return:
+          ToolResult: Predicted dry-season onset date (YYYY-MM-DD), or a
+          message indicating the dry season is underway / the forecast
+          horizon does not extend far enough.
+    results:
+      error: |
+        Unexpected error: {error}
+  get_temperature_forecast:
+    description: |
+      Retrieves the daily maximum and minimum temperature forecast (°C) for the rural property.
+
+      params:
+          feature_id (str): Identifier (id) of the registered feature.
+          forecast_days (int): Number of forecast days, between 1 and 16. Defaults to 16.
+
+      Return:
+          ToolResult: Text with the daily temperature forecast (date, max, min).
+    results:
+      error: |
+        Unexpected error: {error}
+
+feedback_tools:
+  record_frustration_feedback:
+    description: |
+      Records a user's correction when the assistant provides an incorrect answer.
+      Use this function strictly when the following sequence of events occurs:
+      1. The user asks a question.
+      2. The assistant answers.
+      3. The user complains about the answer.
+      4. The assistant asks the user to explain what the correct answer would be.
+      5. The user provides the answer.
+    results:
+      success: |
+        Feedback successfully registered in the system. Thank you very much for helping to improve Pasto Legal!
+      error: |
+        Failed to register feedback: {error}.
+  record_analisys_feedback:
+    description: |
+      Records a suggestion of a new feature or data analysis.
+      Use when the user requests an analysis the assistant does not yet have tools to generate.
+    results:
+      success: |
+        Feedback successfully registered in the system. Thank you very much for helping to improve Pasto Legal!
+      error: |
+        Failed to register feedback: {error}.
+
+persona_tools:
+  update_persona_name:
+    description: |
+      Organically updates the user's persona (profile) name in the session state.
+
+      Use this tool only when the user states or confirms their name
+      during the conversation in a natural way.
+
+      Args:
+          name (str): The user's proper name (e.g.: "João", "Maria").
+    results:
+      success: |
+        Name successfully updated to: {name}
+      error: |
+        Failed to update persona name: {error}.
+  update_persona_role:
+    description: |
+      Organically updates the user persona's professional role in the session state.
+
+      Use this tool when you clearly identify whether the user is a rural producer
+      or a technical assistant/agronomist.
+
+      Args:
+          role (Literal["Produtor", "Técnico"]): The identified professional role.
+    results:
+      success: |
+        Professional role successfully updated to: {role}
+      error: |
+        Failed to update persona role: {error}.
+  update_persona_region:
+    description: |
+      Organically updates the persona's regionality/location in the session state.
+
+      Use this tool when the user mentions the city, state or region where they operate.
+
+      Args:
+          regionality (str): City, state or region of the user (e.g.: "Sorriso - MT", "South of Minas").
+    results:
+      success: |
+        Regionality successfully updated to: {regionality}
+      error: |
+        Failed to update persona regionality: {error}.
+  create_persona_preference:
+    description: |
+      Adds a new preference, interest, hobby or behavior discovered about the user.
+
+      Use this tool subtly whenever you pick up a liking, routine or preference of the user.
+      Avoid duplicating existing keys. If the key already exists, use 'update_persona_preference'.
+
+      Args:
+          key (str): A short lowercase keyword identifying the category (e.g.: "culture", "coffee", "contact_time", "favorite_channel").
+          description (str): Details about the user's liking or behavior in that category.
+    results:
+      preference_exists: |
+        The preference '{key}' already exists. Use 'update_persona_preference' to modify it.
+      success: |
+        New preference registered: {key} -> {description}
+      error: |
+        Failed to register preference: {error}.
+  update_persona_preference:
+    description: |
+      Updates an existing preference or behavior in the user's persona.
+
+      Use this tool when the user changes their mind or brings new information
+      about a point that had already been mapped before.
+
+      Args:
+          key (str): The exact keyword of the preference to be updated (e.g.: "culture", "coffee").
+          description (str): The new updated description that will replace the previous one.
+    results:
+      preference_not_found: |
+        Could not update: The preference with key '{key}' was not found.
+      success: |
+        Preference '{key}' successfully updated.
+      error: |
+        Failed to update preference: {error}.
+  remove_persona_preference:
+    description: |
+      Removes a specific preference from the user's profile when it is no longer valid.
+
+      Args:
+          key (str): The keyword of the preference that must be removed.
+    results:
+      preference_not_found: |
+        No preference found with key '{key}' for removal.
+      success: |
+        Preference '{key}' successfully removed.
+      error: |
+        Failed to remove preference: {error}.
+
+property_tools:
+  start_registration_by_coordinate:
+    description: |
+      Starts the registration of a new rural property based on the provided coordinates.
+
+      Use this tool when the user provides geographic coordinates (latitude/longitude).
+
+      Args:
+          latitude (float): Latitude in decimal degrees.
+          longitude (float): Longitude in decimal degrees.
+
+      Returns:
+          ToolResult: Search result containing an image and instructions for the next step.
+    results:
+      sicar_miss_buffer_fallback: |
+        No property was found in the SICAR database for this location.
+        Inform the user that, since there is no property registered in SICAR,
+        the system will register a buffer area around the indicated point instead.
+        Show the image and ask the user whether they want to continue with the
+        registration of this buffer area or cancel the operation.
+      confirm_single_property: |
+        Ask the user whether the following property is the correct one:
+        {property_details}
+      confirm_multiple_options: |
+        Ask the user which of the following properties is the correct one:
+        {options}
+      error: |
+        Unexpected error: {error}.
+  start_registration_by_geojson:
+    description: |
+      Starts the registration of a new rural property from a geospatial file
+      sent by the user (shapefile .zip/.rar, KMZ, KML or GeoJSON), which was
+      converted to GeoJSON and attached to the conversation as a .json file.
+
+      Use this tool when the user sends a map file with the property (or
+      paddock) boundaries.
+
+      IMPORTANT: do NOT copy or pass the .json file content. The system reads
+      the attached file automatically. Just call the tool without arguments.
+
+      Returns:
+          ToolResult: Result containing an image and instructions for the next step.
+    results:
+      confirm_property: |
+        Ask the user whether the property delimited in the image is the correct one:
+        {property_details}
+        If there are paddocks, explain that each paddock was identified with a label in the image.
+      missing_geojson: |
+        Apologize and inform that no geospatial file attachment was found.
+        Ask the user to send the file again (shapefile .zip/.rar, KMZ, KML or GeoJSON).
+      invalid_geojson: |
+        Apologize and inform that the geospatial file could not be interpreted.
+        Ask the user to check the file and send it again (shapefile .zip/.rar, KMZ, KML or GeoJSON).
+      error: |
+        Unexpected error: {error}.
+  start_registration_by_car:
+    description: |
+      Starts the registration of a new rural property based on the provided CAR code.
+
+      Use this tool when the user provides a CAR value not yet registered in the system.
+
+      Args:
+          cars (List[str]): Rural Environmental Registry code (CAR) in the SICAR standard.
+
+      Returns:
+          ToolResult: Search result containing an image and instructions for the next step.
+    results:
+      too_many_cars: |
+        Apologize and inform that unifying more than 3 CARs at a time is not allowed.
+      invalid_car_format: |
+        Apologize and inform that the system accepts only the **Federal CAR** (SICAR standard).
+        Explain that the standard requires: 2 state letters, followed by 7 digits,
+        and ending with 32 characters.
+      sicar_not_found_instructions: |
+        No property was found in the SICAR database for the informed CAR(s).
+        Since there is no property registered in SICAR, the registration can only
+        be done as a buffer area.
+        Explain this to the user and ask them to send a Google Maps sharing link
+        or the coordinates (latitude/longitude) of the location.
+        Then register the area by calling the `start_buffer_registration_by_url`
+        tool (for the link) or `start_buffer_registration_by_coordinate` (for the coordinates).
+      confirm_single_car: |
+        Inform the user that the following property was found:
+        {property_details}
+        Ask the user to confirm whether the property is the correct one.
+      confirm_unified_cars: |
+        Inform the user that the following properties were found:
+        {property_details}
+        Inform that they were grouped into a single record that the system will
+        interpret as a single property.
+        Ask the user to confirm whether the properties are the correct ones.
+      error: |
+        Unexpected error: {error}.
+  start_registration_by_url:
+    description: |
+      Starts the registration process of a new rural property based on the Google Maps sharing URL.
+
+      Use this tool when the user provides a Google Maps sharing URL.
+
+      Args:
+          url (str): Google Maps sharing URL
+
+      Returns:
+          ToolResult: Search result containing an image and instructions for the next step.
+    results:
+      url_coords_not_extracted: |
+        Apologize to the user and inform that it was not possible to extract valid
+        geographic coordinates from this link.
+        Suggest that the user send the link again (checking that it is a Google
+        Maps sharing link)
+      sicar_miss_buffer_fallback: |
+        No property was found in the SICAR database for this location.
+        Inform the user that, since there is no property registered in SICAR,
+        the system will register a buffer area around the indicated point instead.
+        Show the image and ask the user whether they want to continue with the
+        registration of this buffer area or cancel the operation.
+      confirm_single_property: |
+        Ask the user whether the following property is the correct one:
+        {property_details}
+      confirm_multiple_options: |
+        Ask the user which of the following properties is the correct one:
+        {options}
+      error: |
+        Unexpected error: {error}.
+  select_car_from_list:
+    description: |
+      Selects a specific property when the search returns multiple results.
+
+      Use this tool ONLY when the user provides a number corresponding to one of the options presented previously.
+
+      Args:
+          selection (int): The number of the option chosen by the user (e.g.: 1, 2, 3...).
+    results:
+      no_search_yet: |
+        No search has been performed yet. Inform a location first.
+      selection_out_of_range: |
+        Invalid selection. Choose a valid number between 1 and {max_selection}.
+      success_registered_prompt_name: |
+        The property with identifier {feature_id} was successfully registered.
+        Be proactive, ask the user if they would like to assign a name to the property.
+      error: |
+        Unexpected error: {error}.
+  confirm_car_selection:
+    description: |
+      Confirms the property found when the search returns a single result.
+
+      Use this tool when the 'query_car' tool finds only 1 property and the user confirms it is correct (e.g.: saying "Yes", "That's the one").
+
+      If the user already states the desired name IN THE SAME message as the
+      confirmation (e.g. "Yes, confirmed. Call it Fazenda Boa Vista"), pass
+      that name in the `name` parameter — registration completes immediately,
+      without waiting for another turn. Without this, the user loses access
+      to the analysis tools (bulletin, maps, etc.) until they reply again
+      with the name.
+    results:
+      no_pending_property: |
+        There is no property pending confirmation. Perform a search first.
+      success_registered_prompt_name: |
+        The property with identifier {feature_id} was successfully registered.
+        Be proactive, ask the user if they would like to assign a name to the property.
+      error: |
+        Unexpected error: {error}.
+  complete_registration:
+    description: |
+      Completes the registration with the property's name.
+
+      Use this tool when the user provides the property's name.
+    results:
+      success_registration_complete: |
+        Property successfully registered.
+        Name: {name}
+        Feature ID: {feature_id}
+
+        AGENT INSTRUCTION: The registration is complete. You must now deliver the
+        first diagnosis of the property to the user.
+      error: |
+        Unexpected error: {error}.
+  cancel_registration:
+    description: |
+      Cancels the selection or rejects the found results.
+
+      Use this tool if the user says the property shown in the image is NOT the correct one or wants to cancel the selection.
+    results:
+      cancelled_apology: |
+        Apologize for not having found the correct property.
+      error: |
+        Unexpected error: {error}.
+  set_property_name:
+    description: |
+      Updates the name of the property registered in the system.
+
+      Args:
+          feature_id (str): Identifier (id) of the registered feature.
+          name (str): Name of the property.
+    results:
+      property_not_found: |
+        Could not register the property name.
+      success_renamed: |
+        The property name was successfully changed.
+        Inform the user that they can already request analyses of the property in a new message.
+      error: |
+        Unexpected error: {error}.
+  remove_property:
+    description: |
+      Removes the selected property from the system.
+
+      Args:
+          feature_id (str): Identifier (id) of the registered feature.
+    results:
+      property_not_found: |
+        The property was not found in the system.
+      success_removed: |
+        The property was successfully removed.
+      error: |
+        Unexpected error: {error}.
+  remove_all_properties:
+    description: |
+      Removes all properties registered in the system.
+    results:
+      success_removed_all: |
+        All properties were successfully removed.
+      error: |
+        Unexpected error: {error}.
+  start_buffer_registration_by_coordinate:
+    description: |
+      Starts the registration of a new buffer area based on a point (coordinate)
+      and a radius in meters, generating a circular buffer around the point.
+
+      Use this tool when the user indicates a point of interest on the map and
+      wants to register the area around it, without owning a CAR code and with
+      no feature in the SICAR database. No SICAR lookup is performed; the area
+      is generated locally.
+
+      Args:
+          latitude (float): Latitude in decimal degrees of the center point.
+          longitude (float): Longitude in decimal degrees of the center point.
+          radius (int): Buffer radius in meters (50 to 1000). Defaults to 200.
+
+      Returns:
+          ToolResult: Result containing an image and instructions for the next step.
+    results:
+      invalid_radius: |
+        Apologize to the user and inform that the radius must be between
+        {min_radius} and {max_radius} meters.
+      confirm_buffer_area: |
+        Ask the user whether the following area is the correct one:
+        {area_details}
+      error: |
+        Unexpected error: {error}.
+  start_buffer_registration_by_url:
+    description: |
+      Starts the registration of a new buffer area based on a Google Maps
+      sharing URL and a radius in meters, generating a circular buffer around
+      the point indicated in the URL.
+
+      Use this tool when the user provides a Google Maps sharing URL and wants
+      to register the area around the point, without owning a CAR code and with
+      no feature in the SICAR database. No SICAR lookup is performed; the area
+      is generated locally.
+
+      Args:
+          url (str): Google Maps sharing URL.
+          radius (int): Buffer radius in meters (50 to 1000). Defaults to 200.
+
+      Returns:
+          ToolResult: Result containing an image and instructions for the next step.
+    results:
+      invalid_radius: |
+        Apologize to the user and inform that the radius must be between
+        {min_radius} and {max_radius} meters.
+      url_coords_not_extracted: |
+        Apologize to the user and inform that it was not possible to extract valid
+        geographic coordinates from this link.
+        Suggest that the user send the link again (checking that it is a Google
+        Maps sharing link)
+      confirm_buffer_area: |
+        Ask the user whether the following area is the correct one:
+        {area_details}
+      error: |
+        Unexpected error: {error}.
