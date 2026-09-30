@@ -7,7 +7,7 @@
 # The app runs with the example dir as its working directory, so
 # SEMENTE_MANIFEST and the `domain` package resolve next to semente.yaml —
 # the same layout as the documented local flow
-# (`cd examples/echo_domain && semente streamlit`).
+# (`cd examples/echo_domain && semente launch streamlit`).
 
 FROM python:3.12-slim
 

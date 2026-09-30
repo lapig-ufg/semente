@@ -10,7 +10,7 @@ routing, tool calls, metrics).
 
 ```bash
 export SEMENTE_MANIFEST=semente.yaml
-semente streamlit
+semente launch streamlit
 ```
 
 Or run the script directly:

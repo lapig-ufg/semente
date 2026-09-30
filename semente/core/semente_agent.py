@@ -937,15 +937,24 @@ def get_agent(manifest_path: str | None = None) -> SementeAgent:
 
     import os
 
-    path = manifest_path or os.getenv("SEMENTE_MANIFEST", "semente.yaml")
-    manifest = Manifest.load(path)
+    if os.getenv("SEMENTE_DEMO") == "1":
+        # Demo mode (``semente launch streamlit --demo``): built-in defaults, no app files.
+        manifest = Manifest(name="semente-demo")
+    else:
+        path = manifest_path or os.getenv("SEMENTE_MANIFEST", "semente.yaml")
+        manifest = Manifest.load(path)
     # Pin the engine BEFORE any sub-agent module is imported (they call
     # get_backend() at import time and must resolve to the manifest's engine).
     from semente.backends.registry import set_engine
 
     set_engine(manifest.engine)
     _apply_prompts(manifest)
-    domain_spec = _load_domain(manifest)
+    if os.getenv("SEMENTE_DEMO") == "1":
+        from semente.domain import demo_domain_spec
+
+        domain_spec = demo_domain_spec()
+    else:
+        domain_spec = _load_domain(manifest)
 
     from semente.agents.build_agent import build_agent
     from semente.agents.welcoming_agent import build_welcoming_agent

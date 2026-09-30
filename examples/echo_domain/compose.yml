@@ -19,7 +19,7 @@ services:
     # OLLAMA_HOST=http://host.docker.internal:11434 (needed on Linux)
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: uv run semente streamlit
+    command: uv run semente launch streamlit
     ports:
       # ${SEMENTE_DEV_PORT:-8501} lets you dodge a busy host port:
       #   SEMENTE_DEV_PORT=8502 docker compose -f ... up

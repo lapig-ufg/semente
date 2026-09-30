@@ -49,7 +49,7 @@ cp .env.example .env
 
 ```bash
 export SEMENTE_MANIFEST=semente.yaml
-semente streamlit
+semente launch streamlit
 ```
 
 Open **http://localhost:8501** and chat — the Echo assistant replies

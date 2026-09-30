@@ -23,7 +23,47 @@ pip install "semente-agents[gee,weather,knowledge]"
 | `weather` | Open-Meteo forecast tools |
 | `knowledge` | PgVector (vector KB for the Q&A agent) |
 
+## First run — the setup wizard
+
+The first time you run `semente launch streamlit` (with or without `--demo`)
+in a folder, an interactive wizard checks the **effective environment** — your
+shell variables plus the local `.env` — for the values the model needs:
+
+```
+Semente needs a few values to run the model (saved to .env, asked only once):
+Model provider (google/ollama) [google]:
+Model ID [gemini-3.5-flash-lite]:
+GOOGLE_API_KEY: ********
+Saved to .env.
+```
+
+- Only **missing** values are asked — a `.env` with just a gap fills that gap.
+- Answers are saved to `./.env`, so the wizard never runs again.
+- Exported shell variables count as already set (no nagging).
+- Non-interactive contexts (Docker, CI) never prompt: a warning lists what is
+  missing and the launch proceeds.
+
+## Try the demo agent first
+
+No app yet? Run the built-in default agent — it needs **no** `semente.yaml`,
+no `domain/` module, and no prompts: just the wizard values above.
+
+```bash
+uv run semente launch streamlit --demo
+```
+
+This boots a clean, tools-less agent with the bundled default prompts — the
+fastest way to check your model setup and see the chat pipeline (onboarding,
+persona, feedback) working end-to-end.
+
+Without `--demo`, the command requires a manifest — `./semente.yaml` or the
+`SEMENTE_MANIFEST` env var — and exits with a hint pointing to `--demo` when
+neither exists.
+
 ## The two files you write
+
+Skip this section with `semente init` — it scaffolds both files (plus
+`.env.example`, `main.py`, and prompt files) for you.
 
 ### 1. `domain/__init__.py` — your domain
 
@@ -52,9 +92,8 @@ channels: [streamlit]
 ## Run it
 
 ```bash
-export SEMENTE_MANIFEST=semente.yaml
-export GOOGLE_API_KEY=your-gemini-key
-semente streamlit
+export GOOGLE_API_KEY=your-gemini-key   # or let the first-run wizard ask
+semente launch streamlit
 ```
 
 That's it. The framework wires the onboarding, PII guardrail, feedback loop,
@@ -76,6 +115,7 @@ my-app/
 
 ## Next steps
 
+- [CLI Reference](/guide/cli) — `init`, `config`, `status`, `launch`
 - [The Domain](/guide/domain) — everything `DomainSpec` can hold
 - [Manifest Reference](/guide/manifest) — every `semente.yaml` option
 - [Deploy the Toy App](/deployment/toy-app) — a complete runnable example
