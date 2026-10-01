@@ -1,6 +1,6 @@
 """WhatsApp channel — a FastAPI router factory (engine-free).
 
-Wraps the SementeAgent behind the WhatsApp Business API webhook. No Agno
+Wraps the Semente agent behind the WhatsApp Business API webhook. No Agno
 ``BaseInterface``/``AgentOS`` — the router is mounted directly on the app.
 """
 

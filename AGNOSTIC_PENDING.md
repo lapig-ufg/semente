@@ -31,7 +31,7 @@ coupling left outside the agno backend is the knowledge *storage* stack
 ## Remaining (deferred, not blocking)
 
 - **Streaming (Phase 2)**: `Agent.stream()` protocol + streaming in the
-  SementeAgent pipeline; all engines have streaming primitives.
+  Semente pipeline; all engines have streaming primitives.
 - **G6** (cosmetic): tool-call log on ADK/bare for the debug panel.
 - **Real-key smokes**: ADK media delivery + bare full flow with real keys
   (only dummy-key graceful-400 verified so far).

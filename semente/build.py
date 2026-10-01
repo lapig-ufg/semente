@@ -1,7 +1,7 @@
 """Assemble a Semente application from a manifest.
 
 The single entry point: loads the manifest, applies the prompts dir, imports
-the domain, builds the SementeAgent (agents + pipeline), and wires the
+the domain, builds the Semente (agents + pipeline), and wires the
 channels. The domain is imported *inside* this function (after the prompts
 dir is set) so that domain tools loading prompts at import time resolve
 correctly.

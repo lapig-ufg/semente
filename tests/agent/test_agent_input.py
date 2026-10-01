@@ -4,18 +4,18 @@ Regression test for the "must send twice" bug: in the old workflow, sibling
 parallel branches (summarization, feedback) polluted the shared step-output
 registry with non-user text before the agent branch ran, so the agent's
 input had to be read from the input step's output by name — never from
-"the last output". In the SementeAgent architecture the consolidated user
+"the last output". In the Semente architecture the consolidated user
 text is a plain value passed straight to ``_build_agent_input``, so the bug
 class is structurally impossible; these tests pin that down.
 """
 
-from semente.core.semente_agent import SementeAgent
+from semente.core.semente_agent import Semente
 from semente.core.types import AgentSession
 from semente.manifest import Manifest
 
 
-def _agent() -> SementeAgent:
-    return SementeAgent(
+def _agent() -> Semente:
+    return Semente(
         agent=object(),
         welcoming_agent=object(),
         manifest=Manifest(name="test-app"),

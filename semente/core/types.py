@@ -1,6 +1,6 @@
 """Semente core data types — engine-free.
 
-The plain value objects the SementeAgent pipeline exchanges with channels
+The plain value objects the Semente pipeline exchanges with channels
 and persists to the database: the response envelope (``StepOutput``), the
 per-(user, session) conversation record (``AgentSession``) and the
 SQLAlchemy-backed persistence (``SessionStore``).
@@ -37,7 +37,7 @@ class StepOutput:
 class AgentSession:
     """Per-(user, session) conversation state and history.
 
-    ``session_state`` is the mutable dict shared by every SementeAgent
+    ``session_state`` is the mutable dict shared by every Semente
     method during a run and persisted between runs; ``runs`` is the
     conversation history as ``[{"user": ..., "assistant": ..., "ts": ...}]``.
     """

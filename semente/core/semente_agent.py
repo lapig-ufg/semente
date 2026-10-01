@@ -1,4 +1,4 @@
-"""SementeAgent — the single-object pipeline that replaces the workflow engine.
+"""Semente — the single-object pipeline that replaces the workflow engine.
 
 One object owns the whole conversation turn: ``run()`` is a thin sequencer
 and each unique stage of the old workflow is a private method whose return
@@ -23,7 +23,7 @@ methods: their modules build agents at import time, so they must only be
 imported after the language/prompts dir has been applied (``get_agent``).
 
 External interface:
-    SementeAgent  -- the agent object the channels call.
+    Semente      -- the agent object the channels call.
     get_agent     -- manifest + domain + prompts loading, cached singleton.
 """
 
@@ -150,10 +150,10 @@ def _convert_geo_files(files: list[File]) -> tuple[list[File], list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# SementeAgent
+# Semente
 # ---------------------------------------------------------------------------
 
-class SementeAgent:
+class Semente:
     """The whole conversation pipeline as a single object.
 
     Args:
@@ -206,7 +206,7 @@ class SementeAgent:
             The final :class:`StepOutput` (content, media, metrics).
         """
         if stream:
-            log_debug("SementeAgent.run(stream=True): running synchronously.")
+            log_debug("Semente.run(stream=True): running synchronously.")
 
         session = self._load_session(user_id, session_id, session_state)
         state = session.session_state
@@ -926,10 +926,10 @@ def _apply_prompts(manifest: Manifest) -> None:
             set_prompts_dir(lang_dir)
 
 
-_agent_cache: SementeAgent | None = None
+_agent_cache: Semente | None = None
 
 
-def get_agent(manifest_path: str | None = None) -> SementeAgent:
+def get_agent(manifest_path: str | None = None) -> Semente:
     """Load manifest + domain, apply language, build the agents, cache."""
     global _agent_cache
     if _agent_cache is not None:
@@ -962,7 +962,7 @@ def get_agent(manifest_path: str | None = None) -> SementeAgent:
 
     agent = build_agent(domain_spec, manifest)
     welcoming_agent = build_welcoming_agent(tts_enabled=manifest.features.get("tts", True))
-    _agent_cache = SementeAgent(
+    _agent_cache = Semente(
         agent=agent,
         welcoming_agent=welcoming_agent,
         manifest=manifest,

@@ -3,7 +3,7 @@
 This is a lightweight ``@tool`` that tags the agent response with an
 ``Audio`` carrying only the transcript — it does NOT synthesize audio here.
 The actual speech synthesis happens once, at the end of the run, in
-``SementeAgent._finalize_output``, which calls the real implementation in
+``Semente._finalize_output``, which calls the real implementation in
 ``semente.services.audio.tts.generate_speech``.
 
 Keeping this as a shim lets the agent "claim" it produced audio so the
