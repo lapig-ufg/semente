@@ -1,7 +1,7 @@
 # bare/DECISIONS.md — MyAgent: decisions & progress
 
 Status report for the from-scratch agent being built in this backend.
-Updated: 2026-10-02 (canonical loop on MyAgent).
+Updated: 2026-10-02 (AgentMetrics — per-run metrics object).
 
 ## Goal
 
@@ -87,12 +87,32 @@ exception → end event `is_error=True` then re-raise; provider failure → no
 mutations); a handler exception is swallowed + logged (`log_warning`) — an
 observer must never break a production run.
 
+### D9 — Run metrics: provider-neutral usage dict at the seam
+`GenerateResult.usage` carries one round's tokens as a provider-neutral
+dict (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`,
+`cache_read_tokens`, `tool_use_prompt_tokens`; absent counts dropped) —
+vendor usage objects never leave the provider (D4). The run's accounting
+lives in one **`AgentMetrics`** object (`metrics.py`), threaded through
+the loop and tool calls instead of scattered locals: `start()` begins the
+wall clock, `record_round(usage, round_duration)` per provider round,
+`record_tool(name, duration, is_error)` per tool execution, `finish()`
+at completion, `to_dict()` at the `AgentTurn` boundary — honoring the
+`dict | None` contract (unlike agno, which stuffs its RunMetrics object
+there). Token semantics: each round's wire usage is **cumulative for the
+run** (the API counts the whole conversation so far), so the last round's
+counts win — summed per round would double-count. Timing via
+`perf_counter`. Per-tool `tools: [{name, duration, is_error}]` (unknown
+tools and exceptions recorded `is_error=True`). No `cost` — the wire
+carries no pricing. Debug-panel visibility of bare metrics is deferred
+(its `extract_metrics` reads attributes, not dict keys).
+
 ## File map
 
 | File | Role |
 |---|---|
 | `agent.py` | `MyAgent`: instructions + tools + provider = the tool loop (cap 10 iterations) |
 | `events.py` | `AgentEvents` + event dataclasses + `EventBus` (subscribe/emit, swallow+log) |
+| `metrics.py` | `AgentMetrics` — per-run accumulator (`start`/`record_round`/`record_tool`/`finish`/`to_dict`) |
 | `providers/base.py` | `Provider` ABC + `ToolCall`/`GenerateResult` dataclasses |
 | `providers/gemini.py` | Gemini wire over `google-genai` (key/model from `config`, convention of `agno/models.py`) |
 | `__init__.py` | `BareBackend` + routing (every spec → `MyAgent`) |
@@ -108,8 +128,10 @@ observer must never break a production run.
 | 2026-10-02 | litellm fallback (`tool_loop.py`, `BareAgentAdapter`) removed; every spec routes to `MyAgent`; `litellm` dropped from project dependencies | this commit |
 | 2026-10-02 | Event system (D8): `events.py` (`AgentEvents`, payload dataclasses, `EventBus`); loop emits `AGENT_START`/`AGENT_END` + per-tool start/end; mutations on the start event redirect execution | this commit |
 | 2026-10-02 | Canonical loop: `_execute` restructured into one flat generate→execute→feed-back cycle (every round rides history, incl. round 1; cap round's calls not executed; single `AGENT_END` site); iteration-cap test added | this commit |
+| 2026-10-02 | Run metrics (D9): `GenerateResult.usage` extracted off the Gemini wire; `_execute` returns `(text, metrics)` — token counts, round/tool timings, `provider_rounds`; `AgentTurn.metrics` populated | this commit |
+| 2026-10-02 | `AgentMetrics` class: the run's accounting moved from `_execute` locals into one object (`start`/`record_round`/`record_tool`/`finish`/`to_dict`), threaded through the loop and `_run_one`; `to_dict()` at the `AgentTurn` boundary; lives in `metrics.py` (metrics are not events) | this commit |
 
-Tests: `tests/test_bare_myagent.py` (17, mocked genai — no network),
+Tests: `tests/test_bare_myagent.py` (26, mocked genai — no network),
 `tests/test_bare_events.py` (17, mocked provider — no network);
 `tests/test_bare_backend.py` covered the removed litellm path and was
 deleted with it.

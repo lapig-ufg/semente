@@ -32,11 +32,17 @@ class GenerateResult:
 
     ``turn`` is the provider-native model turn; the agent echoes it back
     verbatim (Gemini 3 thought signatures live there) before tool results.
+    ``usage`` is the provider-neutral token dict for this round (keys:
+    ``input_tokens``, ``output_tokens``, ``total_tokens``,
+    ``reasoning_tokens``, ``cache_read_tokens``, ``tool_use_prompt_tokens``;
+    absent counts dropped) — the vendor's usage object never leaves the
+    provider.
     """
 
     text: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     turn: Any = None
+    usage: dict | None = None
 
 
 class Provider(ABC):

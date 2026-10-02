@@ -34,6 +34,7 @@ from semente.backends.bare.events import (
     ToolExecutionEndEvent,
     ToolExecutionStartEvent,
 )
+from semente.backends.bare.metrics import AgentMetrics
 
 
 class BareBackend(EngineBackend):

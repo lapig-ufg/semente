@@ -112,6 +112,10 @@ agent.subscribe(
 )
 ```
 
+Every `MyAgent` run also returns metrics in `AgentTurn.metrics` — token
+counts off the provider wire (input/output/total/reasoning/cache-read,
+cumulative), per-round and per-tool timings, and the provider round count.
+
 ## Knowledge: agno as a library
 
 Knowledge *retrieval* is engine-neutral (`build_search_tool` returns a plain

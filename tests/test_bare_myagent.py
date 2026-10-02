@@ -8,6 +8,7 @@ BareBackend's routing of every spec to MyAgent.
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 import semente.backends.bare.agent as bare_agent_module
 from google.genai.types import (
     Candidate,
@@ -23,6 +24,7 @@ from semente.backends.bare import BareBackend, MyAgent
 from semente.backends.bare.agent import _MAX_TOOL_ITERATIONS
 from semente.backends.bare.providers import GeminiProvider, Provider
 from semente.backends.bare.providers.base import GenerateResult, ToolCall
+from semente.backends.toolkit import StateContext, new_media_bag
 from semente.configs.config import config
 from semente.tools import tool
 from semente.tools.types import Image, ToolResult
@@ -57,6 +59,11 @@ def _model_response(parts) -> GenerateContentResponse:
     )
 
 
+def _usage(usage_metadata) -> GenerateContentResponse:
+    return GenerateContentResponse(
+        candidates=[Candidate(content=Content(role="model", parts=[Part(text="ok")]))],
+        usage_metadata=usage_metadata,
+    )
 def _function_call_response(call_id, name, args) -> GenerateContentResponse:
     return _model_response([Part(function_call=FunctionCall(id=call_id, name=name, args=args))])
 
@@ -337,6 +344,191 @@ def test_myagent_iteration_cap_stops_generating_and_skips_dead_calls():
     assert all(c["message"] is None for c in provider.calls)  # every round rides history
 
 
+# ---- Metrics ------------------------------------------------------------------
+
+
+def test_gemini_parse_extracts_usage_metadata():
+    from google.genai.types import GenerateContentResponseUsageMetadata
+
+    provider = GeminiProvider()
+    fake = _fake_client(
+        iter([
+            _usage(
+                GenerateContentResponseUsageMetadata(
+                    prompt_token_count=10,
+                    candidates_token_count=5,
+                    total_token_count=15,
+                    thoughts_token_count=2,
+                    cached_content_token_count=3,
+                    tool_use_prompt_token_count=1,
+                )
+            )
+        ])
+    )
+    provider._client = fake
+
+    out = provider.generate(system="s", message="hi")
+
+    assert out.usage == {
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "total_tokens": 15,
+        "reasoning_tokens": 2,
+        "cache_read_tokens": 3,
+        "tool_use_prompt_tokens": 1,
+    }
+
+
+def test_gemini_parse_usage_none_counts_dropped():
+    from google.genai.types import GenerateContentResponseUsageMetadata
+
+    provider = GeminiProvider()
+    fake = _fake_client(
+        iter([_usage(GenerateContentResponseUsageMetadata(prompt_token_count=7))])
+    )
+    provider._client = fake
+
+    out = provider.generate(system="s", message="hi")
+
+    assert out.usage == {"input_tokens": 7}
+
+
+def test_gemini_parse_usage_absent_is_none():
+    provider = GeminiProvider()
+    fake = _fake_client(iter([_text_response("ok")]))
+    provider._client = fake
+
+    out = provider.generate(system="s", message="hi")
+
+    assert out.usage is None
+
+
+def test_run_metrics_accumulate_and_time_across_rounds():
+    provider = _FakeProvider([
+        GenerateResult(
+            tool_calls=[ToolCall(id="call-1", name="make_map", args={"feature_id": "f1"})],
+            turn="model-turn",
+            usage={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+        ),
+        GenerateResult(
+            text="done",
+            usage={"input_tokens": 40, "output_tokens": 8, "total_tokens": 48,
+                   "tool_use_prompt_tokens": 25},
+        ),
+    ])
+    agent = MyAgent(instructions="s", provider=provider, tools=[_make_map_tool()])
+
+    turn = agent.run(AgentInput(text="draw f1", session_state={}))
+
+    m = turn.metrics
+    assert m["provider"] == "fake"
+    assert m["provider_rounds"] == 2
+    # Cumulative wire usage — the LAST round's counts win, no double counting.
+    assert m["input_tokens"] == 40
+    assert m["output_tokens"] == 8
+    assert m["total_tokens"] == 48
+    assert m["tool_use_prompt_tokens"] == 25
+    assert m["reasoning_tokens"] == 0  # absent -> 0
+    assert len(m["round_durations"]) == 2
+    assert m["time_to_first_token"] == m["round_durations"][0]
+    assert m["duration"] >= 0
+    assert m["tools"] == [{"name": "make_map", "duration": m["tools"][0]["duration"], "is_error": False}]
+
+
+def test_run_metrics_plain_chat():
+    provider = _FakeProvider(["hello"])
+    agent = MyAgent(instructions="s", provider=provider)
+
+    turn = agent.run(AgentInput(text="hi", session_state={}))
+
+    m = turn.metrics
+    assert m["provider_rounds"] == 1
+    assert m["tools"] == []
+    assert m["total_tokens"] == 0  # no usage on the wire -> zeros
+
+
+def test_run_metrics_tool_error_and_unknown_recorded():
+    @tool(description="always fails")
+    def boom(run_context) -> ToolResult:
+        raise RuntimeError("tool exploded")
+
+    provider = _FakeProvider([
+        GenerateResult(tool_calls=[ToolCall(id="c1", name="boom", args={})], turn="t1"),
+        GenerateResult(text="never"),
+    ])
+    agent = MyAgent(instructions="s", provider=provider, tools=[boom])
+    with pytest.raises(RuntimeError):
+        agent.run(AgentInput(text="hi", session_state={}))
+
+    provider = _FakeProvider([
+        GenerateResult(tool_calls=[ToolCall(id="c2", name="ghost", args={})], turn="t1"),
+        GenerateResult(text="recovered"),
+    ])
+    agent = MyAgent(instructions="s", provider=provider)
+    turn = agent.run(AgentInput(text="hi", session_state={}))
+
+    assert turn.metrics["tools"] == [
+        {"name": "ghost", "duration": turn.metrics["tools"][0]["duration"], "is_error": True}
+    ]
+
+
+def test_chat_still_returns_str_with_metrics_available_via_run():
+    agent = MyAgent(instructions="s", provider=_FakeProvider(["hello"]))
+    assert agent.chat("hi") == "hello"  # chat() unchanged — str back
+
+    agent = MyAgent(instructions="s", provider=_FakeProvider(["hello"]))
+    turn = agent.run(AgentInput(text="hi", session_state={}))
+    assert isinstance(turn.metrics, dict)
+
+
+# ---- AgentMetrics (the per-run accumulator object) ------------------------------
+
+
+def test_agentmetrics_lifecycle_records_and_converts():
+    from semente.backends.bare import AgentMetrics
+
+    m = AgentMetrics.start(provider="gemini", model_id="m-1")
+    assert m.provider_rounds == 0 and m.duration == 0.0  # fresh run
+
+    m.record_round(usage={"input_tokens": 10, "output_tokens": 5}, round_duration=0.1)
+    m.record_tool("make_map", 0.02, is_error=False)
+    m.record_round(usage={"input_tokens": 40, "output_tokens": 8, "total_tokens": 48}, round_duration=0.2)
+    m.record_tool("ghost", 0.0, is_error=True)
+    m.finish()
+
+    d = m.to_dict()
+    assert d["provider"] == "gemini"
+    assert d["model_id"] == "m-1"
+    assert d["provider_rounds"] == 2
+    assert d["round_durations"] == [0.1, 0.2]
+    assert d["time_to_first_token"] == 0.1  # first round's latency
+    assert d["duration"] > 0  # wall clock ran
+    assert d["input_tokens"] == 40  # cumulative wire usage — last round wins
+    assert d["output_tokens"] == 8
+    assert d["total_tokens"] == 48
+    assert d["reasoning_tokens"] == 0  # never seen -> 0
+    assert d["tools"] == [
+        {"name": "make_map", "duration": 0.02, "is_error": False},
+        {"name": "ghost", "duration": 0.0, "is_error": True},
+    ]
+
+
+def test_agentmetrics_run_returns_dict_and_execute_returns_object():
+    from semente.backends.bare import AgentMetrics
+
+    agent = MyAgent(instructions="s", provider=_FakeProvider(["hi"]))
+    text, metrics = agent._execute("hi", StateContext({}, None), new_media_bag())
+
+    assert text == "hi"
+    assert isinstance(metrics, AgentMetrics)  # internal: the object itself
+    assert metrics.provider_rounds == 1
+    assert metrics.duration > 0  # finish() ran
+
+    agent = MyAgent(instructions="s", provider=_FakeProvider(["hi"]))
+    turn = agent.run(AgentInput(text="hi", session_state={}))
+    assert isinstance(turn.metrics, dict)  # boundary: converted for the contract
+
+
 if __name__ == "__main__":
     test_myagent_chat_returns_reply()
     test_myagent_defaults_to_gemini_provider()
@@ -355,4 +547,13 @@ if __name__ == "__main__":
     test_backend_routes_rich_specs_to_myagent()
     test_gemini_missing_key_raises()
     test_myagent_iteration_cap_stops_generating_and_skips_dead_calls()
+    test_gemini_parse_extracts_usage_metadata()
+    test_gemini_parse_usage_none_counts_dropped()
+    test_gemini_parse_usage_absent_is_none()
+    test_run_metrics_accumulate_and_time_across_rounds()
+    test_run_metrics_plain_chat()
+    test_run_metrics_tool_error_and_unknown_recorded()
+    test_chat_still_returns_str_with_metrics_available_via_run()
+    test_agentmetrics_lifecycle_records_and_converts()
+    test_agentmetrics_run_returns_dict_and_execute_returns_object()
     print("MyAgent tests OK")

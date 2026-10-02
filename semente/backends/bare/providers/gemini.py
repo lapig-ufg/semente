@@ -35,8 +35,24 @@ def _function_declaration(tool: Tool):
     )
 
 
+def _extract_usage(resp) -> dict | None:
+    """Vendor usage metadata -> provider-neutral token dict (None counts dropped)."""
+    um = getattr(resp, "usage_metadata", None)
+    if um is None:
+        return None
+    mapping = {
+        "input_tokens": um.prompt_token_count,
+        "output_tokens": um.candidates_token_count,
+        "total_tokens": um.total_token_count,
+        "reasoning_tokens": um.thoughts_token_count,
+        "cache_read_tokens": um.cached_content_token_count,
+        "tool_use_prompt_tokens": um.tool_use_prompt_token_count,
+    }
+    return {k: int(v) for k, v in mapping.items() if v is not None}
+
+
 def _parse_response(resp) -> GenerateResult:
-    """Typed response -> GenerateResult (text, calls, verbatim turn)."""
+    """Typed response -> GenerateResult (text, calls, verbatim turn, usage)."""
     from google.genai.types import Content, FunctionCall, Part
 
     content: Content | None = None
@@ -55,7 +71,7 @@ def _parse_response(resp) -> GenerateResult:
         and isinstance(fc, FunctionCall)
     ]
     turn = content if (calls or text) else None
-    return GenerateResult(text=text, tool_calls=calls, turn=turn)
+    return GenerateResult(text=text, tool_calls=calls, turn=turn, usage=_extract_usage(resp))
 
 
 class GeminiProvider(Provider):
