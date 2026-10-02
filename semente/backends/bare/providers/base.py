@@ -1,8 +1,8 @@
 """Provider port — the contract every bare provider implements.
 
 A provider is the thinnest possible seam over one LLM vendor's wire: it does
-one typed round-trip (declarations in, text + tool calls out) and builds the
-provider-native turns the model expects to see echoed back. The agent owns
+one typed round-trip (declarations in, text + tool calls out) and builds
+the provider-native turns the model expects to see echoed back. The agent owns
 the loop — parsing calls, executing tools (engine-neutral, via
 ``backends/toolkit.py``), feeding results — so adding a vendor never
 duplicates loop logic.
@@ -58,18 +58,21 @@ class Provider(ABC):
         model_id: str | None = None,
         tools: list[Tool] | None = None,
         history: list | None = None,
+        media: list[dict] | None = None,
     ) -> GenerateResult:
         """One round-trip: declarations in, text + tool calls out.
 
         ``message`` is the user's text (None when history already carries it);
         ``history`` is the accumulated provider-native turns of this run
         (user turn, model turn, tool results turn, …) — opaque to the agent,
-        meaningful only to the provider.
+        meaningful only to the provider. ``media`` is the run's multimodal
+        input as provider-neutral parts (``kind``/``mime_type``/``data`` or
+        ``url``); a provider that cannot take media ignores it.
         """
         ...
 
-    def user_turn(self, message: str) -> Any:
-        """Provider-native turn for the user's message."""
+    def user_turn(self, message: str, media: list[dict] | None = None) -> Any:
+        """Provider-native turn for the user's message (+ optional media)."""
         return {"role": "user", "content": message}
 
     def tool_results_turn(self, outputs: list[tuple[ToolCall, str]]) -> list:

@@ -69,7 +69,7 @@ engine-agnostic (`FallbackAgent` wraps any two `Agent` instances).
 |---|---|---|---|
 | Tool calling | ✓ | ✓ | ✓ |
 | Structured output | ✓ | ✓ | planned |
-| Multimodal input | ✓ | ✓ (images/audio) | planned |
+| Multimodal input | ✓ | ✓ (images/audio) | ✓ (images/audio/files) |
 | Media output | ✓ | ✓ | ✓ |
 | Session state in tools | ✓ | ✓ (tool_context) | ✓ (StateContext) |
 | Knowledge (KB search) | ✓ | ✓ (A-K) | planned (A-K) |
@@ -93,8 +93,13 @@ agents — no framework, no litellm:
 `BareBackend.build_agent` routes every spec to `MyAgent`. Not yet implemented
 (planned, see `semente/backends/bare/DECISIONS.md`): structured output
 (`AgentTurn.structured` stays `None` — the feedback/persona loops degrade
-gracefully), multimodal input, knowledge-base search, and non-Google
-providers. For those capabilities today, use the `agno` or `adk` engine.
+gracefully) and knowledge-base search. For those capabilities today, use the
+`agno` or `adk` engine.
+
+`MyAgent` is multimodal: `AgentInput.images`/`audio`/`files` all go to the
+model as wire parts on the first round's user turn, and `files` additionally
+ride into tools declaring a `files` parameter (the framework convention).
+`run(AgentInput)` is the single entry point.
 
 `MyAgent` also has an event system — `agent.subscribe(AgentEvents.X, handler)`
 observes or customizes runs: `AGENT_START` (session state, by reference) and

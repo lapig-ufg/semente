@@ -36,7 +36,7 @@ class _FakeProvider(Provider):
         result = next(self.results)
         return result if isinstance(result, GenerateResult) else GenerateResult(text=result)
 
-    def user_turn(self, message):
+    def user_turn(self, message, media=None):
         return {"role": "user", "content": message}
 
     def tool_results_turn(self, outputs):
@@ -84,7 +84,7 @@ def test_agent_start_sees_session_state_by_reference():
     agent = MyAgent(instructions="s", provider=_FakeProvider(["done"]))
     agent.subscribe(AgentEvents.AGENT_START, lambda e: seen.append(e))
 
-    agent.chat("hi", session_state=state)
+    agent.run(AgentInput(text="hi", session_state=state))
 
     assert isinstance(seen[0], AgentStartEvent)
     assert seen[0].session_state is state  # by reference — handlers can seed state
@@ -100,7 +100,8 @@ def test_agent_end_carries_neutral_message_log():
     ends = []
     agent.subscribe(AgentEvents.AGENT_END, lambda e: ends.append(e))
 
-    text = agent.chat("draw f1", session_state={})
+    turn = agent.run(AgentInput(text="draw f1", session_state={}))
+    text = turn.content
 
     assert text == "done"
     e = ends[0]
@@ -124,7 +125,7 @@ def test_agent_end_fires_after_plain_chat_too():
     ends = []
     agent.subscribe(AgentEvents.AGENT_END, lambda e: ends.append(e))
 
-    assert agent.chat("hi") == "hello"
+    assert agent.run(AgentInput(text="hi")).content == "hello"
     assert len(ends) == 1
     assert [(m.role, m.content) for m in ends[0].messages] == [("user", "hi"), ("assistant", "hello")]
 
@@ -155,7 +156,7 @@ def test_no_agent_end_when_provider_raises():
     agent.subscribe(AgentEvents.AGENT_END, lambda e: ends.append(e))
 
     with pytest.raises(RuntimeError):
-        agent.chat("hi")
+        agent.run(AgentInput(text="hi"))
     assert ends == []
 
 
@@ -171,7 +172,7 @@ def test_tool_start_observes_name_and_args():
     seen = []
     agent.subscribe(AgentEvents.TOOL_EXECUTION_START, lambda e: seen.append(e))
 
-    agent.chat("draw f1")
+    agent.run(AgentInput(text="draw f1"))
 
     assert isinstance(seen[0], ToolExecutionStartEvent)
     assert seen[0].tool_call_id == "call-1"
@@ -189,7 +190,8 @@ def test_mutation_args_change_execution():
         AgentEvents.TOOL_EXECUTION_START, lambda e: e.args.update(feature_id="f2")
     )
 
-    text = agent.chat("draw f1")
+    turn = agent.run(AgentInput(text="draw f1"))
+    text = turn.content
 
     assert text == "done"
     assert provider.echoed_outputs[0][0][1] == "map for f2"  # executed with the mutated args, fed back
@@ -210,7 +212,7 @@ def test_mutation_tool_name_redirects_execution():
 
     agent.subscribe(AgentEvents.TOOL_EXECUTION_START, redirect)
 
-    agent.chat("draw f1")
+    agent.run(AgentInput(text="draw f1"))
 
     # echo_value executed with the redirected args
     assert provider.echoed_outputs[0][0][1] == "echo: f1"
@@ -229,7 +231,7 @@ def test_mutation_to_unknown_name_feeds_back_unknown_tool():
     agent.subscribe(AgentEvents.TOOL_EXECUTION_START, lambda e: setattr(e, "tool_name", "nope"))
     agent.subscribe(AgentEvents.TOOL_EXECUTION_END, ends.append)
 
-    agent.chat("draw f1")
+    agent.run(AgentInput(text="draw f1"))
 
     assert ends[0].is_error is True
     assert provider.echoed_outputs[0][0][1] == "Unknown tool: nope"
@@ -243,7 +245,7 @@ def test_mutation_can_rescue_unknown_model_call():
     agent = MyAgent(instructions="s", provider=provider, tools=[_echo_tool()])
     agent.subscribe(AgentEvents.TOOL_EXECUTION_START, lambda e: setattr(e, "tool_name", "echo_value"))
 
-    agent.chat("hi")
+    agent.run(AgentInput(text="hi"))
 
     assert provider.echoed_outputs[0][0][1] == "echo: x"
 
@@ -260,7 +262,7 @@ def test_tool_end_carries_result_and_not_error():
     ends = []
     agent.subscribe(AgentEvents.TOOL_EXECUTION_END, ends.append)
 
-    agent.chat("draw f1")
+    agent.run(AgentInput(text="draw f1"))
 
     e = ends[0]
     assert isinstance(e, ToolExecutionEndEvent)
@@ -279,7 +281,7 @@ def test_tool_end_is_error_when_tool_raises_then_propagates():
     agent.subscribe(AgentEvents.TOOL_EXECUTION_END, ends.append)
 
     with pytest.raises(RuntimeError):
-        agent.chat("hi")
+        agent.run(AgentInput(text="hi"))
 
     assert len(ends) == 1
     assert ends[0].is_error is True
@@ -295,7 +297,7 @@ def test_unknown_tool_without_mutation_is_error_end():
     ends = []
     agent.subscribe(AgentEvents.TOOL_EXECUTION_END, ends.append)
 
-    agent.chat("hi")  # unknown tools don't crash the run
+    agent.run(AgentInput(text="hi"))  # unknown tools don't crash the run
 
     assert ends[0].is_error is True
     assert ends[0].tool_name == "ghost"
@@ -344,7 +346,7 @@ def test_handler_exception_does_not_break_the_run():
 
     agent.subscribe(AgentEvents.AGENT_START, boom)
 
-    assert agent.chat("hi") == "hello"
+    assert agent.run(AgentInput(text="hi")).content == "hello"
 
 
 def test_multiple_tool_calls_emit_per_call_events():
@@ -362,7 +364,7 @@ def test_multiple_tool_calls_emit_per_call_events():
     agent.subscribe(AgentEvents.TOOL_EXECUTION_START, starts.append)
     agent.subscribe(AgentEvents.TOOL_EXECUTION_END, ends.append)
 
-    agent.chat("hi")
+    agent.run(AgentInput(text="hi"))
 
     assert [e.tool_call_id for e in starts] == ["c1", "c2"]
     assert [e.result for e in ends] == ["echo: a", "echo: b"]

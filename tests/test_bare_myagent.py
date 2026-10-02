@@ -46,7 +46,7 @@ class _FakeProvider(Provider):
             return GenerateResult(text=result)
         return result
 
-    def user_turn(self, message):
+    def user_turn(self, message, media=None):
         return {"role": "user", "content": message}
 
     def tool_results_turn(self, outputs):
@@ -89,10 +89,11 @@ def _fake_client(responses):
     return fake
 
 
-def test_myagent_chat_returns_reply():
+def test_myagent_run_returns_reply():
     provider = _FakeProvider(["hello back"])
     agent = MyAgent(instructions="be nice", provider=provider)
-    assert agent.chat("hi") == "hello back"
+    turn = agent.run(AgentInput(text="hi"))
+    assert turn.content == "hello back"
     # Round 1 rides history: user turn already in, no separate message.
     assert provider.calls[0]["message"] is None
     assert provider.calls[0]["history"] == [{"role": "user", "content": "hi"}]
@@ -206,7 +207,7 @@ def test_myagent_tool_loop_calls_executes_and_answers():
     )
     agent = MyAgent(instructions="be nice", provider=provider, tools=[_make_map_tool()])
 
-    assert agent.chat("draw f1") == "Here is your map."
+    assert agent.run(AgentInput(text="draw f1")).content == "Here is your map."
 
     # Round 1: user turn in history, no separate message.
     assert provider.calls[0]["message"] is None
@@ -246,10 +247,10 @@ def test_myagent_dynamic_tools_resolve_against_session_state():
     dynamic = lambda ctx: [t for t in [_make_map_tool()] if ctx.session_state.get("maps", False)]
     agent = MyAgent(instructions="be nice", provider=provider, tools=dynamic)
 
-    agent.chat("hi", session_state={"maps": False})
+    agent.run(AgentInput(text="hi", session_state={"maps": False}))
     assert provider.calls[0]["tools"] == []
 
-    agent.chat("draw", session_state={"maps": True})
+    agent.run(AgentInput(text="draw", session_state={"maps": True}))
     assert [t.name for t in provider.calls[1]["tools"]] == ["make_map"]
 
 
@@ -265,7 +266,7 @@ def test_myagent_unknown_tool_feeds_back_error_text():
     )
     agent = MyAgent(instructions="be nice", provider=provider, tools=[_make_map_tool()])
 
-    assert agent.chat("hi") == "recovered"
+    assert agent.run(AgentInput(text="hi")).content == "recovered"
     outputs = provider.calls[1]["history"][2]["outputs"]
     assert outputs[0][1] == "Unknown tool: nope"
 
@@ -330,13 +331,13 @@ def test_myagent_iteration_cap_stops_generating_and_skips_dead_calls():
     map_tool = _make_map_tool()
     original_run_tool = bare_agent_module.run_tool
 
-    def counting_run_tool(tool, args, ctx, media_bag):
+    def counting_run_tool(tool, args, ctx, media_bag, input_files=None):
         executions.append(args["feature_id"])
-        return original_run_tool(tool, args, ctx, media_bag)
+        return original_run_tool(tool, args, ctx, media_bag, input_files=input_files)
 
     agent = MyAgent(instructions="be nice", provider=provider, tools=[map_tool])
     with patch.object(bare_agent_module, "run_tool", counting_run_tool):
-        text = agent.chat("loop forever")
+        text = agent.run(AgentInput(text="loop forever")).content
 
     assert len(provider.calls) == _MAX_TOOL_ITERATIONS  # capped provider rounds
     assert len(executions) == _MAX_TOOL_ITERATIONS - 1  # cap round's calls skipped
@@ -472,9 +473,9 @@ def test_run_metrics_tool_error_and_unknown_recorded():
     ]
 
 
-def test_chat_still_returns_str_with_metrics_available_via_run():
+def test_run_returns_content_and_metrics():
     agent = MyAgent(instructions="s", provider=_FakeProvider(["hello"]))
-    assert agent.chat("hi") == "hello"  # chat() unchanged — str back
+    assert agent.run(AgentInput(text="hi")).content == "hello"
 
     agent = MyAgent(instructions="s", provider=_FakeProvider(["hello"]))
     turn = agent.run(AgentInput(text="hi", session_state={}))
@@ -517,7 +518,7 @@ def test_agentmetrics_run_returns_dict_and_execute_returns_object():
     from semente.backends.bare import AgentMetrics
 
     agent = MyAgent(instructions="s", provider=_FakeProvider(["hi"]))
-    text, metrics = agent._execute("hi", StateContext({}, None), new_media_bag())
+    text, metrics = agent._execute(AgentInput(text="hi"), StateContext({}, None), new_media_bag())
 
     assert text == "hi"
     assert isinstance(metrics, AgentMetrics)  # internal: the object itself
@@ -530,7 +531,7 @@ def test_agentmetrics_run_returns_dict_and_execute_returns_object():
 
 
 if __name__ == "__main__":
-    test_myagent_chat_returns_reply()
+    test_myagent_run_returns_reply()
     test_myagent_defaults_to_gemini_provider()
     test_gemini_generate_sends_system_instruction()
     test_gemini_generate_uses_default_model()
@@ -553,7 +554,7 @@ if __name__ == "__main__":
     test_run_metrics_accumulate_and_time_across_rounds()
     test_run_metrics_plain_chat()
     test_run_metrics_tool_error_and_unknown_recorded()
-    test_chat_still_returns_str_with_metrics_available_via_run()
+    test_run_returns_content_and_metrics()
     test_agentmetrics_lifecycle_records_and_converts()
     test_agentmetrics_run_returns_dict_and_execute_returns_object()
     print("MyAgent tests OK")

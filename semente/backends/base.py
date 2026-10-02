@@ -38,6 +38,13 @@ class AgentSpec:
 
 @dataclass
 class AgentInput:
+    """One agent run's input.
+
+    ``images``/``audio`` go to the model as media parts; ``files`` go to the
+    model AND are injected into tools declaring a ``files`` parameter (the
+    framework convention — e.g. GeoJSON attached to the run).
+    """
+
     text: str
     images: list | None = None
     audio: list | None = None

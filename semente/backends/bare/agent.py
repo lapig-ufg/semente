@@ -1,15 +1,21 @@
 """MyAgent — an agent built from scratch on the provider port.
 
-Holds an instruction, tools, and a provider. ``chat`` drives the tool loop:
-one provider round-trip, execute any tool calls (engine-neutral, via
+Holds an instruction, tools, and a provider. ``run`` drives the tool loop
+(the single entry point — the framework ``Agent`` protocol): one provider
+round-trip, execute any tool calls (engine-neutral, via
 ``backends/toolkit.py`` — hooks, ``run_context``/``files`` injection, media
 bag), feed results back, repeat until text or the iteration cap. Stateless
-by design (no history between runs) — sessions belong to whoever drives the
-agent.
+by design (no history between runs) — sessions belong to whoever drives
+the agent.
 
-``from_spec``/``run`` make it speak the framework's ``Agent`` protocol, so
-``BareBackend`` routes every spec here. Structured output, multimodal input,
-and knowledge are planned next (DECISIONS.md).
+``from_spec`` makes it speak the framework's ``Agent`` protocol, so
+``BareBackend`` routes every spec here. Structured output and knowledge are
+planned next (DECISIONS.md).
+
+Multimodal (``media.py``): ``AgentInput.images``/``audio``/``files`` become
+provider-neutral wire parts on the first round's user turn — all three
+kinds go to the model; ``files`` additionally ride into tools declaring a
+``files`` parameter (framework convention).
 
 Event system (``events.py``): ``subscribe(AgentEvents.X, handler)`` hooks
 run boundaries (``AGENT_START``/``AGENT_END``) and each tool execution
@@ -43,6 +49,7 @@ from semente.backends.bare.events import (
     ToolExecutionEndEvent,
     ToolExecutionStartEvent,
 )
+from semente.backends.bare.media import to_wire_parts
 from semente.backends.bare.metrics import AgentMetrics
 from semente.backends.bare.providers import GenerateResult, GeminiProvider, Provider, ToolCall
 from semente.backends.toolkit import StateContext, expand_tools, new_media_bag, run_tool
@@ -116,7 +123,7 @@ class MyAgent:
             raw = self.tools or []
         return expand_tools(list(raw))
 
-    def _execute(self, message: str, ctx: StateContext, media_bag: dict) -> tuple[str, AgentMetrics]:
+    def _execute(self, input: AgentInput, ctx: StateContext, media_bag: dict) -> tuple[str, AgentMetrics]:
         """Run the tool loop; media artifacts land in ``media_bag``.
 
         One flat loop: generate over the accumulated history, break when the
@@ -130,11 +137,20 @@ class MyAgent:
         completion (no ``AGENT_END`` when the provider or a tool raises —
         the run itself failed; handler exceptions are swallowed by the bus).
 
+        Multimodal in (D11): ``input.images``/``audio``/``files`` become
+        provider-neutral wire parts on the first round's user turn (all
+        three kinds go to the model); ``input.files`` additionally ride as
+        ``input_files`` so tools declaring a ``files`` parameter receive
+        them (framework convention, agno/ADK parity).
+
         Returns ``(text, metrics)``: the run's ``AgentMetrics`` — every
         round and tool execution recorded as they happen (token counts are
         cumulative wire usage, last round wins; timings via ``perf_counter``).
         """
         from time import perf_counter
+
+        message = input.text or ""
+        media = to_wire_parts(images=input.images, audio=input.audio, files=input.files)
 
         metrics = AgentMetrics.start(self.provider.name, self.model_id)
         self.events.emit(AgentEvents.AGENT_START, AgentStartEvent(session_state=ctx.session_state))
@@ -149,7 +165,8 @@ class MyAgent:
             system = system + "\n\n" + skills.get_system_prompt_snippet()
             resolved = resolved + skills.get_tools()
 
-        history: list = [self.provider.user_turn(message)]
+        input_files = list(input.files or [])
+        history: list = [self.provider.user_turn(message, media)]
         for round_no in range(_MAX_TOOL_ITERATIONS):
             round_start = perf_counter()
             result = self.provider.generate(
@@ -178,7 +195,12 @@ class MyAgent:
                 for call in result.tool_calls
             )
             outputs = [
-                (call, self._run_one(call, resolved, ctx, media_bag, messages, metrics))
+                (
+                    call,
+                    self._run_one(
+                        call, resolved, ctx, media_bag, messages, metrics, input_files
+                    ),
+                )
                 for call in result.tool_calls
             ]
             history.extend(self.provider.tool_results_turn(outputs))
@@ -196,6 +218,7 @@ class MyAgent:
         media_bag: dict,
         messages: list[AgentMessage],
         metrics: AgentMetrics,
+        input_files: list | None = None,
     ) -> str:
         """Resolve and execute one tool call, events around it.
 
@@ -206,6 +229,8 @@ class MyAgent:
         mutations never touch the wire. ``TOOL_EXECUTION_END`` fires with
         ``is_error`` for unknown tools and tool exceptions (then raised).
         Execution is timed into ``metrics`` (name, duration, is_error).
+        ``input_files`` (the run's attached files) is injected into any tool
+        declaring a ``files`` parameter — the framework convention.
         """
         from time import perf_counter
 
@@ -229,7 +254,7 @@ class MyAgent:
             return end.result
 
         try:
-            result = run_tool(tool, start.args, ctx, media_bag)
+            result = run_tool(tool, start.args, ctx, media_bag, input_files=input_files)
         except Exception as e:
             metrics.record_tool(start.tool_name, perf_counter() - executed, is_error=True)
             end = ToolExecutionEndEvent(
@@ -247,10 +272,6 @@ class MyAgent:
         self.events.emit(AgentEvents.TOOL_EXECUTION_END, end)
         return result
 
-    def chat(self, message: str, session_state: dict | None = None, user_id: str | None = None) -> str:
-        ctx = StateContext(session_state or {}, user_id)
-        return self._execute(message, ctx, new_media_bag())[0]
-
     @classmethod
     def from_spec(cls, spec: AgentSpec) -> MyAgent:
         """Build from the engine-neutral ``AgentSpec``."""
@@ -261,10 +282,15 @@ class MyAgent:
         )
 
     def run(self, input: AgentInput) -> AgentTurn:
-        """Framework run primitive: one message in, one turn (text + media + metrics) out."""
+        """Framework run primitive — the single entry point.
+
+        One ``AgentInput`` in (text + images + audio + files + state), one
+        ``AgentTurn`` out (text + media + metrics). Media go to the model
+        on the first round; files also ride to tools declaring ``files``.
+        """
         ctx = StateContext(input.session_state or {}, input.user_id)
         media_bag = new_media_bag()
-        text, metrics = self._execute(input.text or "", ctx, media_bag)
+        text, metrics = self._execute(input, ctx, media_bag)
         return AgentTurn(
             content=text,
             images=media_bag["images"] or None,

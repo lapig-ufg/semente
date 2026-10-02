@@ -12,7 +12,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from semente.backends.base import AgentSpec
+from semente.backends.base import AgentInput, AgentSpec
 from semente.backends.bare import MyAgent
 from semente.backends.bare.providers import Provider
 from semente.backends.bare.providers.base import GenerateResult, ToolCall
@@ -30,7 +30,7 @@ class _FakeProvider(Provider):
         self.calls.append({"system": system, "tools": tools or [], "history": list(history or [])})
         return next(self.results)
 
-    def user_turn(self, message):
+    def user_turn(self, message, media=None):
         return {"role": "user", "content": message}
 
     def tool_results_turn(self, outputs):
@@ -107,7 +107,7 @@ def test_agent_with_static_skills_object_injects_snippet_and_tools():
     agent = MyAgent(instructions="be nice", provider=provider, skills=skills)
 
     assert agent.skills is skills  # held, not re-loaded
-    agent.chat("hello")
+    agent.run(AgentInput(text="hello"))
 
     system = provider.calls[0]["system"]
     assert "<skills_system>" in system
@@ -120,7 +120,7 @@ def test_agent_without_skills_leaves_instructions_and_tools_alone():
     provider = _FakeProvider([GenerateResult(text="hi")])
     agent = MyAgent(instructions="be nice", provider=provider)
 
-    agent.chat("hello")
+    agent.run(AgentInput(text="hello"))
 
     assert "<skills_system>" not in provider.calls[0]["system"]
     assert provider.calls[0]["tools"] == []
@@ -137,7 +137,8 @@ def test_skill_tool_call_round_trips_through_the_loop():
     ])
     agent = MyAgent(instructions="s", provider=provider, skills=skills)
 
-    text = agent.chat("how do I compute UA?")
+    turn = agent.run(AgentInput(text="how do I compute UA?"))
+    text = turn.content
 
     assert text == "Here is how to compute UA."
     outputs = provider.calls[1]["history"][2]["outputs"]
@@ -158,10 +159,10 @@ def test_agent_skills_callable_resolves_against_run_state():
         skills=lambda ctx: (calls.append(ctx.session_state), loaded if ctx.session_state.get("use_skills") else None)[1],
     )
 
-    agent.chat("hi", session_state={"use_skills": False})
+    agent.run(AgentInput(text="hi", session_state={"use_skills": False}))
     assert "<skills_system>" not in provider.calls[0]["system"]  # None -> skipped
 
-    agent.chat("hi", session_state={"use_skills": True})
+    agent.run(AgentInput(text="hi", session_state={"use_skills": True}))
     system = provider.calls[1]["system"]
     assert "<skills_system>" in system and "alpha" in system
     assert calls[0] == {"use_skills": False} and calls[1] == {"use_skills": True}
@@ -171,7 +172,7 @@ def test_agent_skills_callable_returning_non_skills_is_ignored():
     provider = _FakeProvider([GenerateResult(text="ok")])
     agent = MyAgent(instructions="s", provider=provider, skills=lambda ctx: "not skills")
 
-    agent.chat("hi")
+    agent.run(AgentInput(text="hi"))
 
     assert "<skills_system>" not in provider.calls[0]["system"]
 
@@ -183,7 +184,8 @@ def test_agent_skills_callable_failure_degrades_to_no_skills():
     provider = _FakeProvider([GenerateResult(text="still works")])
     agent = MyAgent(instructions="s", provider=provider, skills=boom)
 
-    text = agent.chat("hi")
+    turn = agent.run(AgentInput(text="hi"))
+    text = turn.content
 
     assert text == "still works"
     assert "<skills_system>" not in provider.calls[0]["system"]
@@ -206,7 +208,7 @@ def test_from_spec_does_not_double_inject_framework_skills():
     agent = MyAgent.from_spec(spec)
     agent.provider = provider  # swap in the fake after construction
 
-    agent.chat("hi")
+    agent.run(AgentInput(text="hi"))
 
     system = provider.calls[0]["system"]
     assert system.count("<skills_system>") == 1  # no double injection

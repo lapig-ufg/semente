@@ -4,15 +4,20 @@ Semente already owns orchestration, state, sessions, media (A-M), hooks (A-H)
 and knowledge (A-K). What an engine still has to do is the LLM loop. This
 backend owns that loop with one implementation:
 
-- ``MyAgent`` (``agent.py``): instructions, message, and tools in; text and
-  media out. No framework, no litellm; it drives the tool loop over the
-  provider port (``providers/``), currently Gemini over google-genai. Tool
-  execution itself is engine-neutral (``backends/toolkit.py``).
+- ``MyAgent`` (``agent.py``): instructions, message, tools, and media in;
+  text and media out. No framework, no litellm; it drives the tool loop
+  over the provider port (``providers/``), currently Gemini over
+  google-genai. Tool execution itself is engine-neutral
+  (``backends/toolkit.py``).
 
 ``BareBackend.build_agent`` routes **every** spec to ``MyAgent``. Known gaps
 (planned on ``MyAgent``, see DECISIONS.md): structured output (``AgentTurn.
-structured`` stays None — callers degrade gracefully), multimodal input,
-knowledge-base search, and non-Google providers (ollama/passthrough).
+structured`` stays None — callers degrade gracefully) and knowledge-base
+search. Non-Google providers (ollama/passthrough) are unsupported.
+
+Multimodal (``media.py``): ``AgentInput.images``/``audio``/``files`` go to
+the model as wire parts on the first round's user turn; ``files`` also ride
+into tools declaring a ``files`` parameter.
 
 Event system (``events.py``): ``agent.subscribe(AgentEvents.X, handler)``
 observes or customizes runs — ``AGENT_START``/``AGENT_END`` at the run
@@ -50,4 +55,4 @@ class BareBackend(EngineBackend):
         return MyAgent.from_spec(spec)
 
     def supports(self, capability: str) -> bool:
-        return capability in {"media_out"}
+        return capability in {"multimodal_in", "media_out"}

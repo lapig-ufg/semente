@@ -1,7 +1,7 @@
 # bare/DECISIONS.md — MyAgent: decisions & progress
 
 Status report for the from-scratch agent being built in this backend.
-Updated: 2026-10-02 (skills natively on MyAgent).
+Updated: 2026-10-02 (multimodal in — images, audio, files).
 
 ## Goal
 
@@ -64,9 +64,9 @@ or 'model'"*; `types.UserContent` hard-codes `user`; Google's own AFC loop
 litellm `BareAgentAdapter` fallback (`tool_loop.py`) was removed on
 2026-10-02. Until MyAgent implements them natively, these capabilities are
 gaps, not crashes: structured output (`output_schema`) yields `AgentTurn.
-structured=None` (feedback/persona callers degrade gracefully), multimodal
-input and knowledge are ignored by the chat wire, and non-Google models
-(ollama/passthrough) are unsupported.
+structured=None` (feedback/persona callers degrade gracefully) and
+knowledge is ignored by the chat wire; multimodal input (D11) and
+non-Google providers were closed or remain as noted in D11/D5.
 
 ### D8 — Event system: one mutable event object per emission
 `MyAgent.subscribe(AgentEvents.X, handler)` hooks four events:
@@ -126,6 +126,22 @@ the framework's `_with_skills` (build_agent.py) bakes snippet + tools
 into the spec before any backend builds, so re-injecting would duplicate
 the `<skills_system>` block (pinned by test).
 
+### D11 — Multimodal in: neutral wire parts; files go to the model AND tools
+`AgentInput.images`/`audio`/`files` become provider-neutral parts via
+`media.py`'s `to_wire_parts` (semente `Image`/`Audio`/`File` resolved by
+content bytes, filepath read, or url; mime by annotation or extension;
+unresolvable entries dropped with a warning — one bad photo must not
+sink the run). All three kinds ride the **first round's user turn**:
+`user_turn(message, media)` mixes text and media parts, and
+`generate(..., media)` gives one-shot calls the same parameter. The
+provider converts to its native wire inside itself (Gemini: bytes →
+`Part(inline_data=Blob)`, urls → `Part(file_data=FileData)` — D4, no raw
+dicts). `files` additionally flow into tools declaring a `files`
+parameter via `run_tool(input_files=...)` — the framework convention,
+agno/ADK parity. `chat()` removed: `run(AgentInput)` is the single entry
+point (the protocol primitive; chat was pre-protocol sugar only tests
+used).
+
 ## File map
 
 | File | Role |
@@ -133,6 +149,7 @@ the `<skills_system>` block (pinned by test).
 | `agent.py` | `MyAgent`: instructions + tools + provider = the tool loop (cap 10 iterations) |
 | `events.py` | `AgentEvents` + event dataclasses + `EventBus` (subscribe/emit, swallow+log) |
 | `metrics.py` | `AgentMetrics` — per-run accumulator (`start`/`record_round`/`record_tool`/`finish`/`to_dict`) |
+| `media.py` | `to_wire_parts` — semente `Image`/`Audio`/`File` → provider-neutral wire parts |
 | `providers/base.py` | `Provider` ABC + `ToolCall`/`GenerateResult` dataclasses |
 | `providers/gemini.py` | Gemini wire over `google-genai` (key/model from `config`, convention of `agno/models.py`) |
 | `__init__.py` | `BareBackend` + routing (every spec → `MyAgent`) |
@@ -151,12 +168,14 @@ the `<skills_system>` block (pinned by test).
 | 2026-10-02 | Run metrics (D9): `GenerateResult.usage` extracted off the Gemini wire; `_execute` returns `(text, metrics)` — token counts, round/tool timings, `provider_rounds`; `AgentTurn.metrics` populated | this commit |
 | 2026-10-02 | `AgentMetrics` class: the run's accounting moved from `_execute` locals into one object (`start`/`record_round`/`record_tool`/`finish`/`to_dict`), threaded through the loop and `_run_one`; `to_dict()` at the `AgentTurn` boundary; lives in `metrics.py` (metrics are not events) | this commit |
 | 2026-10-02 | Skills (D10): `MyAgent(skills=...)` takes a `Skills` object or a callable `(run_context) -> Skills \| None` resolved per run (mirrors instructions/tools; `load_skills` list support is the caller-side loader); `_execute` injects the `<skills_system>` snippet + access tools per run; `from_spec` does not re-inject (framework path pre-bakes) | this commit |
+| 2026-10-02 | Multimodal in (D11): `media.py` (`to_wire_parts`), provider seam gains `media` (Gemini: inline_data/file_data, typed), images/audio/files ride the first round's user turn, files also tool-injected; `chat()` removed — `run(AgentInput)` is the single entry point | this commit |
 
 Tests: `tests/test_bare_myagent.py` (26, mocked genai — no network),
 `tests/test_bare_events.py` (17, mocked provider — no network),
-`tests/test_bare_skills.py` (11, mocked provider — no network);
-`tests/test_bare_backend.py` covered the removed litellm path and was
-deleted with it.
+`tests/test_bare_skills.py` (11, mocked provider — no network),
+`tests/test_bare_media.py` (11, mocked provider + typed genai — no
+network); `tests/test_bare_backend.py` covered the removed litellm path
+and was deleted with it.
 
 ## Next steps (candidates, unordered)
 

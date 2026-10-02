@@ -74,6 +74,37 @@ def _parse_response(resp) -> GenerateResult:
     return GenerateResult(text=text, tool_calls=calls, turn=turn, usage=_extract_usage(resp))
 
 
+def _media_parts(media: list[dict] | None) -> list:
+    """Provider-neutral part dicts -> typed genai parts.
+
+    Bytes ride ``inline_data`` (``Blob``); urls ride ``file_data``
+    (``FileData.file_uri``). Vendor objects stay inside this module (D4).
+    """
+    from google.genai.types import Blob, FileData, Part
+
+    parts: list = []
+    for m in media or []:
+        if m.get("data") is not None:
+            parts.append(
+                Part(
+                    inline_data=Blob(
+                        data=m["data"],
+                        mime_type=m.get("mime_type") or "application/octet-stream",
+                    )
+                )
+            )
+        elif m.get("url"):
+            parts.append(
+                Part(
+                    file_data=FileData(
+                        file_uri=m["url"],
+                        mime_type=m.get("mime_type") or None,
+                    )
+                )
+            )
+    return parts
+
+
 class GeminiProvider(Provider):
     name = "gemini"
 
@@ -94,6 +125,7 @@ class GeminiProvider(Provider):
         model_id: str | None = None,
         tools: list[Tool] | None = None,
         history: list | None = None,
+        media: list[dict] | None = None,
     ) -> GenerateResult:
         from google.genai.types import Content, GenerateContentConfig, Part, Tool as GenaiTool
 
@@ -105,8 +137,10 @@ class GeminiProvider(Provider):
             config.tools = [GenaiTool(function_declarations=declarations)]
 
         contents: list = list(history or [])
-        if message:
-            contents.append(Content(role="user", parts=[Part(text=message)]))
+        if message is not None or media:
+            parts: list = [Part(text=message)] if message is not None else []
+            parts.extend(_media_parts(media))
+            contents.append(Content(role="user", parts=parts))
 
         resp = self._client.models.generate_content(
             model=model,
@@ -115,10 +149,12 @@ class GeminiProvider(Provider):
         )
         return _parse_response(resp)
 
-    def user_turn(self, message: str) -> Content:
+    def user_turn(self, message: str, media: list[dict] | None = None) -> Content:
         from google.genai.types import Content, Part
 
-        return Content(role="user", parts=[Part(text=message)])
+        parts: list = [Part(text=message)] if message is not None else []
+        parts.extend(_media_parts(media))
+        return Content(role="user", parts=parts)
 
     def tool_results_turn(self, outputs: list[tuple[ToolCall, str]]) -> list:
         """Typed function-response parts for the executed tool calls."""
