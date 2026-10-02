@@ -1,7 +1,7 @@
 # bare/DECISIONS.md — MyAgent: decisions & progress
 
 Status report for the from-scratch agent being built in this backend.
-Updated: 2026-10-02 (AgentMetrics — per-run metrics object).
+Updated: 2026-10-02 (skills natively on MyAgent).
 
 ## Goal
 
@@ -106,6 +106,26 @@ tools and exceptions recorded `is_error=True`). No `cost` — the wire
 carries no pricing. Debug-panel visibility of bare metrics is deferred
 (its `extract_metrics` reads attributes, not dict keys).
 
+### D10 — Skills: the engine-neutral skills module, natively on the agent
+`MyAgent(skills=...)` accepts a ``Skills`` object or a callable
+``(run_context) -> Skills | None`` resolved against the run's state — the
+same pattern as ``instructions`` and ``tools``, nothing more. Building a
+``Skills`` from directories is the caller's job (`load_skills` in the
+pre-built engine-neutral `semente/skills.py`; no parallel bare copy).
+`_resolve_skills` resolves per run (a callable returning anything but a
+``Skills`` — or raising — logs a warning and degrades to no skills; the
+run must not crash on a bad factory). `_execute` injects per run: the
+`<skills_system>` snippet appended to the system instructions **and**
+the three access tools
+(`get_skill_instructions`/`get_skill_reference`/`get_skill_script`)
+appended to the resolved tools — they ship together, since the snippet
+tells the model to call the tools. `load_skills` list support: later
+paths win on name collisions, missing paths are tolerated, `None` when
+nothing loads. `from_spec` does **not** consume `spec.skills` natively —
+the framework's `_with_skills` (build_agent.py) bakes snippet + tools
+into the spec before any backend builds, so re-injecting would duplicate
+the `<skills_system>` block (pinned by test).
+
 ## File map
 
 | File | Role |
@@ -130,9 +150,11 @@ carries no pricing. Debug-panel visibility of bare metrics is deferred
 | 2026-10-02 | Canonical loop: `_execute` restructured into one flat generate→execute→feed-back cycle (every round rides history, incl. round 1; cap round's calls not executed; single `AGENT_END` site); iteration-cap test added | this commit |
 | 2026-10-02 | Run metrics (D9): `GenerateResult.usage` extracted off the Gemini wire; `_execute` returns `(text, metrics)` — token counts, round/tool timings, `provider_rounds`; `AgentTurn.metrics` populated | this commit |
 | 2026-10-02 | `AgentMetrics` class: the run's accounting moved from `_execute` locals into one object (`start`/`record_round`/`record_tool`/`finish`/`to_dict`), threaded through the loop and `_run_one`; `to_dict()` at the `AgentTurn` boundary; lives in `metrics.py` (metrics are not events) | this commit |
+| 2026-10-02 | Skills (D10): `MyAgent(skills=...)` takes a `Skills` object or a callable `(run_context) -> Skills \| None` resolved per run (mirrors instructions/tools; `load_skills` list support is the caller-side loader); `_execute` injects the `<skills_system>` snippet + access tools per run; `from_spec` does not re-inject (framework path pre-bakes) | this commit |
 
 Tests: `tests/test_bare_myagent.py` (26, mocked genai — no network),
-`tests/test_bare_events.py` (17, mocked provider — no network);
+`tests/test_bare_events.py` (17, mocked provider — no network),
+`tests/test_bare_skills.py` (11, mocked provider — no network);
 `tests/test_bare_backend.py` covered the removed litellm path and was
 deleted with it.
 

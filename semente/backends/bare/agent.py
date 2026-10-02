@@ -18,6 +18,15 @@ event object — observe fields, or assign them to customize: on
 ``TOOL_EXECUTION_START`` the agent executes whatever ``tool_name``/``args``
 the event carries after all handlers ran (mutations never touch the provider
 wire — the model's own call is echoed back verbatim).
+
+Skills (``semente.skills``): ``skills`` is a ``Skills`` object or a
+callable ``(run_context) -> Skills | None`` resolved against the run's
+state — the same pattern as ``instructions`` and ``tools``. Building a
+``Skills`` from directories is the caller's job (``load_skills``); every
+run injects the ``<skills_system>`` snippet + the skill access tools.
+``from_spec`` does NOT re-inject ``spec.skills`` — the framework's
+``_with_skills`` bakes them into the spec before this backend builds
+(build_agent.py), so injecting again would duplicate the snippet.
 """
 
 from __future__ import annotations
@@ -37,6 +46,7 @@ from semente.backends.bare.events import (
 from semente.backends.bare.metrics import AgentMetrics
 from semente.backends.bare.providers import GenerateResult, GeminiProvider, Provider, ToolCall
 from semente.backends.toolkit import StateContext, expand_tools, new_media_bag, run_tool
+from semente.skills import Skills
 from semente.tools.types import Tool
 
 _MAX_TOOL_ITERATIONS = 10  # ponytail: cap the loop; raise if a domain needs more
@@ -52,12 +62,14 @@ class MyAgent:
         model_id: str | None = None,
         tools: list[Tool] | Callable[[StateContext], list[Tool]] | None = None,
         events: EventBus | None = None,
+        skills: Skills | Callable[..., Skills | None] | None = None,
     ):
         self.instructions = instructions
         self.provider = provider or GeminiProvider(model_id=model_id)
         self.model_id = model_id or getattr(self.provider, "default_model", None)
         self.tools = tools
         self.events = events or EventBus()
+        self.skills = skills
 
     def subscribe(self, event: AgentEvents, handler: Callable) -> None:
         """Observe or customize runs — see ``events.py`` for payloads."""
@@ -70,6 +82,26 @@ class MyAgent:
             except TypeError:
                 return self.instructions()
         return self.instructions
+
+    def _resolve_skills(self, ctx: StateContext) -> Skills | None:
+        """Static ``Skills``, a callable against the run's state, or None.
+
+        A callable may return a ``Skills`` or ``None`` (no skills this
+        run). Errors degrade to no skills — the run must not crash on a
+        bad factory.
+        """
+        from semente.logging import log_warning
+
+        raw = self.skills
+        if callable(raw) and not isinstance(raw, Skills):
+            try:
+                raw = raw(ctx)
+            except TypeError:
+                raw = raw()
+            except Exception as e:
+                log_warning(f"skills callable failed: {e}")
+                return None
+        return raw if isinstance(raw, Skills) else None
 
     def _resolve_tools(self, ctx: StateContext) -> list[Tool]:
         """Static list, or a callable resolved against the run's state."""
@@ -110,6 +142,12 @@ class MyAgent:
 
         system = self._resolve_instructions(ctx)
         resolved = self._resolve_tools(ctx)
+        skills = self._resolve_skills(ctx)
+        if skills is not None:
+            # Snippet + access tools ship together: the snippet tells the
+            # model to call the tools, so it must be on the same wire.
+            system = system + "\n\n" + skills.get_system_prompt_snippet()
+            resolved = resolved + skills.get_tools()
 
         history: list = [self.provider.user_turn(message)]
         for round_no in range(_MAX_TOOL_ITERATIONS):

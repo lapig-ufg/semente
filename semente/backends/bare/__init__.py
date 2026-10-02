@@ -19,6 +19,12 @@ observes or customizes runs — ``AGENT_START``/``AGENT_END`` at the run
 boundaries, ``TOOL_EXECUTION_START``/``TOOL_EXECUTION_END`` around each tool
 execution; mutating the start event's ``tool_name``/``args`` redirects
 execution.
+
+Skills: ``MyAgent(skills=...)`` takes a ``Skills`` object or a callable
+``(run_context) -> Skills | None`` resolved against the run's state — the
+same pattern as instructions and tools. Loaded via the engine-neutral
+``semente.skills`` module, injected into every run as the
+``<skills_system>`` instructions + access tools.
 """
 
 from __future__ import annotations

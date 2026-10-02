@@ -116,6 +116,22 @@ Every `MyAgent` run also returns metrics in `AgentTurn.metrics` — token
 counts off the provider wire (input/output/total/reasoning/cache-read,
 cumulative), per-round and per-tool timings, and the provider round count.
 
+`MyAgent` also takes skills natively: `skills=` accepts a `Skills`
+object or a callable `(run_context) -> Skills | None` resolved against
+the run's state — the same pattern as `instructions` and `tools`. Build
+the `Skills` yourself with `load_skills` (a directory or a list of
+them); every run injects the `<skills_system>` instructions plus the
+three skill access tools:
+
+```python
+from semente.backends.bare import MyAgent
+from semente.skills import load_skills
+
+skills = load_skills("domain/skills")           # caller-side build
+agent = MyAgent(instructions="...", tools=[...],
+                skills=lambda ctx: skills if ctx.session_state.get("pro") else None)
+```
+
 ## Knowledge: agno as a library
 
 Knowledge *retrieval* is engine-neutral (`build_search_tool` returns a plain
