@@ -8,6 +8,7 @@ BareBackend's routing of every spec to MyAgent.
 
 from unittest.mock import MagicMock, patch
 
+import semente.backends.bare.agent as bare_agent_module
 from google.genai.types import (
     Candidate,
     Content,
@@ -19,6 +20,7 @@ from google.genai.types import (
 
 from semente.backends.base import AgentInput, AgentSpec, ModelSpec
 from semente.backends.bare import BareBackend, MyAgent
+from semente.backends.bare.agent import _MAX_TOOL_ITERATIONS
 from semente.backends.bare.providers import GeminiProvider, Provider
 from semente.backends.bare.providers.base import GenerateResult, ToolCall
 from semente.configs.config import config
@@ -35,7 +37,7 @@ class _FakeProvider(Provider):
 
     def generate(self, system, message=None, model_id=None, tools=None, history=None):
         self.calls.append(
-            {"system": system, "message": message, "model_id": model_id, "tools": tools or [], "history": history}
+            {"system": system, "message": message, "model_id": model_id, "tools": tools or [], "history": list(history or [])}
         )
         result = next(self.results)
         if isinstance(result, str):
@@ -84,7 +86,9 @@ def test_myagent_chat_returns_reply():
     provider = _FakeProvider(["hello back"])
     agent = MyAgent(instructions="be nice", provider=provider)
     assert agent.chat("hi") == "hello back"
-    assert provider.calls[0]["message"] == "hi"
+    # Round 1 rides history: user turn already in, no separate message.
+    assert provider.calls[0]["message"] is None
+    assert provider.calls[0]["history"] == [{"role": "user", "content": "hi"}]
     assert provider.calls[0]["system"] == "be nice"
 
 
@@ -197,10 +201,10 @@ def test_myagent_tool_loop_calls_executes_and_answers():
 
     assert agent.chat("draw f1") == "Here is your map."
 
-    # Round 1: fresh message, no history.
-    assert provider.calls[0]["message"] == "draw f1"
-    assert provider.calls[0]["history"] is None
-    # Round 2: no new message; history = user turn + model turn + tool results.
+    # Round 1: user turn in history, no separate message.
+    assert provider.calls[0]["message"] is None
+    assert provider.calls[0]["history"] == [{"role": "user", "content": "draw f1"}]
+    # Round 2: history = user turn + model turn + tool results.
     second = provider.calls[1]
     assert second["message"] is None
     assert second["history"][0] == {"role": "user", "content": "draw f1"}
@@ -303,6 +307,36 @@ def test_gemini_missing_key_raises():
             raise AssertionError("expected ValueError for missing GOOGLE_API_KEY")
 
 
+def test_myagent_iteration_cap_stops_generating_and_skips_dead_calls():
+    """The model never stops requesting tools: exactly _MAX_TOOL_ITERATIONS
+    provider rounds, the cap round's calls NOT executed (results could
+    never be fed back), the last text returned with a warning."""
+    def _forever_calling():
+        while True:
+            yield GenerateResult(
+                tool_calls=[ToolCall(id="c", name="make_map", args={"feature_id": "f1"})],
+                turn="model-turn",
+            )
+
+    provider = _FakeProvider(_forever_calling())
+    executions = []
+    map_tool = _make_map_tool()
+    original_run_tool = bare_agent_module.run_tool
+
+    def counting_run_tool(tool, args, ctx, media_bag):
+        executions.append(args["feature_id"])
+        return original_run_tool(tool, args, ctx, media_bag)
+
+    agent = MyAgent(instructions="be nice", provider=provider, tools=[map_tool])
+    with patch.object(bare_agent_module, "run_tool", counting_run_tool):
+        text = agent.chat("loop forever")
+
+    assert len(provider.calls) == _MAX_TOOL_ITERATIONS  # capped provider rounds
+    assert len(executions) == _MAX_TOOL_ITERATIONS - 1  # cap round's calls skipped
+    assert text == ""  # cap round carried no text
+    assert all(c["message"] is None for c in provider.calls)  # every round rides history
+
+
 if __name__ == "__main__":
     test_myagent_chat_returns_reply()
     test_myagent_defaults_to_gemini_provider()
@@ -320,4 +354,5 @@ if __name__ == "__main__":
     test_backend_routes_chat_and_tool_specs_to_myagent()
     test_backend_routes_rich_specs_to_myagent()
     test_gemini_missing_key_raises()
+    test_myagent_iteration_cap_stops_generating_and_skips_dead_calls()
     print("MyAgent tests OK")

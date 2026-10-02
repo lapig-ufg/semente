@@ -1,7 +1,7 @@
 # bare/DECISIONS.md — MyAgent: decisions & progress
 
 Status report for the from-scratch agent being built in this backend.
-Updated: 2026-10-02 (event system on MyAgent).
+Updated: 2026-10-02 (canonical loop on MyAgent).
 
 ## Goal
 
@@ -16,9 +16,14 @@ tools, and return text + media, over a vendor provider port.
 The **agent** owns the tool loop (parse calls → execute → feed results →
 repeat). The **provider** does exactly one typed round-trip per call:
 declarations in, text + tool calls out, plus building the provider-native
-turns to echo back. Rationale: tool *execution* (hooks, run_context, media
-bag) is engine-neutral and shared (`backends/toolkit.py`); a future
-`openai.py` implements only the wire, never a second loop.
+turns to echo back. Every round rides the accumulated history (round 1
+included — `user_turn(message)` starts the list); the agent never passes a
+one-shot `message` to `generate`. The cap (`_MAX_TOOL_ITERATIONS` provider
+rounds) breaks before executing the cap round's calls — their results could
+never be fed back, so running them would be wasted side effects (e.g. paid
+map generation). Rationale: tool *execution* (hooks, run_context, media bag)
+is engine-neutral and shared (`backends/toolkit.py`); a future `openai.py`
+implements only the wire, never a second loop.
 
 ### D2 — Provider tools are semente `Tool` objects
 `Provider.generate(..., tools)` receives the framework-native `Tool` class
@@ -102,8 +107,9 @@ observer must never break a production run.
 | 2026-10-01 | First tool loop: new provider protocol (`tools`, `history`, `user_turn`, `tool_results_turn`), typed Gemini function calling, agent-driven loop, routing extended to tool specs, tests built on real genai types | that commit |
 | 2026-10-02 | litellm fallback (`tool_loop.py`, `BareAgentAdapter`) removed; every spec routes to `MyAgent`; `litellm` dropped from project dependencies | this commit |
 | 2026-10-02 | Event system (D8): `events.py` (`AgentEvents`, payload dataclasses, `EventBus`); loop emits `AGENT_START`/`AGENT_END` + per-tool start/end; mutations on the start event redirect execution | this commit |
+| 2026-10-02 | Canonical loop: `_execute` restructured into one flat generate→execute→feed-back cycle (every round rides history, incl. round 1; cap round's calls not executed; single `AGENT_END` site); iteration-cap test added | this commit |
 
-Tests: `tests/test_bare_myagent.py` (16, mocked genai — no network),
+Tests: `tests/test_bare_myagent.py` (17, mocked genai — no network),
 `tests/test_bare_events.py` (17, mocked provider — no network);
 `tests/test_bare_backend.py` covered the removed litellm path and was
 deleted with it.

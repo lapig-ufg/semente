@@ -86,10 +86,16 @@ class MyAgent:
     def _execute(self, message: str, ctx: StateContext, media_bag: dict) -> str:
         """Run the tool loop; media artifacts land in ``media_bag``.
 
-        Emits ``AGENT_START`` on entry, per-tool execution events around each
-        tool, and ``AGENT_END`` with the neutral message log on completion
-        (no ``AGENT_END`` when the provider or a tool raises — the run itself
-        failed; handler exceptions are swallowed by the bus).
+        One flat loop: generate over the accumulated history, break when the
+        model answers without tool calls, otherwise execute the calls, feed
+        the results back, and generate again — capped at
+        ``_MAX_TOOL_ITERATIONS`` provider rounds. The cap round's calls are
+        NOT executed (their results could never be fed back — running them
+        would be wasted side effects); the last text is returned with a
+        warning. Emits ``AGENT_START`` on entry, per-tool execution events
+        around each tool, and ``AGENT_END`` with the neutral message log on
+        completion (no ``AGENT_END`` when the provider or a tool raises —
+        the run itself failed; handler exceptions are swallowed by the bus).
         """
         self.events.emit(AgentEvents.AGENT_START, AgentStartEvent(session_state=ctx.session_state))
         messages: list[AgentMessage] = [AgentMessage(role="user", content=message)]
@@ -97,52 +103,38 @@ class MyAgent:
         system = self._resolve_instructions(ctx)
         resolved = self._resolve_tools(ctx)
 
-        result = self.provider.generate(
-            system, message, model_id=self.model_id, tools=resolved or None
-        )
-        if not result.tool_calls:
-            messages.append(AgentMessage(role="assistant", content=result.text))
-            self.events.emit(AgentEvents.AGENT_END, AgentEndEvent(messages=messages))
-            return result.text
+        history: list = [self.provider.user_turn(message)]
+        for round_no in range(_MAX_TOOL_ITERATIONS):
+            result = self.provider.generate(
+                system, history=history, model_id=self.model_id, tools=resolved or None
+            )
+            if result.turn is not None:
+                history.append(result.turn)
 
-        history: list = [self.provider.user_turn(message), result.turn]
-        for call in result.tool_calls:
-            messages.append(
+            if not result.tool_calls:
+                break  # final answer
+
+            if round_no == _MAX_TOOL_ITERATIONS - 1:
+                from semente.logging import log_warning
+
+                log_warning("tool loop hit the iteration cap; returning last text")
+                break
+
+            messages.extend(
                 AgentMessage(
                     role="assistant",
                     tool_name=call.name,
                     tool_call_id=call.id,
                     args=dict(call.args),
                 )
+                for call in result.tool_calls
             )
-        for _ in range(_MAX_TOOL_ITERATIONS - 1):
             outputs = [
                 (call, self._run_one(call, resolved, ctx, media_bag, messages))
                 for call in result.tool_calls
             ]
             history.extend(self.provider.tool_results_turn(outputs))
 
-            result = self.provider.generate(
-                system, history=history, model_id=self.model_id, tools=resolved or None
-            )
-            if not result.tool_calls:
-                messages.append(AgentMessage(role="assistant", content=result.text))
-                self.events.emit(AgentEvents.AGENT_END, AgentEndEvent(messages=messages))
-                return result.text
-            history.append(result.turn)
-            for call in result.tool_calls:
-                messages.append(
-                    AgentMessage(
-                        role="assistant",
-                        tool_name=call.name,
-                        tool_call_id=call.id,
-                        args=dict(call.args),
-                    )
-                )
-
-        from semente.logging import log_warning
-
-        log_warning("tool loop hit the iteration cap; returning last text")
         messages.append(AgentMessage(role="assistant", content=result.text))
         self.events.emit(AgentEvents.AGENT_END, AgentEndEvent(messages=messages))
         return result.text
