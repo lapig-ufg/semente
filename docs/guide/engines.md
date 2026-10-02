@@ -81,11 +81,21 @@ engine-agnostic (`FallbackAgent` wraps any two `Agent` instances).
 
 The `bare` engine is the end state of the engine port: once media (A-M),
 hooks (A-H), knowledge (A-K) and skills (A-S) live in Semente, an engine only
-has to run the LLM loop. `semente/backends/bare/` does that with
-`litellm.completion` — a client, not a framework — so there is no
-state/session/callback model to fight. Model mapping: `google` →
-`gemini/<id>`, `ollama` → `ollama/<id>`, any other provider string passes
-through (e.g. `openai/gpt-4o`).
+has to run the LLM loop. `semente/backends/bare/` does that with our own
+agents — no framework, no litellm for the common paths:
+
+- `MyAgent` (`agent.py`) drives chat and tool calling over the provider port
+  (`providers/`): semente `Tool`s become typed `FunctionDeclaration`s, tool
+  execution is engine-neutral (`backends/toolkit.py` — hooks, run_context,
+  media bag), and the model's turn is echoed back preserving Gemini 3
+  thought signatures. First provider: Gemini over `google-genai`.
+- `BareAgentAdapter` (`tool_loop.py`) is the litellm fallback for structured
+  output, multimodal input, knowledge, and ollama/passthrough models.
+
+`BareBackend.build_agent` routes each spec to the simplest agent that can
+serve it. Model mapping on the litellm path: `google` → `gemini/<id>`,
+`ollama` → `ollama/<id>`, any other provider string passes through
+(e.g. `openai/gpt-4o`).
 
 ## Knowledge: agno as a library
 

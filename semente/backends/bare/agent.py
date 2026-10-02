@@ -1,12 +1,16 @@
-"""MyAgent — a chat-only agent, built from scratch on the provider port.
+"""MyAgent — an agent built from scratch on the provider port.
 
-No framework: it holds an instruction and a provider, receives a message,
-returns text. Stateless by design (no history, no tools, no structured
-output) — those concerns belong to whoever drives the agent.
+Holds an instruction, tools, and a provider. ``chat`` drives the tool loop:
+one provider round-trip, execute any tool calls (engine-neutral, via
+``backends/toolkit.py`` — hooks, ``run_context``/``files`` injection, media
+bag), feed results back, repeat until text or the iteration cap. Stateless
+by design (no history between runs) — sessions belong to whoever drives the
+agent.
 
 ``from_spec``/``run`` make it speak the framework's ``Agent`` protocol, so
-``BareBackend`` can route pure-chat specs here while richer specs fall back
-to the litellm tool loop (``tool_loop.py``).
+``BareBackend`` routes chat + tool specs here while structured output,
+multimodal input, and knowledge still fall back to the litellm tool loop
+(``tool_loop.py``).
 """
 
 from __future__ import annotations
@@ -14,22 +18,27 @@ from __future__ import annotations
 from typing import Callable
 
 from semente.backends.base import AgentInput, AgentSpec, AgentTurn
-from semente.backends.bare.providers import GeminiProvider, Provider
-from semente.backends.toolkit import StateContext
+from semente.backends.bare.providers import GenerateResult, GeminiProvider, Provider, ToolCall
+from semente.backends.toolkit import StateContext, expand_tools, new_media_bag, run_tool
+from semente.tools.types import Tool
+
+_MAX_TOOL_ITERATIONS = 10  # ponytail: cap the loop; raise if a domain needs more
 
 
 class MyAgent:
-    """One system instruction + one provider = one chat loop."""
+    """One system instruction + tools + one provider = one tool loop."""
 
     def __init__(
         self,
         instructions: str | Callable[..., str],
         provider: Provider | None = None,
         model_id: str | None = None,
+        tools: list[Tool] | Callable[[StateContext], list[Tool]] | None = None,
     ):
         self.instructions = instructions
         self.provider = provider or GeminiProvider(model_id=model_id)
         self.model_id = model_id or getattr(self.provider, "default_model", None)
+        self.tools = tools
 
     def _system(self, ctx: StateContext) -> str:
         if callable(self.instructions):
@@ -39,9 +48,56 @@ class MyAgent:
                 return self.instructions()
         return self.instructions
 
+    def _resolve_tools(self, ctx: StateContext) -> list[Tool]:
+        """Static list, or a callable resolved against the run's state."""
+        if self.tools is None:
+            return []
+        if callable(self.tools) and not isinstance(self.tools, list):
+            try:
+                raw = self.tools(ctx)
+            except TypeError:
+                raw = self.tools()
+        else:
+            raw = self.tools or []
+        return expand_tools(list(raw))
+
+    def _execute(self, message: str, ctx: StateContext, media_bag: dict) -> str:
+        """Run the tool loop; media artifacts land in ``media_bag``."""
+        system = self._system(ctx)
+        resolved = self._resolve_tools(ctx)
+
+        result = self.provider.generate(
+            system, message, model_id=self.model_id, tools=resolved or None
+        )
+        if not result.tool_calls:
+            return result.text
+
+        history: list = [self.provider.user_turn(message), result.turn]
+        for _ in range(_MAX_TOOL_ITERATIONS - 1):
+            outputs = [(call, self._run_one(call, resolved, ctx, media_bag)) for call in result.tool_calls]
+            history.extend(self.provider.tool_results_turn(outputs))
+
+            result = self.provider.generate(
+                system, history=history, model_id=self.model_id, tools=resolved or None
+            )
+            if not result.tool_calls:
+                return result.text
+            history.append(result.turn)
+
+        from semente.logging import log_warning
+
+        log_warning("tool loop hit the iteration cap; returning last text")
+        return result.text
+
+    def _run_one(self, call: ToolCall, tools: list[Tool], ctx: StateContext, media_bag: dict) -> str:
+        tool = next((t for t in tools if getattr(t, "name", None) == call.name), None)
+        if tool is None:
+            return f"Unknown tool: {call.name}"
+        return run_tool(tool, call.args, ctx, media_bag)
+
     def chat(self, message: str, session_state: dict | None = None, user_id: str | None = None) -> str:
         ctx = StateContext(session_state or {}, user_id)
-        return self.provider.generate(self._system(ctx), message, self.model_id)
+        return self._execute(message, ctx, new_media_bag())
 
     @classmethod
     def from_spec(cls, spec: AgentSpec) -> MyAgent:
@@ -49,14 +105,18 @@ class MyAgent:
         return cls(
             instructions=spec.instructions,
             model_id=spec.model.model_id if spec.model else None,
+            tools=spec.tools or None,
         )
 
     def run(self, input: AgentInput) -> AgentTurn:
-        """Framework run primitive: one message in, one text turn out."""
+        """Framework run primitive: one message in, one turn (text + media) out."""
+        ctx = StateContext(input.session_state or {}, input.user_id)
+        media_bag = new_media_bag()
+        text = self._execute(input.text or "", ctx, media_bag)
         return AgentTurn(
-            content=self.chat(
-                input.text or "",
-                session_state=input.session_state,
-                user_id=input.user_id,
-            )
+            content=text,
+            images=media_bag["images"] or None,
+            videos=media_bag["videos"] or None,
+            audio=media_bag["audios"] or None,
+            files=media_bag["files"] or None,
         )
