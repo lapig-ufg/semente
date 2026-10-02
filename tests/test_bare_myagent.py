@@ -262,12 +262,12 @@ def test_myagent_unknown_tool_feeds_back_error_text():
 def test_from_spec_static_and_callable_instructions():
     spec = AgentSpec(name="t", instructions="be nice", tools=[_make_map_tool()])
     agent = MyAgent.from_spec(spec)
-    assert agent._system(None) == "be nice"
+    assert agent._resolve_instructions(None) == "be nice"
     assert [t.name for t in agent._resolve_tools(None)] == ["make_map"]
 
     spec = AgentSpec(name="t", instructions=lambda ctx: f"hello {ctx.user_id}")
     agent = MyAgent.from_spec(spec)
-    assert agent._system(type("C", (), {"user_id": "u1", "session_state": {}})()) == "hello u1"
+    assert agent._resolve_instructions(type("C", (), {"user_id": "u1", "session_state": {}})()) == "hello u1"
 
 
 def test_backend_routes_chat_and_tool_specs_to_myagent():

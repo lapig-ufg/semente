@@ -10,6 +10,14 @@ agent.
 ``from_spec``/``run`` make it speak the framework's ``Agent`` protocol, so
 ``BareBackend`` routes every spec here. Structured output, multimodal input,
 and knowledge are planned next (DECISIONS.md).
+
+Event system (``events.py``): ``subscribe(AgentEvents.X, handler)`` hooks
+run boundaries (``AGENT_START``/``AGENT_END``) and each tool execution
+(``TOOL_EXECUTION_START``/``TOOL_EXECUTION_END``). Handlers get one mutable
+event object — observe fields, or assign them to customize: on
+``TOOL_EXECUTION_START`` the agent executes whatever ``tool_name``/``args``
+the event carries after all handlers ran (mutations never touch the provider
+wire — the model's own call is echoed back verbatim).
 """
 
 from __future__ import annotations
@@ -17,6 +25,15 @@ from __future__ import annotations
 from typing import Callable
 
 from semente.backends.base import AgentInput, AgentSpec, AgentTurn
+from semente.backends.bare.events import (
+    AgentEndEvent,
+    AgentEvents,
+    AgentMessage,
+    AgentStartEvent,
+    EventBus,
+    ToolExecutionEndEvent,
+    ToolExecutionStartEvent,
+)
 from semente.backends.bare.providers import GenerateResult, GeminiProvider, Provider, ToolCall
 from semente.backends.toolkit import StateContext, expand_tools, new_media_bag, run_tool
 from semente.tools.types import Tool
@@ -33,13 +50,19 @@ class MyAgent:
         provider: Provider | None = None,
         model_id: str | None = None,
         tools: list[Tool] | Callable[[StateContext], list[Tool]] | None = None,
+        events: EventBus | None = None,
     ):
         self.instructions = instructions
         self.provider = provider or GeminiProvider(model_id=model_id)
         self.model_id = model_id or getattr(self.provider, "default_model", None)
         self.tools = tools
+        self.events = events or EventBus()
 
-    def _system(self, ctx: StateContext) -> str:
+    def subscribe(self, event: AgentEvents, handler: Callable) -> None:
+        """Observe or customize runs — see ``events.py`` for payloads."""
+        self.events.subscribe(event, handler)
+
+    def _resolve_instructions(self, ctx: StateContext) -> str:
         if callable(self.instructions):
             try:
                 return self.instructions(ctx)
@@ -61,38 +84,114 @@ class MyAgent:
         return expand_tools(list(raw))
 
     def _execute(self, message: str, ctx: StateContext, media_bag: dict) -> str:
-        """Run the tool loop; media artifacts land in ``media_bag``."""
-        system = self._system(ctx)
+        """Run the tool loop; media artifacts land in ``media_bag``.
+
+        Emits ``AGENT_START`` on entry, per-tool execution events around each
+        tool, and ``AGENT_END`` with the neutral message log on completion
+        (no ``AGENT_END`` when the provider or a tool raises — the run itself
+        failed; handler exceptions are swallowed by the bus).
+        """
+        self.events.emit(AgentEvents.AGENT_START, AgentStartEvent(session_state=ctx.session_state))
+        messages: list[AgentMessage] = [AgentMessage(role="user", content=message)]
+
+        system = self._resolve_instructions(ctx)
         resolved = self._resolve_tools(ctx)
 
         result = self.provider.generate(
             system, message, model_id=self.model_id, tools=resolved or None
         )
         if not result.tool_calls:
+            messages.append(AgentMessage(role="assistant", content=result.text))
+            self.events.emit(AgentEvents.AGENT_END, AgentEndEvent(messages=messages))
             return result.text
 
         history: list = [self.provider.user_turn(message), result.turn]
+        for call in result.tool_calls:
+            messages.append(
+                AgentMessage(
+                    role="assistant",
+                    tool_name=call.name,
+                    tool_call_id=call.id,
+                    args=dict(call.args),
+                )
+            )
         for _ in range(_MAX_TOOL_ITERATIONS - 1):
-            outputs = [(call, self._run_one(call, resolved, ctx, media_bag)) for call in result.tool_calls]
+            outputs = [
+                (call, self._run_one(call, resolved, ctx, media_bag, messages))
+                for call in result.tool_calls
+            ]
             history.extend(self.provider.tool_results_turn(outputs))
 
             result = self.provider.generate(
                 system, history=history, model_id=self.model_id, tools=resolved or None
             )
             if not result.tool_calls:
+                messages.append(AgentMessage(role="assistant", content=result.text))
+                self.events.emit(AgentEvents.AGENT_END, AgentEndEvent(messages=messages))
                 return result.text
             history.append(result.turn)
+            for call in result.tool_calls:
+                messages.append(
+                    AgentMessage(
+                        role="assistant",
+                        tool_name=call.name,
+                        tool_call_id=call.id,
+                        args=dict(call.args),
+                    )
+                )
 
         from semente.logging import log_warning
 
         log_warning("tool loop hit the iteration cap; returning last text")
+        messages.append(AgentMessage(role="assistant", content=result.text))
+        self.events.emit(AgentEvents.AGENT_END, AgentEndEvent(messages=messages))
         return result.text
 
-    def _run_one(self, call: ToolCall, tools: list[Tool], ctx: StateContext, media_bag: dict) -> str:
-        tool = next((t for t in tools if getattr(t, "name", None) == call.name), None)
+    def _run_one(
+        self, call: ToolCall, tools: list[Tool], ctx: StateContext, media_bag: dict, messages: list[AgentMessage]
+    ) -> str:
+        """Resolve and execute one tool call, events around it.
+
+        ``TOOL_EXECUTION_START`` fires before lookup: the agent executes the
+        ``tool_name``/``args`` the event carries after all handlers ran
+        (rename redirects to another tool; unknown name -> "Unknown tool").
+        The provider echo (``outputs``) always pairs the ORIGINAL call —
+        mutations never touch the wire. ``TOOL_EXECUTION_END`` fires with
+        ``is_error`` for unknown tools and tool exceptions (then raised).
+        """
+        start = ToolExecutionStartEvent(
+            tool_call_id=call.id, tool_name=call.name, args=dict(call.args)
+        )
+        self.events.emit(AgentEvents.TOOL_EXECUTION_START, start)
+
+        tool = next((t for t in tools if getattr(t, "name", None) == start.tool_name), None)
         if tool is None:
-            return f"Unknown tool: {call.name}"
-        return run_tool(tool, call.args, ctx, media_bag)
+            end = ToolExecutionEndEvent(
+                tool_call_id=call.id,
+                tool_name=start.tool_name,
+                result=f"Unknown tool: {start.tool_name}",
+                is_error=True,
+            )
+            messages.append(AgentMessage(role="tool", content=end.result, tool_name=start.tool_name, tool_call_id=call.id))
+            self.events.emit(AgentEvents.TOOL_EXECUTION_END, end)
+            return end.result
+
+        try:
+            result = run_tool(tool, start.args, ctx, media_bag)
+        except Exception as e:
+            end = ToolExecutionEndEvent(
+                tool_call_id=call.id, tool_name=start.tool_name, result=str(e), is_error=True
+            )
+            self.events.emit(AgentEvents.TOOL_EXECUTION_END, end)
+            raise
+        end = ToolExecutionEndEvent(
+            tool_call_id=call.id, tool_name=start.tool_name, result=result, is_error=False
+        )
+        messages.append(
+            AgentMessage(role="tool", content=result, tool_name=start.tool_name, tool_call_id=call.id)
+        )
+        self.events.emit(AgentEvents.TOOL_EXECUTION_END, end)
+        return result
 
     def chat(self, message: str, session_state: dict | None = None, user_id: str | None = None) -> str:
         ctx = StateContext(session_state or {}, user_id)

@@ -13,12 +13,27 @@ backend owns that loop with one implementation:
 (planned on ``MyAgent``, see DECISIONS.md): structured output (``AgentTurn.
 structured`` stays None — callers degrade gracefully), multimodal input,
 knowledge-base search, and non-Google providers (ollama/passthrough).
+
+Event system (``events.py``): ``agent.subscribe(AgentEvents.X, handler)``
+observes or customizes runs — ``AGENT_START``/``AGENT_END`` at the run
+boundaries, ``TOOL_EXECUTION_START``/``TOOL_EXECUTION_END`` around each tool
+execution; mutating the start event's ``tool_name``/``args`` redirects
+execution.
 """
 
 from __future__ import annotations
 
 from semente.backends.base import Agent, AgentSpec, EngineBackend
 from semente.backends.bare.agent import MyAgent
+from semente.backends.bare.events import (
+    AgentEndEvent,
+    AgentEvents,
+    AgentMessage,
+    AgentStartEvent,
+    EventBus,
+    ToolExecutionEndEvent,
+    ToolExecutionStartEvent,
+)
 
 
 class BareBackend(EngineBackend):

@@ -96,6 +96,22 @@ agents — no framework, no litellm:
 gracefully), multimodal input, knowledge-base search, and non-Google
 providers. For those capabilities today, use the `agno` or `adk` engine.
 
+`MyAgent` also has an event system — `agent.subscribe(AgentEvents.X, handler)`
+observes or customizes runs: `AGENT_START` (session state, by reference) and
+`AGENT_END` (the run's message log) at the run boundaries,
+`TOOL_EXECUTION_START` and `TOOL_EXECUTION_END` around each tool execution.
+Handlers get one mutable event object — assign `tool_name`/`args` on the
+start event to redirect what executes:
+
+```python
+from semente.backends.bare import AgentEvents
+
+agent.subscribe(
+    AgentEvents.TOOL_EXECUTION_START,
+    lambda e: e.args.update(feature_id="f2"),  # observe or mutate
+)
+```
+
 ## Knowledge: agno as a library
 
 Knowledge *retrieval* is engine-neutral (`build_search_tool` returns a plain
