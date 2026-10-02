@@ -86,8 +86,9 @@ class Tool:
     """A Semente-native tool: the raw function plus its declaration metadata.
 
     Engine-neutral — backends convert this to their own tool type (agno
-    ``Function``, ADK function, litellm schema). ``__call__`` delegates to the
-    raw function so a decorated tool can still be invoked directly in tests.
+    ``Function``, ADK function, Gemini ``FunctionDeclaration``). ``__call__``
+    delegates to the raw function so a decorated tool can still be invoked
+    directly in tests.
     """
 
     name: str

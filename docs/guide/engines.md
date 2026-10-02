@@ -31,7 +31,7 @@ The same domain, manifest, prompts, and channels run unchanged.
 |---|---|---|---|
 | **agno** | Stable | Python, in-process | Reference implementation |
 | **adk** | Supported | Python, in-process | Google Agent Development Kit |
-| **bare** | Supported | Python, in-process | No framework — a litellm function-calling loop |
+| **bare** | Supported | Python, in-process | No framework — our own tool loop over the provider port |
 
 ## The contract
 
@@ -68,34 +68,33 @@ engine-agnostic (`FallbackAgent` wraps any two `Agent` instances).
 | Capability | agno | adk | bare |
 |---|---|---|---|
 | Tool calling | ✓ | ✓ | ✓ |
-| Structured output | ✓ | ✓ | ✓ |
-| Multimodal input | ✓ | ✓ | ✓ (images/audio) |
+| Structured output | ✓ | ✓ | planned |
+| Multimodal input | ✓ | ✓ (images/audio) | planned |
 | Media output | ✓ | ✓ | ✓ |
 | Session state in tools | ✓ | ✓ (tool_context) | ✓ (StateContext) |
-| Knowledge (KB search) | ✓ | ✓ (A-K) | ✓ (A-K) |
+| Knowledge (KB search) | ✓ | ✓ (A-K) | planned (A-K) |
 | Tool hooks | ✓ | ✓ (A-H) | ✓ (A-H) |
 | Skills | ✓ | ✓ (A-S) | ✓ (A-S) |
-| Model fallback | ✓ | ✓ | ✓ |
+| Model fallback | ✓ | ✓ | ✓ (Google models) |
 
 ## The bare backend
 
 The `bare` engine is the end state of the engine port: once media (A-M),
 hooks (A-H), knowledge (A-K) and skills (A-S) live in Semente, an engine only
 has to run the LLM loop. `semente/backends/bare/` does that with our own
-agents — no framework, no litellm for the common paths:
+agents — no framework, no litellm:
 
 - `MyAgent` (`agent.py`) drives chat and tool calling over the provider port
   (`providers/`): semente `Tool`s become typed `FunctionDeclaration`s, tool
   execution is engine-neutral (`backends/toolkit.py` — hooks, run_context,
   media bag), and the model's turn is echoed back preserving Gemini 3
   thought signatures. First provider: Gemini over `google-genai`.
-- `BareAgentAdapter` (`tool_loop.py`) is the litellm fallback for structured
-  output, multimodal input, knowledge, and ollama/passthrough models.
 
-`BareBackend.build_agent` routes each spec to the simplest agent that can
-serve it. Model mapping on the litellm path: `google` → `gemini/<id>`,
-`ollama` → `ollama/<id>`, any other provider string passes through
-(e.g. `openai/gpt-4o`).
+`BareBackend.build_agent` routes every spec to `MyAgent`. Not yet implemented
+(planned, see `semente/backends/bare/DECISIONS.md`): structured output
+(`AgentTurn.structured` stays `None` — the feedback/persona loops degrade
+gracefully), multimodal input, knowledge-base search, and non-Google
+providers. For those capabilities today, use the `agno` or `adk` engine.
 
 ## Knowledge: agno as a library
 

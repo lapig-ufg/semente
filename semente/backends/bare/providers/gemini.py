@@ -1,4 +1,4 @@
-"""Gemini provider — google-genai client, no framework, no litellm.
+"""Gemini provider — google-genai client, no framework.
 
 Model/key resolution follows the engine-neutral convention (see
 ``backends/agno/models.py``): ``config`` resolves key + model id, this module

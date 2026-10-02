@@ -8,9 +8,8 @@ by design (no history between runs) — sessions belong to whoever drives the
 agent.
 
 ``from_spec``/``run`` make it speak the framework's ``Agent`` protocol, so
-``BareBackend`` routes chat + tool specs here while structured output,
-multimodal input, and knowledge still fall back to the litellm tool loop
-(``tool_loop.py``).
+``BareBackend`` routes every spec here. Structured output, multimodal input,
+and knowledge are planned next (DECISIONS.md).
 """
 
 from __future__ import annotations

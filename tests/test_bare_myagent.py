@@ -3,7 +3,7 @@
 Covers the tool loop end to end with real genai types (Content/Part/
 FunctionCall/FunctionResponse): provider wire shape, the call -> execute ->
 respond -> answer round-trips, media stashing, dynamic tools, and
-BareBackend's MyAgent-vs-tool-loop routing.
+BareBackend's routing of every spec to MyAgent.
 """
 
 from unittest.mock import MagicMock, patch
@@ -279,7 +279,9 @@ def test_backend_routes_chat_and_tool_specs_to_myagent():
         assert isinstance(backend.build_agent(spec), MyAgent)
 
 
-def test_backend_routes_rich_specs_to_tool_loop():
+def test_backend_routes_rich_specs_to_myagent():
+    """Rich specs also route to MyAgent (structured output, multimodal, KB,
+    non-Google models land as plain chat until MyAgent supports them)."""
     backend = BareBackend()
     rich = [
         AgentSpec(name="t", instructions="s", output_schema=dict),
@@ -288,7 +290,7 @@ def test_backend_routes_rich_specs_to_tool_loop():
         AgentSpec(name="t", instructions="s", model=ModelSpec(provider="ollama", model_id="m")),
     ]
     for spec in rich:
-        assert not isinstance(backend.build_agent(spec), MyAgent), spec
+        assert isinstance(backend.build_agent(spec), MyAgent), spec
 
 
 def test_gemini_missing_key_raises():
@@ -316,6 +318,6 @@ if __name__ == "__main__":
     test_myagent_unknown_tool_feeds_back_error_text()
     test_from_spec_static_and_callable_instructions()
     test_backend_routes_chat_and_tool_specs_to_myagent()
-    test_backend_routes_rich_specs_to_tool_loop()
+    test_backend_routes_rich_specs_to_myagent()
     test_gemini_missing_key_raises()
     print("MyAgent tests OK")
