@@ -1,12 +1,14 @@
 """MyAgent + GeminiProvider tests — mocked genai client, no network.
 
 Covers the chat-only loop: provider dispatch, system-instruction passing,
-default model resolution, and the missing-key guard.
+default model resolution, the missing-key guard, the framework run primitive
+(from_spec/run), and BareBackend's chat-vs-tool-loop routing.
 """
 
 from unittest.mock import MagicMock, patch
 
-from semente.backends.bare.agent import MyAgent
+from semente.backends.base import AgentInput, AgentSpec, ModelSpec
+from semente.backends.bare import BareBackend, MyAgent
 from semente.backends.bare.providers import GeminiProvider, Provider
 from semente.configs.config import config
 
@@ -87,6 +89,45 @@ def test_gemini_missing_key_raises():
             raise AssertionError("expected ValueError for missing GOOGLE_API_KEY")
 
 
+def test_from_spec_static_and_callable_instructions():
+    spec = AgentSpec(name="t", instructions="be nice")
+    agent = MyAgent.from_spec(spec)
+    assert agent._system(None) == "be nice"
+
+    spec = AgentSpec(name="t", instructions=lambda ctx: f"hello {ctx.user_id}")
+    agent = MyAgent.from_spec(spec)
+    assert agent._system(type("C", (), {"user_id": "u1", "session_state": {}})()) == "hello u1"
+
+
+def test_run_primitive_returns_agent_turn():
+    provider = _FakeProvider(reply="framework reply")
+    spec = AgentSpec(name="t", instructions="be nice")
+    agent = MyAgent.from_spec(spec)
+    agent.provider = provider
+    turn = agent.run(AgentInput(text="hi", session_state={}, user_id="u1"))
+    assert turn.content == "framework reply"
+    assert provider.calls[0][1] == "hi"
+
+
+def test_backend_routes_pure_chat_to_myagent():
+    backend = BareBackend()
+    spec = AgentSpec(name="t", instructions="be nice")
+    assert isinstance(backend.build_agent(spec), MyAgent)
+
+
+def test_backend_routes_rich_specs_to_tool_loop():
+    backend = BareBackend()
+    rich = [
+        AgentSpec(name="t", instructions="s", tools=[object()]),
+        AgentSpec(name="t", instructions="s", output_schema=dict),
+        AgentSpec(name="t", instructions="s", multimodal_in=True),
+        AgentSpec(name="t", instructions="s", knowledge=object()),
+        AgentSpec(name="t", instructions="s", model=ModelSpec(provider="ollama", model_id="m")),
+    ]
+    for spec in rich:
+        assert not isinstance(backend.build_agent(spec), MyAgent), spec
+
+
 if __name__ == "__main__":
     test_myagent_chat_returns_reply()
     test_myagent_defaults_to_gemini_provider()
@@ -94,4 +135,8 @@ if __name__ == "__main__":
     test_gemini_generate_uses_default_model()
     test_gemini_generate_without_system_passes_none_config()
     test_gemini_missing_key_raises()
+    test_from_spec_static_and_callable_instructions()
+    test_run_primitive_returns_agent_turn()
+    test_backend_routes_pure_chat_to_myagent()
+    test_backend_routes_rich_specs_to_tool_loop()
     print("MyAgent tests OK")

@@ -8,7 +8,7 @@ import json
 from unittest.mock import patch
 
 from semente.backends.base import AgentInput, AgentSpec
-from semente.backends.bare import BareAgentAdapter
+from semente.backends.bare.tool_loop import BareAgentAdapter
 from semente.tools import tool
 from semente.tools.types import Image, ToolResult
 
