@@ -318,3 +318,17 @@ def mascarar_pii(text: str) -> str:
     for rx in _MASCARAR_RES:
         text = rx.sub("[oculto]", text)
     return text
+
+def sanitize_json_pii(data):
+    """
+    Recursively sanitizes string values within JSON-like structures (dicts, lists)
+    using the redigir_pii function, preserving the original data structure.
+    """
+    if isinstance(data, dict):
+        return {key: sanitize_json_pii(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_json_pii(item) for item in data]
+    elif isinstance(data, str):
+        sanitized_text, _ = redigir_pii(data)
+        return sanitized_text
+    return data

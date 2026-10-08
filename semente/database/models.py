@@ -30,7 +30,7 @@ class NegativeFeedback(Base):
     reason_frustration = Column(Text)
     desired_answer = Column(Text)
     context = Column(Text)
-
+    payload = Column(JSON, comment="Trajetória sanitizada para DPO (prompt, chosen, rejected)")
 
 class PositiveFeedback(Base):
     __tablename__ = 'positive_feedbacks'
@@ -42,7 +42,7 @@ class PositiveFeedback(Base):
     handler_message = Column(Text)
     grade = Column(Integer)
     context = Column(Text)
-
+    trajectory = Column(JSON, comment="Trajetória sanitizada para SFT (messages)")
 
 class AnalysisFeedback(Base):
     __tablename__ = 'analysis_feedbacks'
