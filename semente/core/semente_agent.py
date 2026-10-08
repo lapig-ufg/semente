@@ -617,17 +617,23 @@ class SementeAgent:
 
         db_session = SessionLocal()
         try:
-            
+        
             if effectiveness_level >= 4:
-                last_run = recent_runs[-1]
-                history_data = session.get_history(num_runs=1)
-                chosen_response = history_data[0][1] if history_data else ""
-
-                payload = {
-                    "prompt": last_run.get("user", ""),
-                    "rejected": last_run.get("assistant", ""),
-                    "chosen": chosen_response,
-                }
+                if len(recent_runs) >= 2:
+                    turn_rejected = recent_runs[-2]
+                    turn_chosen = recent_runs[-1]
+                
+                    payload = {
+                        "prompt": turn_rejected.get("user", ""),
+                        "rejected": turn_rejected.get("assistant", ""),
+                        "chosen": turn_chosen.get("assistant", "")
+                    }
+                else:
+                    payload = {
+                        "prompt": recent_runs[-1].get("user", ""),
+                        "rejected": "",
+                        "chosen": recent_runs[-1].get("assistant", "")
+                    }
 
                 sanitized_payload = sanitize_json_pii(payload)
                 feedback_record = NegativeFeedback(
@@ -640,7 +646,7 @@ class SementeAgent:
                     "negative feedback recorded with remediation (DPO dataset)"
                 )
 
-        
+            
             elif satisfaction_level >= 4:
                 sanitized_trajectory = sanitize_json_pii(recent_runs)
                 feedback_record = PositiveFeedback(
@@ -743,6 +749,12 @@ class SementeAgent:
                 state["user_persona"] = user_persona.model_dump()
 
             state["user_mood"] = None
+
+        except Exception as e:
+            state["user_persona"] = user_persona.model_dump()
+
+            if user_mood.satisfaction.level >= 3 or user_mood.remediation is not None:
+                state["user_mood"] = None
 
         except Exception as e:
             log_error(f"_manage_persona: agent failed: {e}")
