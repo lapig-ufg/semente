@@ -159,8 +159,9 @@ The `engine` field (or `SEMENTE_ENGINE` env var) swaps the agent engine — see
 Build the docs site locally:
 
 ```bash
+cd docs
 npm install
-npm run docs:dev     # http://localhost:5173
+npm run dev     # http://localhost:5173
 ```
 
 ## License

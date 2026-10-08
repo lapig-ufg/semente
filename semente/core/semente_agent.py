@@ -939,7 +939,7 @@ def get_agent(manifest_path: str | None = None) -> Semente:
 
     if os.getenv("SEMENTE_DEMO") == "1":
         # Demo mode (``semente launch streamlit --demo``): built-in defaults, no app files.
-        manifest = Manifest(name="semente-demo")
+        manifest = Manifest(name="semente-demo", engine="bare")
     else:
         path = manifest_path or os.getenv("SEMENTE_MANIFEST", "semente.yaml")
         manifest = Manifest.load(path)

@@ -14,6 +14,7 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'Deployment', link: '/deployment/toy-app' },
+      { text: 'Architecture', link: '/architecture/' },
       { text: 'Showcase', link: '/showcase/pasto-legal' },
     ],
     sidebar: {
@@ -35,6 +36,12 @@ export default defineConfig({
         {
           text: 'Deployment',
           items: [{ text: 'Toy App', link: '/deployment/toy-app' }],
+        },
+      ],
+      '/architecture/': [
+        {
+          text: 'Architecture',
+          items: [{ text: 'Overview', link: '/architecture/' }],
         },
       ],
       '/showcase/': [
