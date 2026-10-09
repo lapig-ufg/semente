@@ -271,3 +271,79 @@ def test_save_debug_json_accepts_dict(monkeypatch, tmp_path):
     path = save_debug_json(_multi_polygon_geojson(), "tool")
 
     assert path is not None and path.exists()
+
+
+# ---------------------------------------------------------------------------
+# polygon_labels: the source name of each polygon, aligned with the parts
+# ---------------------------------------------------------------------------
+
+def _zipped_shapefile(columns: dict, geometries: list) -> bytes:
+    """Builds a zipped shapefile with the given attribute columns."""
+    with tempfile.TemporaryDirectory() as tmp:
+        gdf = gpd.GeoDataFrame(columns, geometry=geometries, crs="EPSG:4326")
+        gdf.to_file(os.path.join(tmp, "layer.shp"))
+
+        zip_path = os.path.join(tmp, "shape.zip")
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            for name in os.listdir(tmp):
+                if name.endswith((".shp", ".shx", ".dbf", ".prj", ".cpg")):
+                    archive.write(os.path.join(tmp, name), name)
+
+        return open(zip_path, "rb").read()
+
+
+def _square(x: float) -> Polygon:
+    return Polygon([(x, 0), (x, 1), (x + 1, 1), (x + 1, 0)])
+
+
+def _labels(content: bytes, filename: str) -> list:
+    parsed = json.loads(convert_geo_file_to_geojson(content, filename))
+    return parsed["features"][0]["properties"]["polygon_labels"]
+
+
+def test_kml_placemark_names_become_polygon_labels():
+    assert _labels(_KML.encode(), "map.kml") == ["P1", "P2"]
+
+
+def test_shapefile_label_column_is_case_insensitive():
+    content = _zipped_shapefile({"NOME": ["A", "B"]}, [_square(0), _square(2)])
+
+    assert _labels(content, "shape.zip") == ["A", "B"]
+
+
+def test_shapefile_without_label_column_has_no_labels():
+    content = _zipped_shapefile({"area": [1.5, 2.5]}, [_square(0), _square(2)])
+
+    assert _labels(content, "shape.zip") == [None, None]
+
+
+def test_empty_label_values_become_none():
+    content = _zipped_shapefile(
+        {"nome": ["A", None, ""]}, [_square(0), _square(2), _square(4)]
+    )
+
+    assert _labels(content, "shape.zip") == ["A", None, None]
+
+
+def test_whole_number_labels_drop_the_decimal():
+    content = _zipped_shapefile({"piquete": [1.0, 2.0]}, [_square(0), _square(2)])
+
+    assert _labels(content, "shape.zip") == ["1", "2"]
+
+
+def test_multipart_feature_repeats_its_label_per_part():
+    from shapely.geometry import MultiPolygon
+
+    content = _zipped_shapefile(
+        {"nome": ["Duplo", "Simples"]},
+        [MultiPolygon([_square(0), _square(3)]), _square(6)],
+    )
+
+    assert _labels(content, "shape.zip") == ["Duplo", "Duplo", "Simples"]
+
+
+def test_polygon_labels_match_polygon_count():
+    parsed = json.loads(convert_geo_file_to_geojson(_KML.encode(), "map.kml"))
+    properties = parsed["features"][0]["properties"]
+
+    assert len(properties["polygon_labels"]) == properties["polygon_count"]
