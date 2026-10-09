@@ -353,6 +353,8 @@ def _clean_label(value) -> Optional[str]:
     """Normalizes a source attribute value to a usable label (or None)."""
     if value is None:
         return None
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
     text = str(value).strip()
     if not text or text.lower() in ("nan", "none"):
         return None
