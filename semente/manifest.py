@@ -12,7 +12,12 @@ from typing import Any
 
 import yaml
 
+from pydantic import BaseModel, Field
 
+class FeedbackConfig(BaseModel):
+    enable: bool = Field(default=True)
+    window_size: int = Field(default=5, ge=1)
+    
 @dataclass
 class Manifest:
     """Parsed ``semente.yaml`` — app-level configuration."""
@@ -30,6 +35,15 @@ class Manifest:
     def load(cls, path: str | Path) -> "Manifest":
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
+        features_data = data.get("features", {})
+        feedback_val = features_data.get("feedback", True)
+        
+        if isinstance(feedback_val, bool):
+            features_data["feedback"] = FeedbackConfig(enable=feedback_val, window_size=5)
+        elif isinstance(feedback_val, dict):
+            features_data["feedback"] = FeedbackConfig.model_validate(feedback_val)
+            
+        data["features"] = features_data
         return cls(
             name=data.get("name", "semente-app"),
             language=data.get("language", "en"),
@@ -55,6 +69,8 @@ class Manifest:
         data["channels"] = list(self.channels)
         if self.features:
             data["features"] = dict(self.features)
+            if "feedback" in data["features"] and isinstance(data["features"]["feedback"], FeedbackConfig):
+                data["features"]["feedback"] = data["features"]["feedback"].model_dump()
         if self.models:
             data["models"] = {k: dict(v) for k, v in self.models.items()}
         return data

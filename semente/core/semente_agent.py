@@ -537,7 +537,7 @@ class SementeAgent:
         # dynamic instructions can read it (wrapped in <conversation_summary>
         # tags).
         state["conversation_summary"] = summary_state.summary or ""
-
+        
     def _process_feedback(self, session: AgentSession, user_text: str, state: dict) -> None:
         """Run the feedback loop: satisfaction, persistence, persona.
 
@@ -546,9 +546,9 @@ class SementeAgent:
         the user persona. Everything mutates ``state``; nothing is returned.
         """
         self._evaluate_satisfaction(session, user_text, state)
-        self._persist_feedback(state)
+        self._persist_feedback(session, state)
         self._manage_persona(session, user_text, state)
-
+        
     def _evaluate_satisfaction(
         self, session: AgentSession, user_text: str, state: dict
     ) -> None:
@@ -591,30 +591,79 @@ class SementeAgent:
         else:
             state["user_mood"]["remediation"] = effectiveness
 
-    def _persist_feedback(self, state: dict) -> None:
-        """Persist the interaction per the satisfaction level (stub).
+    def _persist_feedback(self, session: AgentSession, state: dict) -> None:
+        """Persist the interaction per the satisfaction level."""
+        import datetime
+        from semente.database.models import NegativeFeedback, PositiveFeedback
+        from semente.database.session import SessionLocal
+        from semente.guardrails.pii_gate import sanitize_json_pii
 
-        TODO: implement once PositiveFeedback/NegativeFeedback tables are
-        finalized and _mask_pii is available from semente.guardrails.pii_gate.
-        """
         user_mood = state.get("user_mood", {})
         satisfaction = user_mood.get("satisfaction", {}) if user_mood else {}
         satisfaction_level = satisfaction.get("level", 3)
 
-        if satisfaction_level == 5:
-            # PositiveFeedback persistence (stub — see module TODO).
-            log_debug("positive feedback recorded (persistence stub)")
-        elif satisfaction_level == 1:
-            remediation = user_mood.get("remediation", {}) if user_mood else {}
-            effectiveness = (
-                remediation.get("effectiveness", {})
-                if isinstance(remediation, dict)
-                else {}
-            )
-            if not effectiveness or effectiveness.get("level", 2) <= 2:
-                # NegativeFeedback persistence (stub — see module TODO).
-                log_debug("negative feedback recorded (persistence stub)")
+        recent_runs = state.get("recent_agent_runs", [])
+        if not recent_runs:
+            return
 
+    
+        remediation = user_mood.get("remediation", {}) if user_mood else {}
+        effectiveness = (
+            remediation.get("effectiveness", {})
+            if isinstance(remediation, dict)
+            else {}
+        )
+        effectiveness_level = effectiveness.get("level", 0)
+
+        db_session = SessionLocal()
+        try:
+        
+            if effectiveness_level >= 4:
+                if len(recent_runs) >= 2:
+                    turn_rejected = recent_runs[-2]
+                    turn_chosen = recent_runs[-1]
+                
+                    payload = {
+                        "prompt": turn_rejected.get("user", ""),
+                        "rejected": turn_rejected.get("assistant", ""),
+                        "chosen": turn_chosen.get("assistant", "")
+                    }
+                else:
+                    payload = {
+                        "prompt": recent_runs[-1].get("user", ""),
+                        "rejected": "",
+                        "chosen": recent_runs[-1].get("assistant", "")
+                    }
+
+                sanitized_payload = sanitize_json_pii(payload)
+                feedback_record = NegativeFeedback(
+                    timestamp=datetime.datetime.utcnow().isoformat(),
+                    payload=sanitized_payload,
+                )
+                db_session.add(feedback_record)
+                db_session.commit()
+                log_debug(
+                    "negative feedback recorded with remediation (DPO dataset)"
+                )
+
+            
+            elif satisfaction_level >= 4:
+                sanitized_trajectory = sanitize_json_pii(recent_runs)
+                feedback_record = PositiveFeedback(
+                    timestamp=datetime.datetime.utcnow().isoformat(),
+                    trajectory=sanitized_trajectory,
+                    grade=satisfaction_level,
+                )
+                db_session.add(feedback_record)
+                db_session.commit()
+                log_debug("positive feedback recorded (SFT dataset)")
+
+        except Exception as e:
+            log_error(f"_persist_feedback failed: {e}")
+            db_session.rollback()
+        finally:
+            db_session.close()
+        
     def _manage_persona(self, session: AgentSession, user_text: str, state: dict) -> None:
         """Conditionally run the persona manager agent and apply updates.
 
@@ -700,6 +749,12 @@ class SementeAgent:
                 state["user_persona"] = user_persona.model_dump()
 
             state["user_mood"] = None
+
+        except Exception as e:
+            state["user_persona"] = user_persona.model_dump()
+
+            if user_mood.satisfaction.level >= 3 or user_mood.remediation is not None:
+                state["user_mood"] = None
 
         except Exception as e:
             log_error(f"_manage_persona: agent failed: {e}")
@@ -790,6 +845,52 @@ class SementeAgent:
                     user_id=user_id,
                 )
             )
+            
+            feedback_config = self.features.get("feedback", {})
+            is_enabled = False
+            window_size = 5
+            
+            if hasattr(feedback_config, "enable"):
+                is_enabled = feedback_config.enable
+                window_size = getattr(feedback_config, "window_size", 5)
+            elif isinstance(feedback_config, dict):
+                is_enabled = feedback_config.get("enable", True)
+                window_size = feedback_config.get("window_size", 5)
+
+            if is_enabled:
+                turn_record = {
+                    "user": text,
+                    "assistant": turn.content or "",
+                    "tools": [],
+                    "messages": []
+                }
+                
+                if hasattr(turn, "tools") and turn.tools:
+                    for tool in turn.tools:
+                        turn_record["tools"].append({
+                            "tool_name": getattr(tool, "tool_name", "unknown"),
+                            "tool_args": getattr(tool, "tool_args", {}),
+                            "result": getattr(tool, "result", None)
+                        })
+                        
+                if hasattr(turn, "messages") and turn.messages:
+                    for msg in turn.messages:
+                        msg_dict = {
+                            "role": getattr(msg, "role", "unknown"),
+                            "content": getattr(msg, "content", None)
+                        }
+                        if hasattr(msg, "tool_calls") and msg.tool_calls:
+                            msg_dict["tool_calls"] = msg.tool_calls
+                        turn_record["messages"].append(msg_dict)
+                
+                recent_runs = state.get("recent_agent_runs", [])
+                recent_runs.append(turn_record)
+                
+                if len(recent_runs) > window_size:
+                    recent_runs = recent_runs[-window_size:]
+                    
+                state["recent_agent_runs"] = recent_runs
+                
         except Exception as exc:
             log_error(f"agent failed: {exc}")
             return StepOutput(
@@ -804,7 +905,7 @@ class SementeAgent:
             files=turn.files,
             metrics=turn.metrics,
         )
-
+        
     def _apply_remediation(self, routed: StepOutput, state: dict) -> StepOutput:
         """Merge the routed response with a remediation message when due.
 
