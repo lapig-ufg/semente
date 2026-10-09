@@ -1,7 +1,7 @@
 # Channels
 
 Semente ships two channels: **WhatsApp** (production, for end users) and
-**Streamlit** (development, for debugging). Both run the same SementeAgent.
+**Streamlit** (development, for debugging). Both run the same Semente agent.
 
 ## Streamlit
 

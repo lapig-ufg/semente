@@ -23,7 +23,6 @@ dependencies = [
     "pydantic-settings>=2.12.0",
     "redis>=7.1.0",
     "google-genai>=2.10.0",
-    "litellm>=1.60.0",
     "ollama>=0.6.1",
     # 1.53+ hard-imports starlette>=0.46 (gzip middleware), which conflicts
     # with fastapi==0.115.8's starlette<0.46 pin. 1.52.x has no starlette dep.

@@ -38,6 +38,13 @@ class AgentSpec:
 
 @dataclass
 class AgentInput:
+    """One agent run's input.
+
+    ``images``/``audio`` go to the model as media parts; ``files`` go to the
+    model AND are injected into tools declaring a ``files`` parameter (the
+    framework convention — e.g. GeoJSON attached to the run).
+    """
+
     text: str
     images: list | None = None
     audio: list | None = None
@@ -48,6 +55,17 @@ class AgentInput:
 
 @dataclass
 class AgentTurn:
+    """One agent run's output: content, media, usage, and metrics.
+
+    ``metrics`` (the bare backend's shape, also read by the debug panel):
+    token counts summed across provider rounds (``input_tokens``,
+    ``output_tokens``, ``total_tokens``, ``reasoning_tokens``,
+    ``cache_read_tokens``, ``tool_use_prompt_tokens``), timings
+    (``duration``, ``time_to_first_token``, ``round_durations``), and
+    ``tools: [{name, duration, is_error}]``. No ``cost`` — the wire carries
+    no pricing.
+    """
+
     content: str
     structured: dict | None = None
     usage: dict | None = None

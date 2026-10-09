@@ -1,13 +1,13 @@
 """Tests of the profile onboarding gate (issue #148).
 
-Covers ``SementeAgent._needs_onboarding``, which decides whether the user
+Covers ``Semente._needs_onboarding``, which decides whether the user
 goes to the welcoming agent or proceeds to the normal flow. The gate must
 require three things — terms acceptance, name and role — and, when all
 exist in the database, load the profile into session_state so the agent can
 personalise the reply.
 
 Ported from pasto-legal `tests/workflows/test_onboarding_profile.py`
-(PR #159 + tip fix `0816be3`), adapted to the SementeAgent architecture:
+(PR #159 + tip fix `0816be3`), adapted to the Semente architecture:
 the gate now takes ``(state, user_id)`` directly, so no StepInput doubles
 are needed. Semente's DB defaults to SQLite (`tmp/agno.db`), so the fixture
 creates the tables and cleans the two gate tables per test instead of
@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from semente.core.semente_agent import SementeAgent
+from semente.core.semente_agent import Semente
 from semente.database.models import UserProfile, UserTermsAcceptance
 from semente.database.session import SessionLocal, engine
 from semente.manifest import Manifest
@@ -28,8 +28,8 @@ from semente.manifest import Manifest
 UID = "test:onboarding:5562900000000"
 
 
-def _agent() -> SementeAgent:
-    return SementeAgent(
+def _agent() -> Semente:
+    return Semente(
         agent=object(),
         welcoming_agent=object(),
         manifest=Manifest(name="test-app"),

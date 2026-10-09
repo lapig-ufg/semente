@@ -51,28 +51,32 @@ def _discover(folder: Path, subdir: str) -> list[str]:
     return sorted(p.name for p in d.iterdir() if p.is_file() and not p.name.startswith("."))
 
 
-def load_skills(path: str | Path) -> "Skills | None":
-    """Load skills from a directory (or a single skill folder), or ``None``."""
-    root = Path(path)
-    if not root.exists():
-        return None
+def load_skills(path: str | Path | list[str | Path]) -> "Skills | None":
+    """Load skills from a directory, a single skill folder, or a list of
+    either — ``None`` when nothing loads. On name collisions across paths,
+    the later path wins."""
+    roots = path if isinstance(path, (list, tuple)) else [path]
 
-    if (root / "SKILL.md").exists():
-        folders = [root]
-    else:
-        folders = [
-            p
-            for p in root.iterdir()
-            if p.is_dir() and not p.name.startswith(".") and (p / "SKILL.md").exists()
-        ]
+    loaded: dict[str, Skill] = {}
+    for root_str in roots:
+        root = Path(root_str)
+        if not root.exists():
+            continue
 
-    skills: list[Skill] = []
-    for folder in folders:
-        try:
-            content = (folder / "SKILL.md").read_text(encoding="utf-8")
-            fm, instructions = _parse_skill_md(content)
-            skills.append(
-                Skill(
+        if (root / "SKILL.md").exists():
+            folders = [root]
+        else:
+            folders = [
+                p
+                for p in root.iterdir()
+                if p.is_dir() and not p.name.startswith(".") and (p / "SKILL.md").exists()
+            ]
+
+        for folder in folders:
+            try:
+                content = (folder / "SKILL.md").read_text(encoding="utf-8")
+                fm, instructions = _parse_skill_md(content)
+                skill = Skill(
                     name=fm.get("name", folder.name),
                     description=fm.get("description", ""),
                     instructions=instructions,
@@ -80,11 +84,11 @@ def load_skills(path: str | Path) -> "Skills | None":
                     scripts=_discover(folder, "scripts"),
                     references=_discover(folder, "references"),
                 )
-            )
-        except Exception:
-            continue
+                loaded[skill.name] = skill  # later path wins on collisions
+            except Exception:
+                continue
 
-    return Skills(skills) if skills else None
+    return Skills(list(loaded.values())) if loaded else None
 
 
 def _is_safe_path(base_dir: Path, requested: str) -> bool:

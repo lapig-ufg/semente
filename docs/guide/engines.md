@@ -31,7 +31,7 @@ The same domain, manifest, prompts, and channels run unchanged.
 |---|---|---|---|
 | **agno** | Stable | Python, in-process | Reference implementation |
 | **adk** | Supported | Python, in-process | Google Agent Development Kit |
-| **bare** | Supported | Python, in-process | No framework — a litellm function-calling loop |
+| **bare** | Supported | Python, in-process | No framework — our own tool loop over the provider port |
 
 ## The contract
 
@@ -68,24 +68,74 @@ engine-agnostic (`FallbackAgent` wraps any two `Agent` instances).
 | Capability | agno | adk | bare |
 |---|---|---|---|
 | Tool calling | ✓ | ✓ | ✓ |
-| Structured output | ✓ | ✓ | ✓ |
-| Multimodal input | ✓ | ✓ | ✓ (images/audio) |
+| Structured output | ✓ | ✓ | planned |
+| Multimodal input | ✓ | ✓ (images/audio) | ✓ (images/audio/files) |
 | Media output | ✓ | ✓ | ✓ |
 | Session state in tools | ✓ | ✓ (tool_context) | ✓ (StateContext) |
-| Knowledge (KB search) | ✓ | ✓ (A-K) | ✓ (A-K) |
+| Knowledge (KB search) | ✓ | ✓ (A-K) | planned (A-K) |
 | Tool hooks | ✓ | ✓ (A-H) | ✓ (A-H) |
 | Skills | ✓ | ✓ (A-S) | ✓ (A-S) |
-| Model fallback | ✓ | ✓ | ✓ |
+| Model fallback | ✓ | ✓ | ✓ (Google models) |
 
 ## The bare backend
 
 The `bare` engine is the end state of the engine port: once media (A-M),
 hooks (A-H), knowledge (A-K) and skills (A-S) live in Semente, an engine only
-has to run the LLM loop. `semente/backends/bare/` does that with
-`litellm.completion` — a client, not a framework — so there is no
-state/session/callback model to fight. Model mapping: `google` →
-`gemini/<id>`, `ollama` → `ollama/<id>`, any other provider string passes
-through (e.g. `openai/gpt-4o`).
+has to run the LLM loop. `semente/backends/bare/` does that with our own
+agents — no framework, no litellm:
+
+- `MyAgent` (`agent.py`) drives chat and tool calling over the provider port
+  (`providers/`): semente `Tool`s become typed `FunctionDeclaration`s, tool
+  execution is engine-neutral (`backends/toolkit.py` — hooks, run_context,
+  media bag), and the model's turn is echoed back preserving Gemini 3
+  thought signatures. First provider: Gemini over `google-genai`.
+
+`BareBackend.build_agent` routes every spec to `MyAgent`. Not yet implemented
+(planned, see `semente/backends/bare/DECISIONS.md`): structured output
+(`AgentTurn.structured` stays `None` — the feedback/persona loops degrade
+gracefully) and knowledge-base search. For those capabilities today, use the
+`agno` or `adk` engine.
+
+`MyAgent` is multimodal: `AgentInput.images`/`audio`/`files` all go to the
+model as wire parts on the first round's user turn, and `files` additionally
+ride into tools declaring a `files` parameter (the framework convention).
+`run(AgentInput)` is the single entry point.
+
+`MyAgent` also has an event system — `agent.subscribe(AgentEvents.X, handler)`
+observes or customizes runs: `AGENT_START` (session state, by reference) and
+`AGENT_END` (the run's message log) at the run boundaries,
+`TOOL_EXECUTION_START` and `TOOL_EXECUTION_END` around each tool execution.
+Handlers get one mutable event object — assign `tool_name`/`args` on the
+start event to redirect what executes:
+
+```python
+from semente.backends.bare import AgentEvents
+
+agent.subscribe(
+    AgentEvents.TOOL_EXECUTION_START,
+    lambda e: e.args.update(feature_id="f2"),  # observe or mutate
+)
+```
+
+Every `MyAgent` run also returns metrics in `AgentTurn.metrics` — token
+counts off the provider wire (input/output/total/reasoning/cache-read,
+cumulative), per-round and per-tool timings, and the provider round count.
+
+`MyAgent` also takes skills natively: `skills=` accepts a `Skills`
+object or a callable `(run_context) -> Skills | None` resolved against
+the run's state — the same pattern as `instructions` and `tools`. Build
+the `Skills` yourself with `load_skills` (a directory or a list of
+them); every run injects the `<skills_system>` instructions plus the
+three skill access tools:
+
+```python
+from semente.backends.bare import MyAgent
+from semente.skills import load_skills
+
+skills = load_skills("domain/skills")           # caller-side build
+agent = MyAgent(instructions="...", tools=[...],
+                skills=lambda ctx: skills if ctx.session_state.get("pro") else None)
+```
 
 ## Knowledge: agno as a library
 

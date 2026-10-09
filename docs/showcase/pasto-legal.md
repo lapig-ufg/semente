@@ -38,7 +38,7 @@ became Semente.
 User (WhatsApp)
    │
    ▼
-SementeAgent
+Semente
 ├── Input pre-processing (audio/image → text)
 ├── PII guardrail (CPF/CNPJ/card/email redaction)
 ├── Onboarding check (terms acceptance)

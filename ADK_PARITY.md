@@ -42,7 +42,7 @@ rebuilds the agent per run, so `_adapt_tool` wrappers can capture a per-run
 wrapper stashes `images/videos/audios/files` in the bag and passes **only the
 text content** to ADK (which is all ADK can consume anyway). After
 `runner.run(...)`, the adapter attaches the bag to `AgentTurn(images=…,
-videos=…, audios=…, files=…)` — and `SementeAgent._invoke_agent` **already
+videos=…, audios=…, files=…)` — and `Semente._invoke_agent` **already
 maps `AgentTurn.media` onto `StepOutput`**, which the WhatsApp router and
 Streamlit already display. Zero changes to channels, the agent pipeline, or
 the working Agno path.
@@ -91,7 +91,7 @@ final string.
 **Fix: Semente-level fallback wrapper (engine-agnostic).** Add
 `fallback_model: ModelSpec | None` to `AgentSpec` (populated from the
 manifest's `models.fallback` — currently parsed but discarded). In
-`SementeAgent._invoke_agent` (the single place every engine's `run` flows
+`Semente._invoke_agent` (the single place every engine's `run` flows
 through): try the agent; on exception or empty content, build a fallback
 agent once (lazily) and retry. This restores the behavior Pasto Legal had on
 Agno and gives every backend the same guarantee.
@@ -108,7 +108,7 @@ it does on Agno. Cosmetic — deferable.
 
 ### Phase A-M — MediaBag on ADK (1 day) ★ unblocks all 6 media tools
 - [x] Per-run media bag in `AdkAgentAdapter` (closure capture, attach to `AgentTurn`)
-- [x] Unit test: a media tool's ToolResult → bag → `StepOutput.images` via `SementeAgent._invoke_agent`
+- [x] Unit test: a media tool's ToolResult → bag → `StepOutput.images` via `Semente._invoke_agent`
 - [ ] Integration (real key): `generate_property_image` on Streamlit/ADK shows the map
 - **Exit:** biomass image + boletim PDF render on ADK.
 
@@ -130,7 +130,7 @@ it does on Agno. Cosmetic — deferable.
 
 ### Phase A-F — Fallback models (1 day, fixes the regression for ALL engines)
 - [ ] `AgentSpec.fallback_model`; populated from manifest `models.fallback`
-- [ ] Retry wrapper in `SementeAgent._invoke_agent` (build fallback agent lazily, retry once)
+- [ ] Retry wrapper in `Semente._invoke_agent` (build fallback agent lazily, retry once)
 - [ ] Test with a bogus primary model id + working fallback on both engines
 - **Exit:** `PRIMARY_MODEL_ID=invalid` + valid fallback → app still answers on agno AND adk.
 
