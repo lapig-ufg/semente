@@ -185,9 +185,12 @@ if 'file_uploader_key' not in st.session_state:
     st.session_state.file_uploader_key = 0
 
 files_uploaded = st.file_uploader(
-    "Envie imagens/áudio (png, jpg, mp3, etc)",
+    "Envie imagens/áudio/mapas (png, jpg, mp3, zip, kmz, kml, geojson, etc)",
     key=f"file_uploader_{st.session_state.file_uploader_key}",
-    type=["png", "jpg", "jpeg", "webp", "wav", "mp3", "mp4"],
+    type=[
+        "png", "jpg", "jpeg", "webp", "wav", "mp3", "mp4",
+        "zip", "rar", "kmz", "kml", "geojson", "json",
+    ],
     accept_multiple_files=True,
 )
 
