@@ -20,12 +20,14 @@ features:
   tts: true
   feedback_workflow: true
   summarization: true
-  pii_guardrail: true
+  pii_guardrail: true{tutorial_feature_block}
 models:
   primary:
     provider: {provider}
     id: {model_id}
 """
+
+TUTORIAL_FEATURE_BLOCK = "\n  tutorial: true"
 
 _ENV_MODEL_BLOCK = {
     "google": """\
@@ -107,6 +109,93 @@ domain_spec = DomainSpec(
     name="{name}",
     tools=[echo],
 )
+'''
+
+TUTORIAL_TEMPLATE = '''\
+"""{name}'s guided tutorial — returned by the ``get_tutorial`` seam.
+
+The framework owns the machinery: the welcoming agent offers the tutorial
+and records the choice; a supervisor (the first tutorial agent) grades every
+message against the step's ``forward_condition`` — the real assistant does
+the work when it forwards; after its reply the step's
+``complete_condition`` decides the move to the next step; the final outcome
+is persisted. This object owns the content: how many steps and what each
+one teaches. ``get_tutorial`` is passed to the DomainSpec in this package
+and that is the whole contract — edit the steps freely, they are plain
+English (or your users' language).
+
+Each step:
+
+    id                 Short stable key (labels the step in logs, prompts
+                       and the offer menu).
+    lesson             What this step teaches: one chat-style message with
+                       the concrete action the user takes now.
+    forward_condition  What counts as doing exactly what this step asks —
+                       the supervisor forwards on it (any wording counts).
+    complete_condition When the step is concluded, either:
+                       - a str: judged by the checkpoint agent from the
+                         conversation and the real assistant's reply;
+                       - a callable: called with (session_state,
+                         user_text, agent_reply) -> bool — read whatever
+                         state your tools wrote to confirm it.
+                       A False (or error) never advances the step.
+
+The framework appends the congrats + the NEXT step's lesson (or the
+closing) to the reply when a step completes. Customize the optional
+``offer``/``closing``/``abandon`` texts on the Tutorial object when wanted
+(None keeps the framework defaults).
+"""
+
+from semente.domain import Tutorial, TutorialStep
+
+
+def get_tutorial() -> Tutorial:
+    """The guided-tutorial spec — any number of steps, listed in order."""
+    return Tutorial(
+        steps=[
+            TutorialStep(
+                id="first-step",
+                lesson=(
+                    "Teach the user the concrete action of this first step "
+                    "and ask them to do it in whichever way is easiest."
+                ),
+                forward_condition=(
+                    "The user is doing or asking exactly this step's action "
+                    "in any wording, or replying to the real assistant's "
+                    "follow-up questions on the way."
+                ),
+                complete_condition=(
+                    "The history plus the real assistant's latest reply show "
+                    "this step's final result was delivered to the user."
+                ),
+            ),
+            TutorialStep(
+                id="second-step",
+                lesson=(
+                    "Teach the user the next thing {name} does and give one "
+                    "short example of how to ask for it."
+                ),
+                forward_condition=(
+                    "The user asks for any of this step's outcomes in "
+                    "natural language, or answers the real assistant's "
+                    "questions about it."
+                ),
+                complete_condition=(
+                    "The history plus the real assistant's latest reply show "
+                    "the asked outcome was delivered."
+                ),
+                # A callable condition instead of a str:
+                # complete_condition=lambda session_state, user_text,
+                #     agent_reply: bool(session_state.get("my_tool_result")),
+                # Use any key your tools write to session_state.
+            ),
+            # Add or remove TutorialStep entries as needed — the count is
+            # yours; the tutorial is as short or long as this list.
+        ],
+        # offer=None,     # custom text for the welcoming agent's ask
+        # closing=None,   # custom final message after the last step
+        # abandon=None,   # custom reply when the user leaves the tutorial early
+    )
 '''
 
 MAIN_PY_TEMPLATE = '''\

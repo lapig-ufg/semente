@@ -10,8 +10,17 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
     _input_preprocessing   media -> text, geo files -> GeoJSON (always)
     _redact_pii            PII markers on the consolidated text (pii_guardrail)
     _needs_onboarding      terms + profile gate (always)
-    ├─ True:  _run_welcoming_agent
-    └─ False: _summarize_conversation (summarization)
+    ├─ True:  _run_welcoming_agent   (terms, persona, tutorial offer)
+    ├─ False: tutorial decided?      (a domain Tutorial via get_tutorial)
+    │    ├─ offer pending -> _run_welcoming_agent (tutorial-offer stage)
+    │    ├─ in progress   -> _run_tutorial_supervisor (grades the message:
+    │    │                   forward -> _run_single_agent with it; else the
+    │    │                   supervisor's lesson/coaching is the reply)
+    │    │                -> _check_tutorial_completion (after a forward:
+    │    │                   callable or the tutorial_check_agent judge the
+    │    │                   step; met -> advance + announcement appended)
+    │    └─ done          -> normal path below
+    └─ else:  _summarize_conversation (summarization)
               _process_feedback      (feedback_workflow)
               _run_single_agent      (always; sees summary + history)
               _apply_remediation    (part of the feedback loop)
@@ -31,21 +40,28 @@ from __future__ import annotations
 
 import importlib
 import json
+from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Optional
 
 from semente.backends.base import AgentInput
 from semente.configs.prompts import set_prompts_dir
 from semente.core.types import AgentSession, SessionStore, StepOutput
-from semente.logging import log_debug, log_error, log_info
+from semente.domain.base import Tutorial
+from semente.logging import log_debug, log_error, log_info, log_warning
 from semente.manifest import Manifest
 from semente.schemas.input_manager import InputManager
+from semente.schemas.tutorial import TutorialDecision
 from semente.schemas.user_mood import UserMood
 from semente.schemas.user_persona import (
     is_persona_complete,
     is_persona_field_informed,
 )
-from semente.schemas.workflow_state import WorkflowState
+from semente.schemas.workflow_state import (
+    TUTORIAL_COMPLETED,
+    WorkflowState,
+    parse_tutorial_state,
+)
 from semente.services.session_migration import migrate_session_state
 from semente.tools.types import File
 
@@ -58,6 +74,19 @@ HISTORY_WINDOW = 4
 
 # Default fallback satisfaction level when the evaluation agent fails.
 _DEFAULT_SATISFACTION = {"level": 3, "level_message": "Neutral (default)"}
+
+
+class TutorialStatus(Enum):
+    """Routing position of the user within the tutorial flow (pipeline-local).
+
+    The in-flight step lives only in the session state; the database holds
+    just the final outcome, so the status resolves from the session first
+    and the database only while the offer is still unanswered there.
+    """
+
+    UNDECIDED = auto()  # tutorial offer still pending -> welcoming agent asks
+    RUNNING = auto()  # inside the steps -> the supervisor grades each message
+    DONE = auto()  # final outcome reached -> normal path, never asked again
 
 
 def _file_name(file: File) -> str:
@@ -158,9 +187,20 @@ class Semente:
 
     Args:
         agent: The single backend agent built from the DomainSpec.
-        welcoming_agent: The onboarding agent (terms + persona stages).
+        welcoming_agent: The onboarding agent (terms, persona, tutorial offer).
         manifest: The parsed ``semente.yaml`` — name and feature toggles.
         store: Optional :class:`SessionStore` for cross-run persistence.
+        tutorial: The domain's :class:`Tutorial` spec (from ``get_tutorial``) —
+            the step contents routing and advancing read at every turn.
+            ``None`` = the tutorial feature is fully off.
+        tutorial_agent: The tutorial supervisor (the first agent, above the
+            normal agent) run while the user is inside the tutorial steps.
+            Optional: on evaluator absence the flow fails open to the normal
+            path.
+        tutorial_check_agent: The tutorial checkpoint (the second agent) that
+            judges str ``complete_condition`` of the current step after a
+            forwarded turn. Optional: text conditions fail closed without it
+            (callables are judged regardless).
     """
 
     def __init__(
@@ -169,9 +209,15 @@ class Semente:
         welcoming_agent: Any,
         manifest: Manifest,
         store: Optional[SessionStore] = None,
+        tutorial: Optional[Tutorial] = None,
+        tutorial_agent: Any = None,
+        tutorial_check_agent: Any = None,
     ):
         self.agent = agent
         self.welcoming_agent = welcoming_agent
+        self.tutorial = tutorial
+        self.tutorial_agent = tutorial_agent
+        self.tutorial_check_agent = tutorial_check_agent
         self.name = manifest.name
         self.features = manifest.features or {}
         self.store = store
@@ -216,8 +262,21 @@ class Semente:
         if self.features.get("pii_guardrail", True):
             user_text = self._redact_pii(user_text)
 
-        if self._needs_onboarding(state, user_id):
+        needs_onboarding = self._needs_onboarding(state, user_id)
+        tutorial_status = (
+            TutorialStatus.UNDECIDED
+            if needs_onboarding
+            else self._get_tutorial_status(state, user_id)
+        )
+
+        if needs_onboarding or tutorial_status is TutorialStatus.UNDECIDED:
+            # Onboarding (terms/persona) or the tutorial offer: both are
+            # welcoming agent stages, resolved from the session state.
             final = self._run_welcoming_agent(session, user_text, images, audio)
+        elif tutorial_status is TutorialStatus.RUNNING:
+            final = self._run_tutorial_supervisor(
+                session, user_text, images, audio, geo_files, user_id
+            )
         else:
             if self.features.get("summarization", True):
                 self._summarize_conversation(session, user_text, state)
@@ -451,6 +510,271 @@ class Semente:
             db_session.close()
 
     # ------------------------------------------------------------------
+    # Tutorial gate
+    # ------------------------------------------------------------------
+
+    def _get_tutorial_status(self, state: dict, user_id: Optional[str]) -> TutorialStatus:
+        """Resolve where the user stands in the tutorial flow.
+
+        The in-flight step lives only in the session state
+        (``workflow_state.tutorial_state`` — 0-based index or
+        ``COMPLETED``); the database holds just the final outcome (one row
+        once the user declined, abandoned or completed the tutorial), so the
+        lookup happens only while the session has no decision. When the row
+        exists, it is mirrored into the session state so the rest of the run
+        sees the final state without another query — the same
+        hydrate-on-the-way-out pattern of the onboarding gate.
+
+        Without a ``Tutorial`` spec the feature is off: DONE without ever
+        touching the database.
+        """
+        if self.tutorial is None:
+            # Feature off (no get_tutorial, disabled by the manifest or
+            # misconfigured): the normal path, silently.
+            return TutorialStatus.DONE
+
+        parse_limit = len(self.tutorial.steps)
+        parsed = parse_tutorial_state((state.get("workflow_state") or {}).get("tutorial_state"))
+
+        if parsed == TUTORIAL_COMPLETED:
+            return TutorialStatus.DONE
+
+        if parsed is not None and int(parsed) < parse_limit:
+            return TutorialStatus.RUNNING
+
+        user_id = user_id or state.get("user_id")
+        if not user_id:
+            return TutorialStatus.UNDECIDED
+
+        from semente.database.models import UserTutorialProgress
+        from semente.database.session import SessionLocal
+
+        db_session = SessionLocal()
+        try:
+            record = db_session.query(UserTutorialProgress).filter(
+                UserTutorialProgress.user_id == user_id,
+                UserTutorialProgress.completed == True,  # noqa: E712
+            ).first()
+
+            if record is None:
+                return TutorialStatus.UNDECIDED
+
+            state.setdefault("workflow_state", {})["tutorial_state"] = TUTORIAL_COMPLETED
+            return TutorialStatus.DONE
+        finally:
+            db_session.close()
+
+    # ------------------------------------------------------------------
+    # Tutorial stages
+    # ------------------------------------------------------------------
+
+    def _run_tutorial_supervisor(
+        self,
+        session: AgentSession,
+        user_text: str,
+        images: Optional[list],
+        audio: Optional[list],
+        geo_files: Optional[list[File]],
+        user_id: str,
+    ) -> StepOutput:
+        """Grade the user's message with the tutorial supervisor and apply its decision.
+
+        The tutorial branch skips the summarization/feedback staging (the
+        tutorial interactions are not about the real conversation): when the
+        supervisor forwards, the normal agent answers exactly as it would
+        outside the tutorial — and the current step's completion is then
+        judged (checkpoint agent for ``str`` conditions, direct call for
+        callables), advancing the step and appending its announcement when
+        met. Otherwise the supervisor's lesson/coaching is the reply. On
+        evaluator failure the normal agent runs — the user is never stuck on
+        the tutorial's account.
+        """
+        state = session.session_state
+        agent_input = self._build_agent_input(session, user_text, state)
+
+        if self.tutorial_agent is None:
+            # Degraded mode (no supervisor built): behave as the plain flow,
+            # with a warning instead of an error every turn.
+            log_warning("_run_tutorial_supervisor: no tutorial agent configured; forwarding")
+            return self._run_single_agent(agent_input, images, audio, geo_files, state, user_id)
+
+        if geo_files:
+            # The supervisor is text-only: make the converted attachment
+            # explicit so it can judge a "send a geo file" step correctly
+            # (when forwarding, the files still go to the normal agent).
+            agent_input = "\n".join(
+                part
+                for part in (
+                    agent_input,
+                    "<anexo>o usuário anexou um arquivo geoespacial (convertido para GeoJSON)</anexo>",
+                )
+                if part
+            )
+
+        turn = None
+        decision: Optional[TutorialDecision] = None
+        try:
+            turn = self.tutorial_agent.run(
+                AgentInput(
+                    text=agent_input,
+                    images=None,
+                    audio=None,
+                    files=None,
+                    session_state=state,
+                    user_id=user_id,
+                )
+            )
+            if turn and turn.structured:
+                decision = TutorialDecision.model_validate(turn.structured)
+        except Exception as exc:
+            log_error(f"tutorial supervisor failed: {exc}")
+
+        if decision is None:
+            # Fail-open: never trap the user inside the tutorial because the
+            # supervisor (or its structured output) was unavailable.
+            log_debug("_run_tutorial_supervisor: no decision, forwarding to the normal agent")
+            return self._run_single_agent(agent_input, images, audio, geo_files, state, user_id)
+
+        if decision.abandon_tutorial:
+            self._close_tutorial(state, user_id)
+            log_debug("_run_tutorial_supervisor: tutorial abandoned by the user")
+            return StepOutput(content=decision.content or "")
+
+        if decision.forward:
+            output = self._run_single_agent(
+                agent_input, images, audio, geo_files, state, user_id
+            )
+            announcement = self._check_tutorial_completion(
+                state, user_text, output.content, user_id
+            )
+            if announcement:
+                output.content = "\n\n".join(
+                    part for part in (output.content, announcement) if part
+                )
+            return output
+
+        # The tutorial spoke: the lesson/coaching is the reply (the
+        # supervisor is a text-only decision agent, so its media turns are
+        # ignored).
+        workflow_state = state.setdefault("workflow_state", {})
+        workflow_state["tutorial_intro_sent"] = True
+        return StepOutput(content=decision.content or "")
+
+    # ------------------------------------------------------------------
+    # Tutorial completion checkpoint
+    # ------------------------------------------------------------------
+
+    def _check_tutorial_completion(
+        self, state: dict, user_text: str, reply: str, user_id: Optional[str]
+    ) -> Optional[str]:
+        """Judge the current step's ``complete_condition`` after a forwarded answer.
+
+        A callable condition runs with ``(session_state, user_text,
+        agent_reply)``; a ``str`` condition goes to the checkpoint agent
+        (``semente.agents.tutorial_check_agent``). Fail-closed by design: an
+        error, an absent checkpoint or a negative/unparsable verdict never
+        advance the step. On completion the step advances here and the
+        announcement to append to the reply is returned (``None`` otherwise).
+        """
+        workflow_state = state.get("workflow_state") or {}
+        parsed = parse_tutorial_state(workflow_state.get("tutorial_state"))
+        if self.tutorial is None or parsed is None or parsed == TUTORIAL_COMPLETED:
+            return None
+
+        condition = self.tutorial.steps[int(parsed)].complete_condition
+
+        if callable(condition):
+            try:
+                completed = bool(condition(state, user_text, reply))
+            except Exception as exc:
+                log_warning(f"_check_tutorial_completion: callable check failed: {exc}")
+                completed = False
+        else:
+            completed = self._run_completion_check(condition, user_text, reply, state, user_id)
+
+        if not completed:
+            return None
+        return self._advance_tutorial_step(state, user_id)
+
+    def _run_completion_check(
+        self, condition: str, user_text: str, reply: str, state: dict, user_id: Optional[str]
+    ) -> bool:
+        """A ``str`` condition judged by the checkpoint agent (fail-closed)."""
+        from semente.agents.tutorial_agent import (
+            completion_payload,
+            parse_completion_check,
+        )
+
+        if self.tutorial_check_agent is None:
+            log_debug(
+                "_run_completion_check: no checkpoint agent wired for a str condition; "
+                "not completed"
+            )
+            return False
+
+        try:
+            turn = self.tutorial_check_agent.run(
+                AgentInput(
+                    text=completion_payload(user_text, reply),
+                    images=None,
+                    audio=None,
+                    files=None,
+                    session_state=state,
+                    user_id=user_id,
+                )
+            )
+        except Exception as exc:
+            log_warning(f"_run_completion_check: checkpoint failed: {exc}")
+            return False
+        return parse_completion_check(turn)
+
+    def _advance_tutorial_step(self, state: dict, user_id: Optional[str]) -> Optional[str]:
+        """Move the tutorial to the next step; returns the announcement to append.
+
+        From the CURRENT (pre-advance) position: advancing past the last step
+        closes the tutorial for good (final state + persisted row) and the
+        announcement is the closing; any other step sets its index in the
+        session state and the announcement is the framework congrats with the
+        NEXT step's lesson embedded (each new lesson arrives announced, so the
+        new step is born with it delivered for the supervisor's routing).
+        The step count comes from the domain's ``Tutorial`` spec — a spec of
+        any length advances the same way (and without one, "done" simply
+        closes the tutorial).
+
+        Returns ``None`` when nothing advanced (no spec, no parsable position,
+        already COMPLETED) — never crashes a turn.
+        """
+        from semente.agents.tutorial_agent import build_completion_announcement
+        from semente.tools.tutorial_tools import set_session_tutorial_state
+
+        if self.tutorial is None:
+            self._close_tutorial(state, user_id)
+            return None
+
+        workflow_state = state.get("workflow_state") or {}
+        parsed = parse_tutorial_state(workflow_state.get("tutorial_state"))
+        if parsed is None or parsed == TUTORIAL_COMPLETED:
+            return None
+
+        announcement = build_completion_announcement(self.tutorial, state)
+        next_index = int(parsed) + 1
+
+        if next_index >= len(self.tutorial.steps):
+            self._close_tutorial(state, user_id)
+            return announcement
+
+        # The announcement carries the next step's lesson already — the new
+        # step is born lesson-delivered (the supervisor does not repeat it).
+        set_session_tutorial_state(state, next_index, intro_sent=True)
+        return announcement
+
+    def _close_tutorial(self, state: dict, user_id: Optional[str]) -> None:
+        """End the tutorial flow: final state in the session + persisted row."""
+        from semente.tools.tutorial_tools import mark_tutorial_completed
+
+        mark_tutorial_completed(state, user_id)
+
+    # ------------------------------------------------------------------
     # Agent stages
     # ------------------------------------------------------------------
 
@@ -461,7 +785,7 @@ class Semente:
         images: Optional[list],
         audio: Optional[list],
     ) -> StepOutput:
-        """Run the staged welcoming agent (terms, then persona)."""
+        """Run the staged welcoming agent (terms, persona, tutorial offer)."""
         return self._invoke_agent(
             self.welcoming_agent,
             self._build_agent_input(session, user_text, session.session_state),
@@ -751,13 +1075,17 @@ class Semente:
             state["user_mood"] = None
 
         except Exception as e:
-            state["user_persona"] = user_persona.model_dump()
+            # The manager failed: the persona stays untouched (no deduction is
+            # applied), and the mood is cleared when it can no longer route to
+            # a remediation — a lingering mood would re-fire this agent on
+            # every later run. The persona local may not even exist here (the
+            # agent can fail before producing any output), so this handler
+            # must never touch it — otherwise the UnboundLocalError escapes
+            # and crashes the whole turn.
+            log_error(f"_manage_persona: agent failed: {e}")
 
             if user_mood.satisfaction.level >= 3 or user_mood.remediation is not None:
                 state["user_mood"] = None
-
-        except Exception as e:
-            log_error(f"_manage_persona: agent failed: {e}")
 
     def _build_agent_input(
         self, session: AgentSession, user_text: str, state: dict
@@ -1058,14 +1386,30 @@ def get_agent(manifest_path: str | None = None) -> Semente:
         domain_spec = _load_domain(manifest)
 
     from semente.agents.build_agent import build_agent
+    from semente.agents.tutorial_agent import (
+        build_tutorial_agent,
+        build_tutorial_check_agent,
+        resolve_tutorial,
+    )
     from semente.agents.welcoming_agent import build_welcoming_agent
     from semente.database.session_store import store
 
     agent = build_agent(domain_spec, manifest)
-    welcoming_agent = build_welcoming_agent(tts_enabled=manifest.features.get("tts", True))
+    tutorial = resolve_tutorial(domain_spec, manifest)
+    welcoming_agent = build_welcoming_agent(
+        tutorial=tutorial,
+        tts_enabled=manifest.features.get("tts", True),
+    )
+    tutorial_agent = build_tutorial_agent(tutorial) if tutorial is not None else None
+    tutorial_check_agent = (
+        build_tutorial_check_agent(tutorial) if tutorial is not None else None
+    )
     _agent_cache = Semente(
         agent=agent,
         welcoming_agent=welcoming_agent,
+        tutorial=tutorial,
+        tutorial_agent=tutorial_agent,
+        tutorial_check_agent=tutorial_check_agent,
         manifest=manifest,
         store=store,
     )

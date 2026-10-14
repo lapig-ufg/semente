@@ -15,6 +15,7 @@ features:                    # all default to true
   feedback_workflow: true    # satisfaction/persona feedback loop
   summarization: true        # rolling conversation summary
   pii_guardrail: true        # PII/LGPD redaction stage
+  tutorial: true             # guided tutorial (needs the domain's get_tutorial)
 models:                      # optional override of env-var model config
   primary: { provider: google, id: gemini-3.5-flash-lite }
   fallback: { provider: ollama, id: gemma4:31b-cloud }
@@ -41,6 +42,7 @@ models:                      # optional override of env-var model config
 | `feedback_workflow` | The satisfaction/persona feedback loop is omitted from the run. |
 | `summarization` | The rolling conversation summary stage is omitted. |
 | `pii_guardrail` | The PII redaction stage is omitted. |
+| `tutorial` | The guided tutorial is off even when the domain supplies `get_tutorial` (no offer, no supervisor). |
 
 ## Model resolution
 

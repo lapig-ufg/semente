@@ -22,6 +22,7 @@ my-app/
 ├── .env.example            # every variable group, commented
 ├── domain/
 │   ├── __init__.py        # domain_spec with an example echo tool
+│   ├── tutorial.py        # optional: the guided-tutorial example (--tutorial)
 │   └── prompts/           # agents.yml, tools.yml, hooks.yml (bundled defaults)
 ├── main.py                 # FastAPI entry (WhatsApp webhook)
 └── .gitignore
@@ -34,6 +35,7 @@ Options:
 | `--name` | App name (default: directory name) |
 | `--language` | Agent language (default: `en`) |
 | `--provider` | `google` (default) or `ollama` |
+| `--tutorial` | Include the guided-tutorial example (`domain/tutorial.py` + `get_tutorial` wired into the DomainSpec; also asked y/N interactively) |
 | `--force` | Overwrite existing files |
 | `--non-interactive` | Never prompt (use defaults) |
 
@@ -46,8 +48,9 @@ Edits `semente.yaml` in place. Resolution: `SEMENTE_MANIFEST` env var, then
 `./semente.yaml`. Without a manifest it exits with an actionable hint.
 
 ```bash
-semente config enable tts             # features: tts, summarization, feedback_workflow, pii_guardrail
+semente config enable tts             # features: tts, summarization, feedback_workflow, pii_guardrail, tutorial
 semente config disable feedback_workflow
+semente config enable tutorial --force  # also plants domain/tutorial.py + wires the DomainSpec
 semente config set language pt-BR
 semente config set engine bare        # engines: agno, adk, bare
 semente config set models.primary.id gemini-2.0-flash
@@ -59,6 +62,27 @@ semente config channel remove streamlit
 Valid keys for `set`: `name`, `language`, `domain_module`, `prompts_dir`,
 `engine`, `models.primary.provider`, `models.primary.id`,
 `models.fallback.provider`, `models.fallback.id`.
+
+### Enabling the tutorial
+
+The tutorial is only active when the domain supplies the `get_tutorial`
+seam (see [Domain API](domain-api.md)) — the manifest flag alone does
+nothing. `semente config enable tutorial` takes care of the whole thing:
+
+```bash
+semente config enable tutorial
+#   created  domain/tutorial.py        # a working 2-step example to edit
+#   wired    domain/__init__.py        # domain_spec now passes get_tutorial
+```
+
+`domain/tutorial.py` is plain text — every step is `lesson` / `right_path`
+/ `done_when` and the count is yours. Re-running the command is safe:
+existing files are kept and the wiring is reported as already done;
+`--force` overwrites the example only. The domain file is edited only when
+the CLI can do it provably safely (single `domain_spec = DomainSpec(...)`
+assignment, checked with an AST parse + a compile check) — otherwise it
+prints the one-line manual instruction instead. Disabling only flips the
+manifest flag: the scaffolded files are yours and are never deleted.
 
 ## `semente status`
 

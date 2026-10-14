@@ -54,6 +54,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init.add_argument("--force", action="store_true", help="Overwrite existing files")
     init.add_argument("--non-interactive", action="store_true", help="Never prompt (use defaults)")
+    init.add_argument(
+        "--tutorial", action="store_true", help="Include the guided-tutorial example (domain/tutorial.py)"
+    )
 
     # --- config ---------------------------------------------------------------
     config = sub.add_parser("config", help="Edit the manifest (semente.yaml)")
@@ -61,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     enable = config_sub.add_parser("enable", help="Enable a feature")
     enable.add_argument("feature", choices=KNOWN_FEATURES)
+    enable.add_argument("--force", action="store_true", help="Overwrite the example files (tutorial)")
 
     disable = config_sub.add_parser("disable", help="Disable a feature")
     disable.add_argument("feature", choices=KNOWN_FEATURES)
@@ -102,11 +106,12 @@ def main() -> None:
                 provider=args.provider,
                 force=args.force,
                 non_interactive=args.non_interactive,
+                tutorial=args.tutorial,
             )
         )
     elif args.command == "config":
         if args.config_command == "enable":
-            cmd_config_enable(args.feature)
+            cmd_config_enable(args.feature, force=args.force)
         elif args.config_command == "disable":
             cmd_config_disable(args.feature)
         elif args.config_command == "set":

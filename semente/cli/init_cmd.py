@@ -16,6 +16,7 @@ from semente.cli.templates import (
     GITIGNORE_TEMPLATE,
     MAIN_PY_TEMPLATE,
     SEMENTE_YAML_TEMPLATE,
+    TUTORIAL_FEATURE_BLOCK,
     bundled_prompts_dir,
     default_model_id,
     env_example_content,
@@ -39,8 +40,15 @@ def cmd_init(
     force: bool = False,
     non_interactive: bool = False,
     stdin=sys.stdin,
+    tutorial: bool | None = None,
 ) -> int:
-    """Scaffold the app; returns the exit code."""
+    """Scaffold the app; returns the exit code.
+
+    ``tutorial`` tri-state: None asks interactively (when stdin is a TTY and
+    not ``--non-interactive``); True/False is explicit (``--tutorial``). When
+    on, a working ``domain/tutorial.py`` example is written and wired into
+    the DomainSpec, and ``features.tutorial: true`` lands in the manifest.
+    """
     if provider not in ("google", "ollama"):
         print(f"Invalid provider '{provider}' (available: google, ollama)")
         return 1
@@ -49,10 +57,16 @@ def cmd_init(
     project_dir.mkdir(parents=True, exist_ok=True)
 
     app_name = name or project_dir.resolve().name
-    if not non_interactive and stdin is not None and stdin.isatty():
+    interactive = not non_interactive and stdin is not None and stdin.isatty()
+    if interactive:
         answer = input(f"App name [{app_name}]: ").strip()
         if answer:
             app_name = answer
+    if tutorial is None:
+        tutorial = False
+        if interactive:
+            answer = input("Include a guided-tutorial example (domain/tutorial.py)? [y/N]: ").strip().lower()
+            tutorial = answer in ("y", "yes")
 
     manifest_path = project_dir / "semente.yaml"
     if manifest_path.exists() and not force:
@@ -65,7 +79,11 @@ def cmd_init(
     _write_file(
         manifest_path,
         SEMENTE_YAML_TEMPLATE.format(
-            name=app_name, language=language, provider=provider, model_id=default_model_id(provider)
+            name=app_name,
+            language=language,
+            provider=provider,
+            model_id=default_model_id(provider),
+            tutorial_feature_block=TUTORIAL_FEATURE_BLOCK if tutorial else "",
         ),
         force,
         created,
@@ -86,6 +104,23 @@ def cmd_init(
             created,
             kept,
         )
+
+    if tutorial:
+        # Same helper `config enable tutorial` uses — on the fresh scaffold
+        # it always creates/wires (the files were just written above).
+        from semente.cli.tutorial_scaffold import scaffold_tutorial
+
+        from semente.manifest import Manifest
+
+        report = scaffold_tutorial(Manifest(name=app_name), manifest_path, force=force)
+        for path in report.created:
+            if path not in created:
+                created.append(path)
+        for path in report.kept:
+            if path not in kept:
+                kept.append(path)
+        if report.manual_step:
+            print(f"\nManual step: {report.manual_step}")
 
     print(f"Initialized Semente app '{app_name}' in {project_dir.resolve()}\n")
     for path in created:

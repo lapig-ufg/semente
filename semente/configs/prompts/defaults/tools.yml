@@ -303,6 +303,26 @@ onboarding_tools:
       error_persistence: |
         Critical persistence error while saving terms acceptance: {error}
 
+tutorial_tools:
+  set_tutorial_choice:
+    description: |
+      Records the user's answer to the tutorial offer. Call it exactly once,
+      as soon as the user clearly accepts or declines the guided tutorial.
+      Pass wants_tutorial as true when the user wants the tutorial, false
+      when they do not; ask again in other words when the answer is
+      ambiguous.
+    results:
+      accepted: |
+        Tutorial accepted! Confirm warmly that the guided tutorial is
+        starting and that the first step's lesson arrives right away. Do NOT
+        teach the lesson here and do NOT ask anything about the step's work —
+        just confirm the enrollment (e.g.: "Perfeito! Tutorial aceito! Sua
+        próxima mensagem já vem com a primeira aula.").
+      declined: |
+        Tutorial declined: confirm warmly and without any pressure (e.g.:
+        "Sem problema! Você já está pronto para usar o sistema — quando
+        quiser, é só pedir."). Do not offer the tutorial again.
+
 version_tools:
   consult_update_notes:
     description: |

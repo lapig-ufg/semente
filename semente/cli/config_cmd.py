@@ -3,6 +3,11 @@
 Enables/disables features, sets scalar/model keys, and manages the channel
 list. The manifest is the single source of truth; everything is validated
 before writing (``Manifest.save`` keeps a stable key order).
+
+Enabling the tutorial goes one step further: it plants a working
+``domain/tutorial.py`` example (the ``get_tutorial`` seam) and wires it into
+the DomainSpec, so the app boots with a guided tutorial to edit instead of
+an empty flag.
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ from pathlib import Path
 
 from semente.manifest import Manifest
 
-KNOWN_FEATURES = ["tts", "summarization", "feedback_workflow", "pii_guardrail"]
+KNOWN_FEATURES = ["tts", "summarization", "feedback_workflow", "pii_guardrail", "tutorial"]
 KNOWN_CHANNELS = ["streamlit", "whatsapp"]
 KNOWN_ENGINES = ["agno", "adk", "bare"]
 KNOWN_PROVIDERS = ["google", "ollama"]
@@ -70,13 +75,37 @@ def _set_nested(manifest: Manifest, key: str, value: str) -> str:
     sys.exit(f"Unknown key '{key}' (valid: {valid})")
 
 
-def cmd_config_enable(feature: str) -> None:
+def cmd_config_enable(feature: str, force: bool = False) -> None:
     manifest, path = _load_or_exit()
     if feature not in KNOWN_FEATURES:
         sys.exit(f"Unknown feature '{feature}' (available: {', '.join(KNOWN_FEATURES)})")
     manifest.features = {**manifest.features, feature: True}
     manifest.save(path)
     print(f"Feature '{feature}' enabled.")
+
+    if feature == "tutorial":
+        _enable_tutorial_scaffold(manifest, path, force)
+
+
+def _enable_tutorial_scaffold(manifest: Manifest, path: Path, force: bool) -> None:
+    """Plants the get_tutorial example so the flag has a working implementation."""
+    from semente.cli.tutorial_scaffold import scaffold_tutorial
+
+    report = scaffold_tutorial(manifest, path, force=force)
+    for file in report.created:
+        print(f"  created  {file}")
+    for file in report.kept:
+        print(f"  kept     {file} (use --force to overwrite)")
+    if report.wired_file:
+        state = "already wired" if report.already_wired else "wired"
+        print(f"  {state}    {report.wired_file}")
+    if report.manual_step:
+        print(f"\nManual step: {report.manual_step}")
+    if report.created or report.kept:
+        print(
+            "\nNext: edit domain/tutorial.py — every step is free text and the "
+            "count is yours; run 'semente launch streamlit' to walk it."
+        )
 
 
 def cmd_config_disable(feature: str) -> None:
@@ -86,6 +115,12 @@ def cmd_config_disable(feature: str) -> None:
     manifest.features = {**manifest.features, feature: False}
     manifest.save(path)
     print(f"Feature '{feature}' disabled.")
+    if feature == "tutorial":
+        # The scaffolded example is user code now — the CLI never deletes it.
+        print(
+            "(domain/tutorial.py stays in place — re-enable the feature or "
+            "remove the file yourself)"
+        )
 
 
 def cmd_config_set(key: str, value: str) -> None:

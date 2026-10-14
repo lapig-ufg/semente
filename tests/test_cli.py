@@ -117,8 +117,21 @@ def test_parser_wiring():
     assert args.provider == "ollama"
     assert args.force and args.non_interactive is False
 
+    args = parser.parse_args(["init", "--tutorial"])
+    assert args.tutorial is True
+
+    args = parser.parse_args(["init"])
+    assert args.tutorial is False
+
     args = parser.parse_args(["config", "enable", "tts"])
     assert args.config_command == "enable" and args.feature == "tts"
+
+    args = parser.parse_args(["config", "enable", "tutorial"])
+    assert args.config_command == "enable" and args.feature == "tutorial"
+    assert args.force is False
+
+    args = parser.parse_args(["config", "enable", "tutorial", "--force"])
+    assert args.force is True
 
     args = parser.parse_args(["config", "channel", "add", "whatsapp"])
     assert args.channel_command == "add" and args.name == "whatsapp"

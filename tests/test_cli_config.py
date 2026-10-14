@@ -1,5 +1,7 @@
 """semente config: features, models, channels, validation, errors."""
 
+import sys
+
 import pytest
 
 from semente.cli import config_cmd
@@ -106,3 +108,153 @@ def test_semente_manifest_env_var_wins(tmp_path, monkeypatch):
     monkeypatch.setenv("SEMENTE_MANIFEST", str(custom))
     config_cmd.cmd_config_set("language", "es")
     assert Manifest.load(custom).language == "es"
+
+
+# ---------------------------------------------------------------------
+# Tutorial enablement: flag + scaffolded get_tutorial example
+# ---------------------------------------------------------------------
+
+
+def _domain_package(app_dir, name="test-app"):
+    """A domain package in the exact shape ``semente init`` scaffolds."""
+    from semente.cli.templates import DOMAIN_INIT_TEMPLATE
+
+    pkg = app_dir / "domain"
+    pkg.mkdir(exist_ok=True)
+    (pkg / "__init__.py").write_text(DOMAIN_INIT_TEMPLATE.format(name=name), encoding="utf-8")
+    return pkg
+
+
+def test_enable_tutorial_scaffolds_example_and_wires(app_dir):
+    pkg = _domain_package(app_dir)
+    config_cmd.cmd_config_enable("tutorial")
+
+    assert _manifest(app_dir).features["tutorial"] is True
+
+    init_py = (pkg / "__init__.py").read_text(encoding="utf-8")
+    assert "from .tutorial import get_tutorial" in init_py
+    assert "get_tutorial=get_tutorial" in init_py
+    assert (pkg / "tutorial.py").read_text(encoding="utf-8").count("TutorialStep(") == 2
+
+
+def test_enabled_tutorial_example_imports_and_runs(app_dir):
+    """The scaffolded example is real code: importable and returns a Tutorial."""
+    import importlib
+
+    from semente.domain import Tutorial
+
+    _domain_package(app_dir)
+    config_cmd.cmd_config_enable("tutorial")
+
+    sys.modules.pop("domain", None)
+    sys.path.insert(0, str(app_dir))
+    try:
+        domain = importlib.import_module("domain")
+        tutorial = domain.get_tutorial()
+        assert isinstance(tutorial, Tutorial)
+        assert len(tutorial.steps) == 2
+        assert domain.domain_spec.get_tutorial is domain.get_tutorial
+    finally:
+        if str(app_dir) in sys.path:
+            sys.path.remove(str(app_dir))
+        sys.modules.pop("domain", None)
+
+
+def test_enable_tutorial_idempotent(app_dir, capsys):
+    pkg = _domain_package(app_dir)
+    config_cmd.cmd_config_enable("tutorial")
+    init_source = (pkg / "__init__.py").read_text(encoding="utf-8")
+    capsys.readouterr()
+
+    config_cmd.cmd_config_enable("tutorial")
+    out = capsys.readouterr().out
+
+    assert "kept" in out and "already wired" in out
+    assert (pkg / "__init__.py").read_text(encoding="utf-8") == init_source
+
+
+def test_enable_tutorial_force_overwrites_the_example(app_dir):
+    pkg = _domain_package(app_dir)
+    config_cmd.cmd_config_enable("tutorial")
+    (pkg / "tutorial.py").write_text("# my custom steps\n", encoding="utf-8")
+
+    config_cmd.cmd_config_enable("tutorial", force=True)
+
+    assert "# my custom steps" not in (pkg / "tutorial.py").read_text(encoding="utf-8")
+
+
+def test_enable_tutorial_wires_user_modified_spec(app_dir):
+    """User-edited specs get the kwarg too — other DomainSpec calls untouched."""
+    pkg = _domain_package(app_dir)
+    (pkg / "__init__.py").write_text(
+        "from semente.domain import DomainSpec\n\n"
+        "Other = DomainSpec(name='x')\n\n"
+        "domain_spec = DomainSpec(\n"
+        "    name='test-app',\n"
+        "    tools=[],\n"
+        ")\n",
+        encoding="utf-8",
+    )
+
+    config_cmd.cmd_config_enable("tutorial")
+
+    source = (pkg / "__init__.py").read_text(encoding="utf-8")
+    assert "Other = DomainSpec(name='x')" in source  # untouched
+    assert "get_tutorial=get_tutorial" not in source.split("domain_spec")[0]
+    assert "domain_spec = DomainSpec(\n    name='test-app',\n    tools=[],\n    get_tutorial=get_tutorial,\n)" in source
+
+
+def test_enable_tutorial_one_line_spec(app_dir):
+    """Single-line DomainSpec calls gain an inline kwarg."""
+    pkg = _domain_package(app_dir)
+    (pkg / "__init__.py").write_text(
+        "from semente.domain import DomainSpec\n\n"
+        "domain_spec = DomainSpec(name='test-app', tools=[])\n",
+        encoding="utf-8",
+    )
+
+    config_cmd.cmd_config_enable("tutorial")
+
+    source = (pkg / "__init__.py").read_text(encoding="utf-8")
+    assert "DomainSpec(name='test-app', tools=[], get_tutorial=get_tutorial)" in source
+
+
+def test_enable_tutorial_without_example_module_uses_instructions(app_dir, capsys):
+    """A no-spec domain file: example planted, spec untouched, instructions printed."""
+    pkg = _domain_package(app_dir)
+    (pkg / "__init__.py").write_text(
+        "from semente.domain import DomainSpec\n\n"
+        "spec = DomainSpec(name='x')\n",
+        encoding="utf-8",
+    )
+
+    config_cmd.cmd_config_enable("tutorial")
+    out = capsys.readouterr().out
+
+    assert (pkg / "tutorial.py").exists()  # the example is planted anyway
+    assert "domain_spec = DomainSpec" not in (pkg / "__init__.py").read_text(encoding="utf-8")
+    assert "Manual step: domain/__init__.py does not assign domain_spec" in out
+
+
+def test_enable_tutorial_without_domain_file_keeps_the_flag(app_dir, capsys):
+    """No domain module next to the manifest: flag set + actionable hint."""
+    config_cmd.cmd_config_enable("tutorial")
+    out = capsys.readouterr().out
+
+    assert _manifest(app_dir).features["tutorial"] is True
+    assert "not found next to" in out
+    assert "domain-api.md" in out
+
+
+def test_disable_tutorial_only_flips_the_flag(app_dir, capsys):
+    """Disabling never deletes user code; it notes that."""
+    pkg = _domain_package(app_dir)
+    config_cmd.cmd_config_enable("tutorial")
+    capsys.readouterr()
+
+    config_cmd.cmd_config_disable("tutorial")
+    out = capsys.readouterr().out
+
+    assert _manifest(app_dir).features["tutorial"] is False
+    assert (pkg / "tutorial.py").exists()
+    assert "stays in place" in out
