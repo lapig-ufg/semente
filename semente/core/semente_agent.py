@@ -10,14 +10,14 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
     _input_preprocessing   media -> text, geo files -> GeoJSON (always)
     _redact_pii            PII markers on the consolidated text (pii_guardrail)
     _needs_onboarding      terms + profile gate (always)
-    ├─ True:  _run_welcoming_agent   (terms, persona, tutorial offer)
-    ├─ False: tutorial decided?      (a domain Tutorial via get_tutorial)
-    │    ├─ offer pending -> _run_welcoming_agent (tutorial-offer stage)
-    │    ├─ in progress   -> _run_tutorial_supervisor (grades the message:
+    ├─ True:  _run_welcoming_agent   (terms, persona, supervised_run offer)
+    ├─ False: supervised_run decided?      (a domain SupervisedRun via get_supervised_run)
+    │    ├─ offer pending -> _run_welcoming_agent (supervised_run-offer stage)
+    │    ├─ in progress   -> _run_supervised_run_supervisor (grades the message:
     │    │                   forward -> _run_single_agent with it; else the
     │    │                   supervisor's lesson/coaching is the reply)
-    │    │                -> _check_tutorial_completion (after a forward:
-    │    │                   callable or the tutorial_check_agent judge the
+    │    │                -> _check_supervised_run_completion (after a forward:
+    │    │                   callable or the supervised_run_check_agent judge the
     │    │                   step; met -> advance + announcement appended)
     │    └─ done          -> normal path below
     └─ else:  _summarize_conversation (summarization)
@@ -47,20 +47,20 @@ from typing import Any, Optional
 from semente.backends.base import AgentInput
 from semente.configs.prompts import set_prompts_dir
 from semente.core.types import AgentSession, SessionStore, StepOutput
-from semente.domain.base import Tutorial
+from semente.domain.base import SupervisedRun
 from semente.logging import log_debug, log_error, log_info, log_warning
 from semente.manifest import Manifest
 from semente.schemas.input_manager import InputManager
-from semente.schemas.tutorial import TutorialDecision
+from semente.schemas.supervised_run import SupervisedRunDecision
 from semente.schemas.user_mood import UserMood
 from semente.schemas.user_persona import (
     is_persona_complete,
     is_persona_field_informed,
 )
 from semente.schemas.workflow_state import (
-    TUTORIAL_COMPLETED,
+    SUPERVISED_RUN_COMPLETED,
     WorkflowState,
-    parse_tutorial_state,
+    parse_supervised_run_state,
 )
 from semente.services.session_migration import migrate_session_state
 from semente.tools.types import File
@@ -76,15 +76,15 @@ HISTORY_WINDOW = 4
 _DEFAULT_SATISFACTION = {"level": 3, "level_message": "Neutral (default)"}
 
 
-class TutorialStatus(Enum):
-    """Routing position of the user within the tutorial flow (pipeline-local).
+class SupervisedRunStatus(Enum):
+    """Routing position of the user within the supervised_run flow (pipeline-local).
 
     The in-flight step lives only in the session state; the database holds
     just the final outcome, so the status resolves from the session first
     and the database only while the offer is still unanswered there.
     """
 
-    UNDECIDED = auto()  # tutorial offer still pending -> welcoming agent asks
+    UNDECIDED = auto()  # supervised_run offer still pending -> welcoming agent asks
     RUNNING = auto()  # inside the steps -> the supervisor grades each message
     DONE = auto()  # final outcome reached -> normal path, never asked again
 
@@ -187,17 +187,17 @@ class Semente:
 
     Args:
         agent: The single backend agent built from the DomainSpec.
-        welcoming_agent: The onboarding agent (terms, persona, tutorial offer).
+        welcoming_agent: The onboarding agent (terms, persona, supervised_run offer).
         manifest: The parsed ``semente.yaml`` — name and feature toggles.
         store: Optional :class:`SessionStore` for cross-run persistence.
-        tutorial: The domain's :class:`Tutorial` spec (from ``get_tutorial``) —
+        supervised_run: The domain's :class:`SupervisedRun` spec (from ``get_supervised_run``) —
             the step contents routing and advancing read at every turn.
-            ``None`` = the tutorial feature is fully off.
-        tutorial_agent: The tutorial supervisor (the first agent, above the
-            normal agent) run while the user is inside the tutorial steps.
+            ``None`` = the supervised_run feature is fully off.
+        supervised_run_agent: The supervised_run supervisor (the first agent, above the
+            normal agent) run while the user is inside the supervised_run steps.
             Optional: on evaluator absence the flow fails open to the normal
             path.
-        tutorial_check_agent: The tutorial checkpoint (the second agent) that
+        supervised_run_check_agent: The supervised_run checkpoint (the second agent) that
             judges str ``complete_condition`` of the current step after a
             forwarded turn. Optional: text conditions fail closed without it
             (callables are judged regardless).
@@ -209,15 +209,15 @@ class Semente:
         welcoming_agent: Any,
         manifest: Manifest,
         store: Optional[SessionStore] = None,
-        tutorial: Optional[Tutorial] = None,
-        tutorial_agent: Any = None,
-        tutorial_check_agent: Any = None,
+        supervised_run: Optional[SupervisedRun] = None,
+        supervised_run_agent: Any = None,
+        supervised_run_check_agent: Any = None,
     ):
         self.agent = agent
         self.welcoming_agent = welcoming_agent
-        self.tutorial = tutorial
-        self.tutorial_agent = tutorial_agent
-        self.tutorial_check_agent = tutorial_check_agent
+        self.supervised_run = supervised_run
+        self.supervised_run_agent = supervised_run_agent
+        self.supervised_run_check_agent = supervised_run_check_agent
         self.name = manifest.name
         self.features = manifest.features or {}
         self.store = store
@@ -263,18 +263,18 @@ class Semente:
             user_text = self._redact_pii(user_text)
 
         needs_onboarding = self._needs_onboarding(state, user_id)
-        tutorial_status = (
-            TutorialStatus.UNDECIDED
+        supervised_run_status = (
+            SupervisedRunStatus.UNDECIDED
             if needs_onboarding
-            else self._get_tutorial_status(state, user_id)
+            else self._get_supervised_run_status(state, user_id)
         )
 
-        if needs_onboarding or tutorial_status is TutorialStatus.UNDECIDED:
-            # Onboarding (terms/persona) or the tutorial offer: both are
+        if needs_onboarding or supervised_run_status is SupervisedRunStatus.UNDECIDED:
+            # Onboarding (terms/persona) or the supervised_run offer: both are
             # welcoming agent stages, resolved from the session state.
             final = self._run_welcoming_agent(session, user_text, images, audio)
-        elif tutorial_status is TutorialStatus.RUNNING:
-            final = self._run_tutorial_supervisor(
+        elif supervised_run_status is SupervisedRunStatus.RUNNING:
+            final = self._run_supervised_run_supervisor(
                 session, user_text, images, audio, geo_files, user_id
             )
         else:
@@ -510,65 +510,65 @@ class Semente:
             db_session.close()
 
     # ------------------------------------------------------------------
-    # Tutorial gate
+    # SupervisedRun gate
     # ------------------------------------------------------------------
 
-    def _get_tutorial_status(self, state: dict, user_id: Optional[str]) -> TutorialStatus:
-        """Resolve where the user stands in the tutorial flow.
+    def _get_supervised_run_status(self, state: dict, user_id: Optional[str]) -> SupervisedRunStatus:
+        """Resolve where the user stands in the supervised_run flow.
 
         The in-flight step lives only in the session state
-        (``workflow_state.tutorial_state`` — 0-based index or
+        (``workflow_state.supervised_run_state`` — 0-based index or
         ``COMPLETED``); the database holds just the final outcome (one row
-        once the user declined, abandoned or completed the tutorial), so the
+        once the user declined, abandoned or completed the supervised_run), so the
         lookup happens only while the session has no decision. When the row
         exists, it is mirrored into the session state so the rest of the run
         sees the final state without another query — the same
         hydrate-on-the-way-out pattern of the onboarding gate.
 
-        Without a ``Tutorial`` spec the feature is off: DONE without ever
+        Without a ``SupervisedRun`` spec the feature is off: DONE without ever
         touching the database.
         """
-        if self.tutorial is None:
-            # Feature off (no get_tutorial, disabled by the manifest or
+        if self.supervised_run is None:
+            # Feature off (no get_supervised_run, disabled by the manifest or
             # misconfigured): the normal path, silently.
-            return TutorialStatus.DONE
+            return SupervisedRunStatus.DONE
 
-        parse_limit = len(self.tutorial.steps)
-        parsed = parse_tutorial_state((state.get("workflow_state") or {}).get("tutorial_state"))
+        parse_limit = len(self.supervised_run.steps)
+        parsed = parse_supervised_run_state((state.get("workflow_state") or {}).get("supervised_run_state"))
 
-        if parsed == TUTORIAL_COMPLETED:
-            return TutorialStatus.DONE
+        if parsed == SUPERVISED_RUN_COMPLETED:
+            return SupervisedRunStatus.DONE
 
         if parsed is not None and int(parsed) < parse_limit:
-            return TutorialStatus.RUNNING
+            return SupervisedRunStatus.RUNNING
 
         user_id = user_id or state.get("user_id")
         if not user_id:
-            return TutorialStatus.UNDECIDED
+            return SupervisedRunStatus.UNDECIDED
 
-        from semente.database.models import UserTutorialProgress
+        from semente.database.models import UserSupervisedRunProgress
         from semente.database.session import SessionLocal
 
         db_session = SessionLocal()
         try:
-            record = db_session.query(UserTutorialProgress).filter(
-                UserTutorialProgress.user_id == user_id,
-                UserTutorialProgress.completed == True,  # noqa: E712
+            record = db_session.query(UserSupervisedRunProgress).filter(
+                UserSupervisedRunProgress.user_id == user_id,
+                UserSupervisedRunProgress.completed == True,  # noqa: E712
             ).first()
 
             if record is None:
-                return TutorialStatus.UNDECIDED
+                return SupervisedRunStatus.UNDECIDED
 
-            state.setdefault("workflow_state", {})["tutorial_state"] = TUTORIAL_COMPLETED
-            return TutorialStatus.DONE
+            state.setdefault("workflow_state", {})["supervised_run_state"] = SUPERVISED_RUN_COMPLETED
+            return SupervisedRunStatus.DONE
         finally:
             db_session.close()
 
     # ------------------------------------------------------------------
-    # Tutorial stages
+    # SupervisedRun stages
     # ------------------------------------------------------------------
 
-    def _run_tutorial_supervisor(
+    def _run_supervised_run_supervisor(
         self,
         session: AgentSession,
         user_text: str,
@@ -577,25 +577,25 @@ class Semente:
         geo_files: Optional[list[File]],
         user_id: str,
     ) -> StepOutput:
-        """Grade the user's message with the tutorial supervisor and apply its decision.
+        """Grade the user's message with the supervised_run supervisor and apply its decision.
 
-        The tutorial branch skips the summarization/feedback staging (the
-        tutorial interactions are not about the real conversation): when the
+        The supervised_run branch skips the summarization/feedback staging (the
+        supervised_run interactions are not about the real conversation): when the
         supervisor forwards, the normal agent answers exactly as it would
-        outside the tutorial — and the current step's completion is then
+        outside the supervised_run — and the current step's completion is then
         judged (checkpoint agent for ``str`` conditions, direct call for
         callables), advancing the step and appending its announcement when
         met. Otherwise the supervisor's lesson/coaching is the reply. On
         evaluator failure the normal agent runs — the user is never stuck on
-        the tutorial's account.
+        the supervised_run's account.
         """
         state = session.session_state
         agent_input = self._build_agent_input(session, user_text, state)
 
-        if self.tutorial_agent is None:
+        if self.supervised_run_agent is None:
             # Degraded mode (no supervisor built): behave as the plain flow,
             # with a warning instead of an error every turn.
-            log_warning("_run_tutorial_supervisor: no tutorial agent configured; forwarding")
+            log_warning("_run_supervised_run_supervisor: no supervised_run agent configured; forwarding")
             return self._run_single_agent(agent_input, images, audio, geo_files, state, user_id)
 
         if geo_files:
@@ -603,7 +603,7 @@ class Semente:
             # explicit so it can judge a "send a geo file" step correctly
             # (when forwarding, the files still go to the normal agent).
             # The wording is a localized prompt key, not a hardcoded string.
-            from semente.agents.tutorial_agent import build_geo_attachment_note
+            from semente.agents.supervised_run_agent import build_geo_attachment_note
 
             agent_input = "\n".join(
                 part
@@ -615,9 +615,9 @@ class Semente:
             )
 
         turn = None
-        decision: Optional[TutorialDecision] = None
+        decision: Optional[SupervisedRunDecision] = None
         try:
-            turn = self.tutorial_agent.run(
+            turn = self.supervised_run_agent.run(
                 AgentInput(
                     text=agent_input,
                     images=None,
@@ -628,26 +628,26 @@ class Semente:
                 )
             )
             if turn and turn.structured:
-                decision = TutorialDecision.model_validate(turn.structured)
+                decision = SupervisedRunDecision.model_validate(turn.structured)
         except Exception as exc:
-            log_error(f"tutorial supervisor failed: {exc}")
+            log_error(f"supervised_run supervisor failed: {exc}")
 
         if decision is None:
-            # Fail-open: never trap the user inside the tutorial because the
+            # Fail-open: never trap the user inside the supervised_run because the
             # supervisor (or its structured output) was unavailable.
-            log_debug("_run_tutorial_supervisor: no decision, forwarding to the normal agent")
+            log_debug("_run_supervised_run_supervisor: no decision, forwarding to the normal agent")
             return self._run_single_agent(agent_input, images, audio, geo_files, state, user_id)
 
-        if decision.abandon_tutorial:
-            self._close_tutorial(state, user_id)
-            log_debug("_run_tutorial_supervisor: tutorial abandoned by the user")
+        if decision.abandon_supervised_run:
+            self._close_supervised_run(state, user_id)
+            log_debug("_run_supervised_run_supervisor: supervised_run abandoned by the user")
             return StepOutput(content=decision.content or "")
 
         if decision.forward:
             output = self._run_single_agent(
                 agent_input, images, audio, geo_files, state, user_id
             )
-            announcement = self._check_tutorial_completion(
+            announcement = self._check_supervised_run_completion(
                 state, user_text, output.content, user_id
             )
             if announcement:
@@ -656,59 +656,59 @@ class Semente:
                 )
             return output
 
-        # The tutorial spoke: the lesson/coaching is the reply (the
+        # The supervised_run spoke: the lesson/coaching is the reply (the
         # supervisor is a text-only decision agent, so its media turns are
         # ignored).
         workflow_state = state.setdefault("workflow_state", {})
-        workflow_state["tutorial_intro_sent"] = True
+        workflow_state["supervised_run_intro_sent"] = True
         return StepOutput(content=decision.content or "")
 
     # ------------------------------------------------------------------
-    # Tutorial completion checkpoint
+    # SupervisedRun completion checkpoint
     # ------------------------------------------------------------------
 
-    def _check_tutorial_completion(
+    def _check_supervised_run_completion(
         self, state: dict, user_text: str, reply: str, user_id: Optional[str]
     ) -> Optional[str]:
         """Judge the current step's ``complete_condition`` after a forwarded answer.
 
         A callable condition runs with ``(session_state, user_text,
         agent_reply)``; a ``str`` condition goes to the checkpoint agent
-        (``semente.agents.tutorial_check_agent``). Fail-closed by design: an
+        (``semente.agents.supervised_run_check_agent``). Fail-closed by design: an
         error, an absent checkpoint or a negative/unparsable verdict never
         advance the step. On completion the step advances here and the
         announcement to append to the reply is returned (``None`` otherwise).
         """
         workflow_state = state.get("workflow_state") or {}
-        parsed = parse_tutorial_state(workflow_state.get("tutorial_state"))
-        if self.tutorial is None or parsed is None or parsed == TUTORIAL_COMPLETED:
+        parsed = parse_supervised_run_state(workflow_state.get("supervised_run_state"))
+        if self.supervised_run is None or parsed is None or parsed == SUPERVISED_RUN_COMPLETED:
             return None
 
-        condition = self.tutorial.steps[int(parsed)].complete_condition
+        condition = self.supervised_run.steps[int(parsed)].complete_condition
 
         if callable(condition):
             try:
                 completed = bool(condition(state, user_text, reply))
             except Exception as exc:
-                log_warning(f"_check_tutorial_completion: callable check failed: {exc}")
+                log_warning(f"_check_supervised_run_completion: callable check failed: {exc}")
                 completed = False
         else:
             completed = self._run_completion_check(condition, user_text, reply, state, user_id)
 
         if not completed:
             return None
-        return self._advance_tutorial_step(state, user_id)
+        return self._advance_supervised_run_step(state, user_id)
 
     def _run_completion_check(
         self, condition: str, user_text: str, reply: str, state: dict, user_id: Optional[str]
     ) -> bool:
         """A ``str`` condition judged by the checkpoint agent (fail-closed)."""
-        from semente.agents.tutorial_agent import (
+        from semente.agents.supervised_run_agent import (
             completion_payload,
             parse_completion_check,
         )
 
-        if self.tutorial_check_agent is None:
+        if self.supervised_run_check_agent is None:
             log_debug(
                 "_run_completion_check: no checkpoint agent wired for a str condition; "
                 "not completed"
@@ -716,7 +716,7 @@ class Semente:
             return False
 
         try:
-            turn = self.tutorial_check_agent.run(
+            turn = self.supervised_run_check_agent.run(
                 AgentInput(
                     text=completion_payload(user_text, reply),
                     images=None,
@@ -731,51 +731,51 @@ class Semente:
             return False
         return parse_completion_check(turn)
 
-    def _advance_tutorial_step(self, state: dict, user_id: Optional[str]) -> Optional[str]:
-        """Move the tutorial to the next step; returns the announcement to append.
+    def _advance_supervised_run_step(self, state: dict, user_id: Optional[str]) -> Optional[str]:
+        """Move the supervised_run to the next step; returns the announcement to append.
 
         From the CURRENT (pre-advance) position: advancing past the last step
-        closes the tutorial for good (final state + persisted row) and the
+        closes the supervised_run for good (final state + persisted row) and the
         announcement is the closing; any other step sets its index in the
         session state and the announcement is the framework congrats with the
         NEXT step's lesson embedded (each new lesson arrives announced, so the
         new step is born with it delivered for the supervisor's routing).
-        The step count comes from the domain's ``Tutorial`` spec — a spec of
+        The step count comes from the domain's ``SupervisedRun`` spec — a spec of
         any length advances the same way (and without one, "done" simply
-        closes the tutorial).
+        closes the supervised_run).
 
         Returns ``None`` when nothing advanced (no spec, no parsable position,
         already COMPLETED) — never crashes a turn.
         """
-        from semente.agents.tutorial_agent import build_completion_announcement
-        from semente.tools.tutorial_tools import set_session_tutorial_state
+        from semente.agents.supervised_run_agent import build_completion_announcement
+        from semente.tools.supervised_run_tools import set_session_supervised_run_state
 
-        if self.tutorial is None:
-            self._close_tutorial(state, user_id)
+        if self.supervised_run is None:
+            self._close_supervised_run(state, user_id)
             return None
 
         workflow_state = state.get("workflow_state") or {}
-        parsed = parse_tutorial_state(workflow_state.get("tutorial_state"))
-        if parsed is None or parsed == TUTORIAL_COMPLETED:
+        parsed = parse_supervised_run_state(workflow_state.get("supervised_run_state"))
+        if parsed is None or parsed == SUPERVISED_RUN_COMPLETED:
             return None
 
-        announcement = build_completion_announcement(self.tutorial, state)
+        announcement = build_completion_announcement(self.supervised_run, state)
         next_index = int(parsed) + 1
 
-        if next_index >= len(self.tutorial.steps):
-            self._close_tutorial(state, user_id)
+        if next_index >= len(self.supervised_run.steps):
+            self._close_supervised_run(state, user_id)
             return announcement
 
         # The announcement carries the next step's lesson already — the new
         # step is born lesson-delivered (the supervisor does not repeat it).
-        set_session_tutorial_state(state, next_index, intro_sent=True)
+        set_session_supervised_run_state(state, next_index, intro_sent=True)
         return announcement
 
-    def _close_tutorial(self, state: dict, user_id: Optional[str]) -> None:
-        """End the tutorial flow: final state in the session + persisted row."""
-        from semente.tools.tutorial_tools import mark_tutorial_completed
+    def _close_supervised_run(self, state: dict, user_id: Optional[str]) -> None:
+        """End the supervised_run flow: final state in the session + persisted row."""
+        from semente.tools.supervised_run_tools import mark_supervised_run_completed
 
-        mark_tutorial_completed(state, user_id)
+        mark_supervised_run_completed(state, user_id)
 
     # ------------------------------------------------------------------
     # Agent stages
@@ -788,7 +788,7 @@ class Semente:
         images: Optional[list],
         audio: Optional[list],
     ) -> StepOutput:
-        """Run the staged welcoming agent (terms, persona, tutorial offer)."""
+        """Run the staged welcoming agent (terms, persona, supervised_run offer)."""
         return self._invoke_agent(
             self.welcoming_agent,
             self._build_agent_input(session, user_text, session.session_state),
@@ -1389,30 +1389,30 @@ def get_agent(manifest_path: str | None = None) -> Semente:
         domain_spec = _load_domain(manifest)
 
     from semente.agents.build_agent import build_agent
-    from semente.agents.tutorial_agent import (
-        build_tutorial_agent,
-        build_tutorial_check_agent,
-        resolve_tutorial,
+    from semente.agents.supervised_run_agent import (
+        build_supervised_run_agent,
+        build_supervised_run_check_agent,
+        resolve_supervised_run,
     )
     from semente.agents.welcoming_agent import build_welcoming_agent
     from semente.database.session_store import store
 
     agent = build_agent(domain_spec, manifest)
-    tutorial = resolve_tutorial(domain_spec, manifest)
+    supervised_run = resolve_supervised_run(domain_spec, manifest)
     welcoming_agent = build_welcoming_agent(
-        tutorial=tutorial,
+        supervised_run=supervised_run,
         tts_enabled=manifest.features.get("tts", True),
     )
-    tutorial_agent = build_tutorial_agent(tutorial) if tutorial is not None else None
-    tutorial_check_agent = (
-        build_tutorial_check_agent(tutorial) if tutorial is not None else None
+    supervised_run_agent = build_supervised_run_agent(supervised_run) if supervised_run is not None else None
+    supervised_run_check_agent = (
+        build_supervised_run_check_agent(supervised_run) if supervised_run is not None else None
     )
     _agent_cache = Semente(
         agent=agent,
         welcoming_agent=welcoming_agent,
-        tutorial=tutorial,
-        tutorial_agent=tutorial_agent,
-        tutorial_check_agent=tutorial_check_agent,
+        supervised_run=supervised_run,
+        supervised_run_agent=supervised_run_agent,
+        supervised_run_check_agent=supervised_run_check_agent,
         manifest=manifest,
         store=store,
     )

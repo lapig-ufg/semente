@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--force", action="store_true", help="Overwrite existing files")
     init.add_argument("--non-interactive", action="store_true", help="Never prompt (use defaults)")
     init.add_argument(
-        "--tutorial", action="store_true", help="Include the guided-tutorial example (domain/tutorial.py)"
+        "--supervised-run", action="store_true", help="Include the guided supervised run example (domain/supervised_run.py)"
     )
 
     # --- config ---------------------------------------------------------------
@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     enable = config_sub.add_parser("enable", help="Enable a feature")
     enable.add_argument("feature", choices=KNOWN_FEATURES)
-    enable.add_argument("--force", action="store_true", help="Overwrite the example files (tutorial)")
+    enable.add_argument("--force", action="store_true", help="Overwrite the example files")
 
     disable = config_sub.add_parser("disable", help="Disable a feature")
     disable.add_argument("feature", choices=KNOWN_FEATURES)
@@ -106,7 +106,7 @@ def main() -> None:
                 provider=args.provider,
                 force=args.force,
                 non_interactive=args.non_interactive,
-                tutorial=args.tutorial,
+                supervised_run=args.supervised_run,
             )
         )
     elif args.command == "config":

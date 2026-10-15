@@ -72,21 +72,21 @@ from semente.skills import load_skills
 skills = load_skills("domain/skills/my_skill")  # None if invalid/absent
 ```
 
-## `Tutorial` — declare the guided tutorial
+## `SupervisedRun` — declare the guided supervised run
 
-A domain may ship a guided tutorial by supplying `get_tutorial` on the
-`DomainSpec`: a factory returning a :class:`Tutorial` — the step count,
+A domain may ship a guided supervised run by supplying `get_supervised_run` on the
+`DomainSpec`: a factory returning a :class:`SupervisedRun` — the step count,
 each step's teaching, its forward condition and its completion condition.
-When it is absent (or `features.tutorial` is false in the manifest), the
+When it is absent (or `features.supervised_run` is false in the manifest), the
 feature is fully off: no offer, no supervisor, no checkpoint.
 
 ```python
-from semente.domain import DomainSpec, Tutorial, TutorialStep
+from semente.domain import DomainSpec, SupervisedRun, SupervisedRunStep
 
-def get_tutorial() -> Tutorial:
-    return Tutorial(
+def get_supervised_run() -> SupervisedRun:
+    return SupervisedRun(
         steps=[
-            TutorialStep(
+            SupervisedRunStep(
                 id="registration",
                 lesson="…what this step teaches and the action to take…",
                 forward_condition="…what counts as doing the step…",
@@ -95,7 +95,7 @@ def get_tutorial() -> Tutorial:
                 # complete_condition=lambda session_state, user_text,
                 #     agent_reply: bool(session_state.get("my_result")),
             ),
-            TutorialStep(
+            SupervisedRunStep(
                 id="analyses",
                 lesson="…",
                 forward_condition="…",
@@ -110,27 +110,27 @@ def get_tutorial() -> Tutorial:
 domain_spec = DomainSpec(
     name="My App",
     tools=[...],
-    get_tutorial=get_tutorial,
+    get_supervised_run=get_supervised_run,
 )
 ```
 
 The framework owns the machinery:
 
-- **Supervisor** (contract in `prompts/agents.yml` under `tutorial_agent`) —
+- **Supervisor** (contract in `prompts/agents.yml` under `supervised_run_agent`) —
   grades every user message against the current step's `forward_condition`
   (forward to the real assistant) or teaches (`lesson`).
-- **Checkpoint** (`tutorial_check_agent` in `agents.yml`) — after every
+- **Checkpoint** (`supervised_run_check_agent` in `agents.yml`) — after every
   forwarded turn, a `str` `complete_condition` is judged from the
   conversation and the real assistant's reply (structured verdict,
   fail-closed); a callable `complete_condition(session_state, user_text,
   agent_reply)` is executed by the pipeline directly.
 - **Advancing** — when the condition is met, the step advances and the
   framework appends the congrats plus the NEXT step's `lesson` (or the
-  `closing`) to the same reply; the last step closes the tutorial for good.
+  `closing`) to the same reply; the last step closes the supervised run for good.
 
 The fastest way to seed the example is the CLI:
-`semente config enable tutorial` plants a working `domain/tutorial.py` and
-wires `get_tutorial=get_tutorial` into your `DomainSpec` (when it can do so
+`semente config enable supervised_run` plants a working `domain/supervised_run.py` and
+wires `get_supervised_run=get_supervised_run` into your `DomainSpec` (when it can do so
 safely; it always prints what it did).
 
 ## `Calculator`

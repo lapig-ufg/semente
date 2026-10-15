@@ -111,7 +111,7 @@ def test_semente_manifest_env_var_wins(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------
-# Tutorial enablement: flag + scaffolded get_tutorial example
+# SupervisedRun enablement: flag + scaffolded get_supervised_run example
 # ---------------------------------------------------------------------
 
 
@@ -125,65 +125,65 @@ def _domain_package(app_dir, name="test-app"):
     return pkg
 
 
-def test_enable_tutorial_scaffolds_example_and_wires(app_dir):
+def test_enable_supervised_run_scaffolds_example_and_wires(app_dir):
     pkg = _domain_package(app_dir)
-    config_cmd.cmd_config_enable("tutorial")
+    config_cmd.cmd_config_enable("supervised_run")
 
-    assert _manifest(app_dir).features["tutorial"] is True
+    assert _manifest(app_dir).features["supervised_run"] is True
 
     init_py = (pkg / "__init__.py").read_text(encoding="utf-8")
-    assert "from .tutorial import get_tutorial" in init_py
-    assert "get_tutorial=get_tutorial" in init_py
-    assert (pkg / "tutorial.py").read_text(encoding="utf-8").count("TutorialStep(") == 2
+    assert "from .supervised_run import get_supervised_run" in init_py
+    assert "get_supervised_run=get_supervised_run" in init_py
+    assert (pkg / "supervised_run.py").read_text(encoding="utf-8").count("SupervisedRunStep(") == 2
 
 
-def test_enabled_tutorial_example_imports_and_runs(app_dir):
-    """The scaffolded example is real code: importable and returns a Tutorial."""
+def test_enabled_supervised_run_example_imports_and_runs(app_dir):
+    """The scaffolded example is real code: importable and returns a SupervisedRun."""
     import importlib
 
-    from semente.domain import Tutorial
+    from semente.domain import SupervisedRun
 
     _domain_package(app_dir)
-    config_cmd.cmd_config_enable("tutorial")
+    config_cmd.cmd_config_enable("supervised_run")
 
     sys.modules.pop("domain", None)
     sys.path.insert(0, str(app_dir))
     try:
         domain = importlib.import_module("domain")
-        tutorial = domain.get_tutorial()
-        assert isinstance(tutorial, Tutorial)
-        assert len(tutorial.steps) == 2
-        assert domain.domain_spec.get_tutorial is domain.get_tutorial
+        supervised_run = domain.get_supervised_run()
+        assert isinstance(supervised_run, SupervisedRun)
+        assert len(supervised_run.steps) == 2
+        assert domain.domain_spec.get_supervised_run is domain.get_supervised_run
     finally:
         if str(app_dir) in sys.path:
             sys.path.remove(str(app_dir))
         sys.modules.pop("domain", None)
 
 
-def test_enable_tutorial_idempotent(app_dir, capsys):
+def test_enable_supervised_run_idempotent(app_dir, capsys):
     pkg = _domain_package(app_dir)
-    config_cmd.cmd_config_enable("tutorial")
+    config_cmd.cmd_config_enable("supervised_run")
     init_source = (pkg / "__init__.py").read_text(encoding="utf-8")
     capsys.readouterr()
 
-    config_cmd.cmd_config_enable("tutorial")
+    config_cmd.cmd_config_enable("supervised_run")
     out = capsys.readouterr().out
 
     assert "kept" in out and "already wired" in out
     assert (pkg / "__init__.py").read_text(encoding="utf-8") == init_source
 
 
-def test_enable_tutorial_force_overwrites_the_example(app_dir):
+def test_enable_supervised_run_force_overwrites_the_example(app_dir):
     pkg = _domain_package(app_dir)
-    config_cmd.cmd_config_enable("tutorial")
-    (pkg / "tutorial.py").write_text("# my custom steps\n", encoding="utf-8")
+    config_cmd.cmd_config_enable("supervised_run")
+    (pkg / "supervised_run.py").write_text("# my custom steps\n", encoding="utf-8")
 
-    config_cmd.cmd_config_enable("tutorial", force=True)
+    config_cmd.cmd_config_enable("supervised_run", force=True)
 
-    assert "# my custom steps" not in (pkg / "tutorial.py").read_text(encoding="utf-8")
+    assert "# my custom steps" not in (pkg / "supervised_run.py").read_text(encoding="utf-8")
 
 
-def test_enable_tutorial_wires_user_modified_spec(app_dir):
+def test_enable_supervised_run_wires_user_modified_spec(app_dir):
     """User-edited specs get the kwarg too — other DomainSpec calls untouched."""
     pkg = _domain_package(app_dir)
     (pkg / "__init__.py").write_text(
@@ -196,15 +196,15 @@ def test_enable_tutorial_wires_user_modified_spec(app_dir):
         encoding="utf-8",
     )
 
-    config_cmd.cmd_config_enable("tutorial")
+    config_cmd.cmd_config_enable("supervised_run")
 
     source = (pkg / "__init__.py").read_text(encoding="utf-8")
     assert "Other = DomainSpec(name='x')" in source  # untouched
-    assert "get_tutorial=get_tutorial" not in source.split("domain_spec")[0]
-    assert "domain_spec = DomainSpec(\n    name='test-app',\n    tools=[],\n    get_tutorial=get_tutorial,\n)" in source
+    assert "get_supervised_run=get_supervised_run" not in source.split("domain_spec")[0]
+    assert "domain_spec = DomainSpec(\n    name='test-app',\n    tools=[],\n    get_supervised_run=get_supervised_run,\n)" in source
 
 
-def test_enable_tutorial_one_line_spec(app_dir):
+def test_enable_supervised_run_one_line_spec(app_dir):
     """Single-line DomainSpec calls gain an inline kwarg."""
     pkg = _domain_package(app_dir)
     (pkg / "__init__.py").write_text(
@@ -213,13 +213,13 @@ def test_enable_tutorial_one_line_spec(app_dir):
         encoding="utf-8",
     )
 
-    config_cmd.cmd_config_enable("tutorial")
+    config_cmd.cmd_config_enable("supervised_run")
 
     source = (pkg / "__init__.py").read_text(encoding="utf-8")
-    assert "DomainSpec(name='test-app', tools=[], get_tutorial=get_tutorial)" in source
+    assert "DomainSpec(name='test-app', tools=[], get_supervised_run=get_supervised_run)" in source
 
 
-def test_enable_tutorial_without_example_module_uses_instructions(app_dir, capsys):
+def test_enable_supervised_run_without_example_module_uses_instructions(app_dir, capsys):
     """A no-spec domain file: example planted, spec untouched, instructions printed."""
     pkg = _domain_package(app_dir)
     (pkg / "__init__.py").write_text(
@@ -228,33 +228,33 @@ def test_enable_tutorial_without_example_module_uses_instructions(app_dir, capsy
         encoding="utf-8",
     )
 
-    config_cmd.cmd_config_enable("tutorial")
+    config_cmd.cmd_config_enable("supervised_run")
     out = capsys.readouterr().out
 
-    assert (pkg / "tutorial.py").exists()  # the example is planted anyway
+    assert (pkg / "supervised_run.py").exists()  # the example is planted anyway
     assert "domain_spec = DomainSpec" not in (pkg / "__init__.py").read_text(encoding="utf-8")
     assert "Manual step: domain/__init__.py does not assign domain_spec" in out
 
 
-def test_enable_tutorial_without_domain_file_keeps_the_flag(app_dir, capsys):
+def test_enable_supervised_run_without_domain_file_keeps_the_flag(app_dir, capsys):
     """No domain module next to the manifest: flag set + actionable hint."""
-    config_cmd.cmd_config_enable("tutorial")
+    config_cmd.cmd_config_enable("supervised_run")
     out = capsys.readouterr().out
 
-    assert _manifest(app_dir).features["tutorial"] is True
+    assert _manifest(app_dir).features["supervised_run"] is True
     assert "not found next to" in out
     assert "domain-api.md" in out
 
 
-def test_disable_tutorial_only_flips_the_flag(app_dir, capsys):
+def test_disable_supervised_run_only_flips_the_flag(app_dir, capsys):
     """Disabling never deletes user code; it notes that."""
     pkg = _domain_package(app_dir)
-    config_cmd.cmd_config_enable("tutorial")
+    config_cmd.cmd_config_enable("supervised_run")
     capsys.readouterr()
 
-    config_cmd.cmd_config_disable("tutorial")
+    config_cmd.cmd_config_disable("supervised_run")
     out = capsys.readouterr().out
 
-    assert _manifest(app_dir).features["tutorial"] is False
-    assert (pkg / "tutorial.py").exists()
+    assert _manifest(app_dir).features["supervised_run"] is False
+    assert (pkg / "supervised_run.py").exists()
     assert "stays in place" in out

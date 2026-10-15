@@ -20,14 +20,14 @@ features:
   tts: true
   feedback_workflow: true
   summarization: true
-  pii_guardrail: true{tutorial_feature_block}
+  pii_guardrail: true{supervised_run_feature_block}
 models:
   primary:
     provider: {provider}
     id: {model_id}
 """
 
-TUTORIAL_FEATURE_BLOCK = "\n  tutorial: true"
+SUPERVISED_RUN_FEATURE_BLOCK = "\n  supervised_run: true"
 
 _ENV_MODEL_BLOCK = {
     "google": """\
@@ -111,16 +111,16 @@ domain_spec = DomainSpec(
 )
 '''
 
-TUTORIAL_TEMPLATE = '''\
-"""{name}'s guided tutorial — returned by the ``get_tutorial`` seam.
+SUPERVISED_RUN_TEMPLATE = '''\
+"""{name}'s guided supervised_run — returned by the ``get_supervised_run`` seam.
 
-The framework owns the machinery: the welcoming agent offers the tutorial
-and records the choice; a supervisor (the first tutorial agent) grades every
+The framework owns the machinery: the welcoming agent offers the supervised_run
+and records the choice; a supervisor (the first supervised_run agent) grades every
 message against the step's ``forward_condition`` — the real assistant does
 the work when it forwards; after its reply the step's
 ``complete_condition`` decides the move to the next step; the final outcome
 is persisted. This object owns the content: how many steps and what each
-one teaches. ``get_tutorial`` is passed to the DomainSpec in this package
+one teaches. ``get_supervised_run`` is passed to the DomainSpec in this package
 and that is the whole contract — edit the steps freely, they are plain
 English (or your users' language).
 
@@ -142,18 +142,18 @@ Each step:
 
 The framework appends the congrats + the NEXT step's lesson (or the
 closing) to the reply when a step completes. Customize the optional
-``offer``/``closing``/``abandon`` texts on the Tutorial object when wanted
+``offer``/``closing``/``abandon`` texts on the SupervisedRun object when wanted
 (None keeps the framework defaults).
 """
 
-from semente.domain import Tutorial, TutorialStep
+from semente.domain import SupervisedRun, SupervisedRunStep
 
 
-def get_tutorial() -> Tutorial:
-    """The guided-tutorial spec — any number of steps, listed in order."""
-    return Tutorial(
+def get_supervised_run() -> SupervisedRun:
+    """The guided-supervised_run spec — any number of steps, listed in order."""
+    return SupervisedRun(
         steps=[
-            TutorialStep(
+            SupervisedRunStep(
                 id="first-step",
                 lesson=(
                     "Teach the user the concrete action of this first step "
@@ -169,7 +169,7 @@ def get_tutorial() -> Tutorial:
                     "this step's final result was delivered to the user."
                 ),
             ),
-            TutorialStep(
+            SupervisedRunStep(
                 id="second-step",
                 lesson=(
                     "Teach the user the next thing {name} does and give one "
@@ -189,12 +189,12 @@ def get_tutorial() -> Tutorial:
                 #     agent_reply: bool(session_state.get("my_tool_result")),
                 # Use any key your tools write to session_state.
             ),
-            # Add or remove TutorialStep entries as needed — the count is
-            # yours; the tutorial is as short or long as this list.
+            # Add or remove SupervisedRunStep entries as needed — the count is
+            # yours; the supervised_run is as short or long as this list.
         ],
         # offer=None,     # custom text for the welcoming agent's ask
         # closing=None,   # custom final message after the last step
-        # abandon=None,   # custom reply when the user leaves the tutorial early
+        # abandon=None,   # custom reply when the user leaves the supervised_run early
     )
 '''
 

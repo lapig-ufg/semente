@@ -15,8 +15,8 @@ from typing import Any, Callable, Optional
 
 
 @dataclass
-class TutorialStep:
-    """One guided step of a :class:`Tutorial` — its teaching and its rules.
+class SupervisedRunStep:
+    """One guided step of a :class:`SupervisedRun` — its teaching and its rules.
 
     Attributes:
         id: Stable short key (e.g. ``"registration"``) — it labels the step
@@ -42,28 +42,28 @@ class TutorialStep:
 
 
 @dataclass
-class Tutorial:
-    """The guided-tutorial specification a domain provides via ``get_tutorial``.
+class SupervisedRun:
+    """The guided-supervised_run specification a domain provides via ``get_supervised_run``.
 
-    The framework owns the tutorial machinery (routing, the supervisor agent,
+    The framework owns the supervised_run machinery (routing, the supervisor agent,
     the completion checkpoint, step advancing, persistence of the final
     outcome); this object owns the content — the number of steps and what
-    each one teaches. The generic prompts (the ``tutorial_agent`` and
-    ``tutorial_check_agent`` contracts in ``agents.yml`` and the welcoming
-    agent's tutorial-offer stage) are formatted with these texts.
+    each one teaches. The generic prompts (the ``supervised_run_agent`` and
+    ``supervised_run_check_agent`` contracts in ``agents.yml`` and the welcoming
+    agent's supervised_run-offer stage) are formatted with these texts.
 
     Attributes:
-        steps: The ordered steps — any count; the tutorial is as short or
+        steps: The ordered steps — any count; the supervised_run is as short or
             long as this list.
         offer: Optional custom text for the welcoming agent's ask (the
             default is built from the step ids).
         closing: Optional final message after the last step concludes (a
             generic default ships in ``agents.yml``).
-        abandon: Optional reply when the user leaves the tutorial early (a
+        abandon: Optional reply when the user leaves the supervised_run early (a
             generic default ships in ``agents.yml``).
     """
 
-    steps: list[TutorialStep]
+    steps: list[SupervisedRunStep]
     offer: Optional[str] = None
     closing: Optional[str] = None
     abandon: Optional[str] = None
@@ -84,10 +84,10 @@ class DomainSpec:
         instructions: Optional callable ``(run_context) -> str`` for domain-specific
             dynamic instructions. When None, a generic builder (persona + context
             blocks + ``instructions_default``) is used.
-        get_tutorial: Optional callable ``() -> Tutorial`` describing the guided
-            tutorial's steps (count, lesson, right path, completion). When None
-            — or when ``features.tutorial`` is false in the manifest — the
-            tutorial feature is fully off (no offer, no supervisor, no gate).
+        get_supervised_run: Optional callable ``() -> SupervisedRun`` describing the guided
+            supervised_run's steps (count, lesson, right path, completion). When None
+            — or when ``features.supervised_run`` is false in the manifest — the
+            supervised_run feature is fully off (no offer, no supervisor, no gate).
     """
 
     name: str
@@ -96,4 +96,4 @@ class DomainSpec:
     skills: Any = None
     agent_config: str = "single_agent"
     instructions: Optional[Callable] = None
-    get_tutorial: Optional[Callable] = None
+    get_supervised_run: Optional[Callable] = None

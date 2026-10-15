@@ -1,13 +1,13 @@
 """Canonical workflow-state sub-dict persisted inside the session state.
 
 ``WorkflowState`` lives in ``session_state["workflow_state"]``, which is
-stored in a JSON column — so the tutorial position is written as a plain
-string and parsed back with :func:`parse_tutorial_state`.
+stored in a JSON column — so the supervised_run position is written as a plain
+string and parsed back with :func:`parse_supervised_run_state`.
 
-The tutorial position is generic (the step count comes from the domain's
-``Tutorial`` object):
+The supervised_run position is generic (the step count comes from the domain's
+``SupervisedRun`` object):
 
-    ``None``         -> the tutorial offer is still unanswered
+    ``None``         -> the supervised_run offer is still unanswered
     ``"0"``, ``"1"`` -> the 0-based index of the step the user is in
     ``"COMPLETED"``  -> the terminal outcome (declined, abandoned or finished)
 """
@@ -17,12 +17,12 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 # Terminal sentinel persisted in both the session state and (via
-# ``mark_tutorial_completed``) the database: the flow never re-opens for it.
-TUTORIAL_COMPLETED = "COMPLETED"
+# ``mark_supervised_run_completed``) the database: the flow never re-opens for it.
+SUPERVISED_RUN_COMPLETED = "COMPLETED"
 
 
-def parse_tutorial_state(value) -> Optional[str]:
-    """Parse/validate the persisted ``tutorial_state``.
+def parse_supervised_run_state(value) -> Optional[str]:
+    """Parse/validate the persisted ``supervised_run_state``.
 
     Accepts the terminal sentinel, a non-negative step index (int or its
     decimal string) and ``None``/empty (flow not started); anything else
@@ -36,8 +36,8 @@ def parse_tutorial_state(value) -> Optional[str]:
     value = value.strip()
     if not value:
         return None
-    if value == TUTORIAL_COMPLETED:
-        return TUTORIAL_COMPLETED
+    if value == SUPERVISED_RUN_COMPLETED:
+        return SUPERVISED_RUN_COMPLETED
     try:
         index = int(value)
     except ValueError:
@@ -52,16 +52,16 @@ class WorkflowState(BaseModel):
         default=1,
         description="Schema version of the session state."
     )
-    tutorial_state: Optional[str] = Field(
+    supervised_run_state: Optional[str] = Field(
         default=None,
         description=(
-            "Tutorial position for the user: None while the offer is still "
+            "SupervisedRun position for the user: None while the offer is still "
             "unanswered, the 0-based step index (e.g. '0') while in flight, "
             "or 'COMPLETED' once a final outcome (declined, abandoned or "
             "finished) was reached."
         )
     )
-    tutorial_intro_sent: bool = Field(
+    supervised_run_intro_sent: bool = Field(
         default=False,
         description="Whether the current step's teaching lesson was already delivered."
     )

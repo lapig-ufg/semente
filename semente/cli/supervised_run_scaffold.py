@@ -1,8 +1,8 @@
-"""Tutorial-example scaffolding — shared by ``semente init`` and ``config enable``.
+"""SupervisedRun-example scaffolding — shared by ``semente init`` and ``config enable``.
 
-Enabling the guided tutorial requires the domain to supply ``get_tutorial``
-(the ``Tutorial`` seam). To spare the developer memorizing the API at the
-moment of enabling, the CLI plants a working example (``<domain>/tutorial.py``)
+Enabling the guided supervised_run requires the domain to supply ``get_supervised_run``
+(the ``SupervisedRun`` seam). To spare the developer memorizing the API at the
+moment of enabling, the CLI plants a working example (``<domain>/supervised_run.py``)
 and wires it into the ``DomainSpec``. The domain file is edited ONLY when the
 edit is provably safe: a single module-level ``domain_spec = DomainSpec(...)``
 assignment located via ``ast``, a kwarg inserted before the call's closing
@@ -19,22 +19,22 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
 
-from semente.cli.templates import TUTORIAL_TEMPLATE
+from semente.cli.templates import SUPERVISED_RUN_TEMPLATE
 from semente.manifest import Manifest
 
-WIRE_KWARG = "get_tutorial"
+WIRE_KWARG = "get_supervised_run"
 SPEC_ASSIGN_NAME = "domain_spec"
 SPEC_CLASS_NAME = "DomainSpec"
 
 
 @dataclass
-class TutorialScaffoldReport:
+class SupervisedRunScaffoldReport:
     """What the scaffold step did (callers print it; tests assert on it)."""
 
     created: list[str] = field(default_factory=list)
     kept: list[str] = field(default_factory=list)
-    wired_file: Optional[str] = None  # the DomainSpec source edited to pass get_tutorial
-    already_wired: bool = False  # the spec already passed get_tutorial
+    wired_file: Optional[str] = None  # the DomainSpec source edited to pass get_supervised_run
+    already_wired: bool = False  # the spec already passed get_supervised_run
     manual_step: Optional[str] = None  # printed when auto-wiring was not possible
 
 
@@ -42,7 +42,7 @@ class WireStatus(Enum):
     """Outcome of the (safety-gated) kwarg+import wiring."""
 
     WIRED = auto()  # source edited (kwarg inserted, import ensured)
-    ALREADY_WIRED = auto()  # the spec already passes get_tutorial
+    ALREADY_WIRED = auto()  # the spec already passes get_supervised_run
     NO_SPEC = auto()  # no module-level domain_spec = DomainSpec(...) assignment
     UNSUPPORTED = auto()  # multiple assignments, or the edit failed its checks
 
@@ -102,7 +102,7 @@ def _insert_offset(lines, lineno: int, col: int) -> int:
 
 
 def _insert_kwarg(source: str, tree: ast.Module) -> Optional[str]:
-    """Insert ``get_tutorial=get_tutorial`` into the single DomainSpec call.
+    """Insert ``get_supervised_run=get_supervised_run`` into the single DomainSpec call.
 
     Multiline calls gain an indented kwarg line just before the closing
     paren; single-line calls gain an inline kwarg. Returns None when the
@@ -152,7 +152,7 @@ def _import_offset(root: ast.Module, lines) -> int:
 
 
 def wire_spec(source: str, import_line: Optional[str]) -> tuple[Optional[str], WireStatus]:
-    """Ensure the source's ``domain_spec`` receives ``get_tutorial=get_tutorial``.
+    """Ensure the source's ``domain_spec`` receives ``get_supervised_run=get_supervised_run``.
 
     Returns the edited source (or the original when already wired). Every
     edit ends with a ``compile`` check — a broken result is discarded and
@@ -187,55 +187,55 @@ def wire_spec(source: str, import_line: Optional[str]) -> tuple[Optional[str], W
         wired = wired[:offset] + f"{import_line}\n" + wired[offset:]
 
     try:
-        compile(wired, "<semente_tutorial_wiring>", "exec")
+        compile(wired, "<semente_supervised_run_wiring>", "exec")
     except SyntaxError:
         return None, WireStatus.UNSUPPORTED
 
     return wired, WireStatus.WIRED
 
 
-def scaffold_tutorial(
+def scaffold_supervised_run(
     manifest: Manifest, manifest_path: Path, force: bool = False
-) -> TutorialScaffoldReport:
-    """Plant the tutorial example and wire it into the app's domain.
+) -> SupervisedRunScaffoldReport:
+    """Plant the supervised_run example and wire it into the app's domain.
 
-    Package domains get the example at ``<domain_module>/tutorial.py`` and a
-    relative import (``from .tutorial import get_tutorial``) — relative, so
+    Package domains get the example at ``<domain_module>/supervised_run.py`` and a
+    relative import (``from .supervised_run import get_supervised_run``) — relative, so
     the app's ``domain`` package can never collide with the framework's
     ``semente.domain``. Single-file domains only get the manual instruction
     (no sibling module is invented). Files the scaffold already wrote are
     kept unless ``force``; the domain file is edited only when provably safe.
     """
-    report = TutorialScaffoldReport()
+    report = SupervisedRunScaffoldReport()
     domain_file = domain_source_path(manifest, manifest_path)
 
     if domain_file is None:
         report.manual_step = (
             f"domain module '{manifest.domain_module}' not found next to {manifest_path}; "
-            "create get_tutorial yourself — see docs/guide/domain-api.md"
+            "create get_supervised_run yourself — see docs/guide/domain-api.md"
         )
         return report
 
     source = domain_file.read_text(encoding="utf-8")
     is_package = domain_file.name == "__init__.py"
 
-    tutorial_file: Optional[Path] = None
+    supervised_run_file: Optional[Path] = None
     import_line: Optional[str] = None
     if is_package:
-        tutorial_file = domain_file.parent / "tutorial.py"
-        import_line = "from .tutorial import get_tutorial"
+        supervised_run_file = domain_file.parent / "supervised_run.py"
+        import_line = "from .supervised_run import get_supervised_run"
 
-    if tutorial_file is not None:
-        if tutorial_file.exists() and not force:
-            report.kept.append(str(tutorial_file))
+    if supervised_run_file is not None:
+        if supervised_run_file.exists() and not force:
+            report.kept.append(str(supervised_run_file))
         else:
-            tutorial_file.write_text(
-                TUTORIAL_TEMPLATE.format(name=manifest.name), encoding="utf-8"
+            supervised_run_file.write_text(
+                SUPERVISED_RUN_TEMPLATE.format(name=manifest.name), encoding="utf-8"
             )
-            report.created.append(str(tutorial_file))
+            report.created.append(str(supervised_run_file))
 
     wired, status = wire_spec(
-        source, import_line if tutorial_file is not None else None
+        source, import_line if supervised_run_file is not None else None
     )
 
     if status in (WireStatus.WIRED, WireStatus.ALREADY_WIRED):
@@ -248,7 +248,7 @@ def scaffold_tutorial(
             # belongs in the file itself (the import hint is meaningless).
             state = "already passes it" if report.already_wired else "now passes it"
             report.manual_step = (
-                f"single-file domain: write def get_tutorial() -> Tutorial in "
+                f"single-file domain: write def get_supervised_run() -> SupervisedRun in "
                 f"{domain_file} (docs/guide/domain-api.md) — the spec {state}"
             )
         return report
@@ -256,15 +256,15 @@ def scaffold_tutorial(
     if status is WireStatus.NO_SPEC:
         report.manual_step = (
             f"{domain_file} does not assign domain_spec = DomainSpec(...) yet; "
-            "add get_tutorial=get_tutorial to the call — see docs/guide/domain-api.md"
+            "add get_supervised_run=get_supervised_run to the call — see docs/guide/domain-api.md"
         )
     else:
         report.manual_step = (
             f"{domain_file}'s domain_spec could not be edited safely; add manually: "
-            "get_tutorial=get_tutorial in the DomainSpec(...) call"
+            "get_supervised_run=get_supervised_run in the DomainSpec(...) call"
         )
 
-    if tutorial_file is not None and str(tutorial_file) not in report.created:
+    if supervised_run_file is not None and str(supervised_run_file) not in report.created:
         # The example exists but the wiring could not be confirmed.
         report.manual_step = (
             f"{report.manual_step} (the example import is: '{import_line}')"

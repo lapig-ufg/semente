@@ -132,7 +132,7 @@ def test_init_default_name_from_directory(tmp_path):
 
 
 # ---------------------------------------------------------------------
-# The guided-tutorial example (--tutorial / interactive prompt)
+# The guided-supervised_run example (--supervised-run / interactive prompt)
 # ---------------------------------------------------------------------
 
 
@@ -147,55 +147,55 @@ def _answers(*values):
     return lambda *a, **k: next(queue)
 
 
-def test_init_tutorial_flag_scaffolds_and_wires(tmp_path):
+def test_init_supervised_run_flag_scaffolds_and_wires(tmp_path):
     import importlib
 
     from semente.manifest import Manifest
 
-    _scaffold(tmp_path, name="My Farm", tutorial=True)
+    _scaffold(tmp_path, name="My Farm", supervised_run=True)
 
     manifest = Manifest.load(tmp_path / "semente.yaml")
-    assert manifest.features["tutorial"] is True
-    assert (tmp_path / "domain" / "tutorial.py").exists()
+    assert manifest.features["supervised_run"] is True
+    assert (tmp_path / "domain" / "supervised_run.py").exists()
     init_py = (tmp_path / "domain" / "__init__.py").read_text(encoding="utf-8")
-    assert "from .tutorial import get_tutorial" in init_py
-    assert "get_tutorial=get_tutorial" in init_py
+    assert "from .supervised_run import get_supervised_run" in init_py
+    assert "get_supervised_run=get_supervised_run" in init_py
 
-    # The wired spec is real: importing the domain exposes get_tutorial.
+    # The wired spec is real: importing the domain exposes get_supervised_run.
     sys.modules.pop("domain", None)
     sys.path.insert(0, str(tmp_path))
     try:
         domain = importlib.import_module("domain")
-        assert callable(domain.domain_spec.get_tutorial)
-        assert len(domain.get_tutorial().steps) == 2
+        assert callable(domain.domain_spec.get_supervised_run)
+        assert len(domain.get_supervised_run().steps) == 2
     finally:
         if str(tmp_path) in sys.path:
             sys.path.remove(str(tmp_path))
         sys.modules.pop("domain", None)
 
 
-def test_init_without_tutorial_flag_keeps_the_scaffold_lean(tmp_path):
+def test_init_without_supervised_run_flag_keeps_the_scaffold_lean(tmp_path):
     import importlib
 
     from semente.manifest import Manifest
 
     _scaffold(tmp_path)
 
-    assert "tutorial" not in Manifest.load(tmp_path / "semente.yaml").features
-    assert not (tmp_path / "domain" / "tutorial.py").exists()
+    assert "supervised_run" not in Manifest.load(tmp_path / "semente.yaml").features
+    assert not (tmp_path / "domain" / "supervised_run.py").exists()
 
     sys.modules.pop("domain", None)
     sys.path.insert(0, str(tmp_path))
     try:
         domain = importlib.import_module("domain")
-        assert domain.domain_spec.get_tutorial is None
+        assert domain.domain_spec.get_supervised_run is None
     finally:
         if str(tmp_path) in sys.path:
             sys.path.remove(str(tmp_path))
         sys.modules.pop("domain", None)
 
 
-def test_init_tutorial_interactive_prompt_accepts(tmp_path, monkeypatch):
+def test_init_supervised_run_interactive_prompt_accepts(tmp_path, monkeypatch):
     from semente.manifest import Manifest
 
     monkeypatch.setattr("builtins.input", _answers("", "y"))
@@ -203,11 +203,11 @@ def test_init_tutorial_interactive_prompt_accepts(tmp_path, monkeypatch):
     code = cmd_init(directory=str(tmp_path), stdin=_TTY())
 
     assert code == 0
-    assert Manifest.load(tmp_path / "semente.yaml").features["tutorial"] is True
-    assert (tmp_path / "domain" / "tutorial.py").exists()
+    assert Manifest.load(tmp_path / "semente.yaml").features["supervised_run"] is True
+    assert (tmp_path / "domain" / "supervised_run.py").exists()
 
 
-def test_init_tutorial_interactive_prompt_declines(tmp_path, monkeypatch):
+def test_init_supervised_run_interactive_prompt_declines(tmp_path, monkeypatch):
     from semente.manifest import Manifest
 
     monkeypatch.setattr("builtins.input", _answers("", ""))
@@ -215,5 +215,5 @@ def test_init_tutorial_interactive_prompt_declines(tmp_path, monkeypatch):
     code = cmd_init(directory=str(tmp_path), stdin=_TTY())
 
     assert code == 0
-    assert "tutorial" not in Manifest.load(tmp_path / "semente.yaml").features
-    assert not (tmp_path / "domain" / "tutorial.py").exists()
+    assert "supervised_run" not in Manifest.load(tmp_path / "semente.yaml").features
+    assert not (tmp_path / "domain" / "supervised_run.py").exists()

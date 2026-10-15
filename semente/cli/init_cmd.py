@@ -16,7 +16,7 @@ from semente.cli.templates import (
     GITIGNORE_TEMPLATE,
     MAIN_PY_TEMPLATE,
     SEMENTE_YAML_TEMPLATE,
-    TUTORIAL_FEATURE_BLOCK,
+    SUPERVISED_RUN_FEATURE_BLOCK,
     bundled_prompts_dir,
     default_model_id,
     env_example_content,
@@ -40,14 +40,14 @@ def cmd_init(
     force: bool = False,
     non_interactive: bool = False,
     stdin=sys.stdin,
-    tutorial: bool | None = None,
+    supervised_run: bool | None = None,
 ) -> int:
     """Scaffold the app; returns the exit code.
 
-    ``tutorial`` tri-state: None asks interactively (when stdin is a TTY and
-    not ``--non-interactive``); True/False is explicit (``--tutorial``). When
-    on, a working ``domain/tutorial.py`` example is written and wired into
-    the DomainSpec, and ``features.tutorial: true`` lands in the manifest.
+    ``supervised_run`` tri-state: None asks interactively (when stdin is a TTY and
+    not ``--non-interactive``); True/False is explicit (``--supervised-run``). When
+    on, a working ``domain/supervised_run.py`` example is written and wired into
+    the DomainSpec, and ``features.supervised_run: true`` lands in the manifest.
     """
     if provider not in ("google", "ollama"):
         print(f"Invalid provider '{provider}' (available: google, ollama)")
@@ -62,11 +62,11 @@ def cmd_init(
         answer = input(f"App name [{app_name}]: ").strip()
         if answer:
             app_name = answer
-    if tutorial is None:
-        tutorial = False
+    if supervised_run is None:
+        supervised_run = False
         if interactive:
-            answer = input("Include a guided-tutorial example (domain/tutorial.py)? [y/N]: ").strip().lower()
-            tutorial = answer in ("y", "yes")
+            answer = input("Include a guided-supervised_run example (domain/supervised_run.py)? [y/N]: ").strip().lower()
+            supervised_run = answer in ("y", "yes")
 
     manifest_path = project_dir / "semente.yaml"
     if manifest_path.exists() and not force:
@@ -83,7 +83,7 @@ def cmd_init(
             language=language,
             provider=provider,
             model_id=default_model_id(provider),
-            tutorial_feature_block=TUTORIAL_FEATURE_BLOCK if tutorial else "",
+            supervised_run_feature_block=SUPERVISED_RUN_FEATURE_BLOCK if supervised_run else "",
         ),
         force,
         created,
@@ -105,14 +105,14 @@ def cmd_init(
             kept,
         )
 
-    if tutorial:
-        # Same helper `config enable tutorial` uses — on the fresh scaffold
+    if supervised_run:
+        # Same helper `config enable supervised_run` uses — on the fresh scaffold
         # it always creates/wires (the files were just written above).
-        from semente.cli.tutorial_scaffold import scaffold_tutorial
+        from semente.cli.supervised_run_scaffold import scaffold_supervised_run
 
         from semente.manifest import Manifest
 
-        report = scaffold_tutorial(Manifest(name=app_name), manifest_path, force=force)
+        report = scaffold_supervised_run(Manifest(name=app_name), manifest_path, force=force)
         for path in report.created:
             if path not in created:
                 created.append(path)

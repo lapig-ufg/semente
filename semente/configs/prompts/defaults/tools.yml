@@ -303,26 +303,26 @@ onboarding_tools:
       error_persistence: |
         Critical persistence error while saving terms acceptance: {error}
 
-tutorial_tools:
-  set_tutorial_choice:
+supervised_run_tools:
+  set_supervised_run_choice:
     description: |
-      Records the user's answer to the tutorial offer. Call it exactly once,
-      as soon as the user clearly accepts or declines the guided tutorial.
-      Pass wants_tutorial as true when the user wants the tutorial, false
+      Records the user's answer to the supervised run offer. Call it exactly once,
+      as soon as the user clearly accepts or declines the guided supervised run.
+      Pass wants_supervised_run as true when the user wants the supervised run, false
       when they do not; ask again in other words when the answer is
       ambiguous.
     results:
       accepted: |
-        Tutorial accepted! Confirm warmly that the guided tutorial is
+        Supervised run accepted! Confirm warmly that the guided supervised run is
         starting and that the first step's lesson arrives right away. Do NOT
         teach the lesson here and do NOT ask anything about the step's work —
         just confirm the enrollment (e.g. write in the user's language:
-        "Great! Tutorial accepted! Your next message already comes with the
+        "Great! Supervised run accepted! Your next message already comes with the
         first lesson.").
       declined: |
-        Tutorial declined: confirm warmly and without any pressure (e.g.
+        Supervised run declined: confirm warmly and without any pressure (e.g.
         write in the user's language: "No problem! You are ready to use the
-        system — just ask whenever you want."). Do not offer the tutorial
+        system — just ask whenever you want."). Do not offer the supervised run
         again.
 
 version_tools:

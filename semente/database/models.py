@@ -21,18 +21,18 @@ class UserProfile(Base):
     role = Column(String, nullable=True, comment="User's professional role")
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
     
-class UserTutorialProgress(Base):
-    """Table that records the final tutorial outcome of a user.
+class UserSupervisedRunProgress(Base):
+    """Table that records the final supervised_run outcome of a user.
 
     Only the final outcome is persisted (one row per user): the user declined
-    the tutorial offer, left the tutorial early, or completed all its steps.
+    the supervised_run offer, left the supervised_run early, or completed all its steps.
     Everything in between lives in the session state only, so a user who is
-    mid-tutorial — or was never offered it — simply has no row here.
+    mid-supervised_run — or was never offered it — simply has no row here.
     """
-    __tablename__ = "user_tutorial_progress"
+    __tablename__ = "user_supervised_run_progress"
 
     user_id = Column(String, primary_key=True, index=True, comment="Unique identifier (e.g., wa:5511999999999)")
-    completed = Column(Boolean, default=True, nullable=False, comment="Flag indicating the tutorial reached its final state (declined or completed)")
+    completed = Column(Boolean, default=True, nullable=False, comment="Flag indicating the supervised_run reached its final state (declined or completed)")
     completed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False, comment="Date and time of the final state")
 
 

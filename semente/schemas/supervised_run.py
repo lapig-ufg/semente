@@ -1,14 +1,14 @@
-"""Structured answers of the tutorial agents.
+"""Structured answers of the supervised_run agents.
 
-``TutorialDecision`` is the decision of the supervisor (``semente.agents
-.tutorial_agent``) that sits above the normal agent while the tutorial runs:
-for every user message inside the tutorial the pipeline acts on it alone.
+``SupervisedRunDecision`` is the decision of the supervisor (``semente.agents
+.supervised_run_agent``) that sits above the normal agent while the supervised_run runs:
+for every user message inside the supervised_run the pipeline acts on it alone.
 The supervisor has no tools and does no domain work — when the user follows
 the step taught by its ``forward_condition`` it forwards, so the real
-assistant behaves exactly as it does outside the tutorial.
+assistant behaves exactly as it does outside the supervised_run.
 
 ``CompletionCheck`` is the decision of the checkpoint agent — the second
-agent in the same module (``semente.agents.tutorial_agent``) — consulted by
+agent in the same module (``semente.agents.supervised_run_agent``) — consulted by
 the pipeline after a forwarded turn whenever the current step's
 ``complete_condition`` is a str (callables are judged by the pipeline
 itself).
@@ -17,8 +17,8 @@ itself).
 from pydantic import BaseModel, Field
 
 
-class TutorialDecision(BaseModel):
-    """What the tutorial supervisor decided about the user's current message."""
+class SupervisedRunDecision(BaseModel):
+    """What the supervised_run supervisor decided about the user's current message."""
 
     forward: bool = Field(
         default=False,
@@ -36,11 +36,11 @@ class TutorialDecision(BaseModel):
             "Empty when forwarding."
         ),
     )
-    abandon_tutorial: bool = Field(
+    abandon_supervised_run: bool = Field(
         default=False,
         description=(
-            "True when the user clearly asks to leave the tutorial early; "
-            "the pipeline closes the tutorial for good."
+            "True when the user clearly asks to leave the supervised_run early; "
+            "the pipeline closes the supervised_run for good."
         ),
     )
 

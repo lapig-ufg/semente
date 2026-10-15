@@ -70,7 +70,7 @@ def test_falha_do_agente_nao_explode_nem_corrompe_o_estado(monkeypatch, agente):
     )
 
     # The old handler raised UnboundLocalError here and escaped the loop,
-    # crashing the whole turn (found by the tutorial flow tests).
+    # crashing the whole turn (found by the supervised_run flow tests).
     agente._manage_persona(None, "oi", estado)
 
     assert estado["user_mood"] is None
