@@ -1,5 +1,5 @@
 """
-Tests for the Semente input pre-processing geospatial-file handling
+Tests for the Harness input pre-processing geospatial-file handling
 (Semente-native File types, hermetic — no engine, no credentials).
 
     .venv/bin/python -m pytest tests/agent/test_input_preprocessing_geo.py -v
@@ -12,13 +12,13 @@ import zipfile
 import geopandas as gpd
 from shapely.geometry import Polygon
 
-from semente.core.semente_agent import Semente
+from semente.core.harness import Harness
 from semente.manifest import Manifest
 from semente.tools.types import File
 
 
-def _agent() -> Semente:
-    return Semente(
+def _agent() -> Harness:
+    return Harness(
         agent=object(),
         welcoming_agent=object(),
         manifest=Manifest(name="test-app"),

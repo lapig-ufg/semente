@@ -11,7 +11,7 @@ from semente.configs.config import config
 from semente.guardrails.pii_gate import redigir_pii
 from semente.interfaces.streamlit.debug_helpers import extract_workflow_debug_data, extract_session_state
 from semente.interfaces.streamlit.debug_panel import render_debug_panel
-from semente.core.semente_agent import get_agent
+from semente.core.harness import get_harness
 
 st.set_page_config(page_title="Semente", page_icon="🌱")
 
@@ -276,7 +276,7 @@ if user_query:
                 run_kwargs["files"] = geo_files
 
             with st.spinner("Analisando dados e gerando resposta..."):
-                response = get_agent().run(**run_kwargs)
+                response = get_harness().run(**run_kwargs)
             
             if hasattr(response, 'content'):
                 full_response = response.content
@@ -298,7 +298,7 @@ if user_query:
 
                 # Get live session state from the agent
                 try:
-                    live_state = get_agent().get_session_state(
+                    live_state = get_harness().get_session_state(
                         session_id=st.session_state.session_id
                     )
                     if live_state:

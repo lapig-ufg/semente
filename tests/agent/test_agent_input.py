@@ -4,26 +4,26 @@ Regression test for the "must send twice" bug: in the old workflow, sibling
 parallel branches (summarization, feedback) polluted the shared step-output
 registry with non-user text before the agent branch ran, so the agent's
 input had to be read from the input step's output by name — never from
-"the last output". In the Semente architecture the consolidated user
+"the last output". In the Harness architecture the consolidated user
 text is a plain value passed straight to ``_build_agent_input``, so the bug
 class is structurally impossible; these tests pin that down.
 """
 
-from semente.core.semente_agent import Semente
-from semente.core.types import AgentSession
+from semente.core.harness import Harness
+from semente.core.types import Session
 from semente.manifest import Manifest
 
 
-def _agent() -> Semente:
-    return Semente(
+def _agent() -> Harness:
+    return Harness(
         agent=object(),
         welcoming_agent=object(),
         manifest=Manifest(name="test-app"),
     )
 
 
-def _session(user_text: str) -> AgentSession:
-    return AgentSession(user_id="u", session_id="s")
+def _session(user_text: str) -> Session:
+    return Session(user_id="u", session_id="s")
 
 
 def test_agent_input_wraps_the_consolidated_user_text():
@@ -49,7 +49,7 @@ def test_agent_input_empty_text_is_empty_string():
 
 def test_agent_input_stashes_history_block_in_state():
     agent = _agent()
-    session = AgentSession(
+    session = Session(
         user_id="u",
         session_id="s",
         runs=[

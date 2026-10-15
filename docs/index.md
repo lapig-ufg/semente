@@ -51,7 +51,7 @@ your app specific.
 User (WhatsApp / Streamlit)
         │
         ▼
-    Semente (single-object pipeline)
+   Harness (single-object pipeline)
     ├── Input pre-processing (media → text, geo → GeoJSON)
     ├── PII guardrail
     ├── Onboarding check (terms)

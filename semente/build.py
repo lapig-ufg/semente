@@ -1,7 +1,7 @@
 """Assemble a Semente application from a manifest.
 
 The single entry point: loads the manifest, applies the prompts dir, imports
-the domain, builds the Semente (agents + pipeline), and wires the
+the domain, builds the Harness (agents + pipeline), and wires the
 channels. The domain is imported *inside* this function (after the prompts
 dir is set) so that domain tools loading prompts at import time resolve
 correctly.
@@ -31,11 +31,11 @@ def build_app(manifest_path: str | Path | None = None) -> Any:
 
     from semente.interfaces.whatsapp import Whatsapp
     from semente.manifest import Manifest
-    from semente.core.semente_agent import get_agent
+    from semente.core.harness import get_harness
 
     path = manifest_path or os.getenv("SEMENTE_MANIFEST", "semente.yaml")
     manifest = Manifest.load(path)
-    agent = get_agent(path)
+    agent = get_harness(path)
 
     app = FastAPI(title=manifest.name)
     if "whatsapp" in manifest.channels:

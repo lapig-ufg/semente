@@ -13,10 +13,10 @@ def test_get_agent_demo_mode(monkeypatch, tmp_path):
     monkeypatch.setenv("SEMENTE_DEMO", "1")
     monkeypatch.setenv("GOOGLE_API_KEY", "dummy-test-key")
 
-    import semente.core.semente_agent as sa
+    import semente.core.harness as sa
 
-    monkeypatch.setattr(sa, "_agent_cache", None)
-    agent = sa.get_agent()
+    monkeypatch.setattr(sa, "_harness_cache", None)
+    agent = sa.get_harness()
 
     assert agent.name == "semente-demo"
 
@@ -27,15 +27,15 @@ def test_get_agent_demo_mode(monkeypatch, tmp_path):
 
 
 def test_get_agent_demo_mode_ignores_manifest_arg(monkeypatch, tmp_path):
-    """SEMENTE_DEMO=1 wins even when get_agent receives a manifest path."""
+    """SEMENTE_DEMO=1 wins even when get_harness receives a manifest path."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SEMENTE_DEMO", "1")
     monkeypatch.setenv("GOOGLE_API_KEY", "dummy-test-key")
 
-    import semente.core.semente_agent as sa
+    import semente.core.harness as sa
 
-    monkeypatch.setattr(sa, "_agent_cache", None)
-    agent = sa.get_agent(manifest_path="nonexistent-semente.yaml")
+    monkeypatch.setattr(sa, "_harness_cache", None)
+    agent = sa.get_harness(manifest_path="nonexistent-semente.yaml")
 
     assert agent.name == "semente-demo"
 

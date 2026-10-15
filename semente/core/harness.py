@@ -1,4 +1,4 @@
-"""Semente — the single-object pipeline that replaces the workflow engine.
+"""Harness — the single-object pipeline that replaces the workflow engine.
 
 One object owns the whole conversation turn: ``run()`` is a thin sequencer
 and each unique stage of the old workflow is a private method whose return
@@ -20,11 +20,11 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
 
 Media/summary/feedback/persona agents are imported lazily *inside* the
 methods: their modules build agents at import time, so they must only be
-imported after the language/prompts dir has been applied (``get_agent``).
+imported after the language/prompts dir has been applied (``get_harness``).
 
 External interface:
-    Semente      -- the agent object the channels call.
-    get_agent     -- manifest + domain + prompts loading, cached singleton.
+    Harness  -- the harness object the channels call.
+    get_harness     -- manifest + domain + prompts loading, cached singleton.
 """
 
 from __future__ import annotations
@@ -36,11 +36,11 @@ from typing import Any, Optional
 
 from semente.backends.base import AgentInput
 from semente.configs.prompts import set_prompts_dir
-from semente.core.types import AgentSession, SessionStore, StepOutput
+from semente.core.types import Session, SessionStore, StepOutput
 from semente.logging import log_debug, log_error, log_info
 from semente.manifest import Manifest
 from semente.schemas.input_manager import InputManager
-from semente.schemas.user_mood import UserMood
+from semente.schemas.interaction_assessment import InteractionAssessment
 from semente.schemas.user_persona import (
     is_persona_complete,
     is_persona_field_informed,
@@ -150,10 +150,10 @@ def _convert_geo_files(files: list[File]) -> tuple[list[File], list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# Semente
+# Harness
 # ---------------------------------------------------------------------------
 
-class Semente:
+class Harness:
     """The whole conversation pipeline as a single object.
 
     Args:
@@ -206,26 +206,25 @@ class Semente:
             The final :class:`StepOutput` (content, media, metrics).
         """
         if stream:
-            log_debug("Semente.run(stream=True): running synchronously.")
+            log_debug("Harness.run(stream=True): running synchronously.")
 
-        session = self._load_session(user_id, session_id, session_state)
-        state = session.session_state
+        session: Session = self._load_session(user_id, session_id, session_state)
 
         user_text, geo_files = self._input_preprocessing(input, images, audio, files)
 
         if self.features.get("pii_guardrail", True):
             user_text = self._redact_pii(user_text)
 
-        if self._needs_onboarding(state, user_id):
+        if self._needs_onboarding(session.session_state, user_id):
             final = self._run_welcoming_agent(session, user_text, images, audio)
         else:
             if self.features.get("summarization", True):
-                self._summarize_conversation(session, user_text, state)
+                self._summarize_conversation(session, user_text, session.session_state)
             if self.features.get("feedback_workflow", True):
-                self._process_feedback(session, user_text, state)
-            agent_input = self._build_agent_input(session, user_text, state)
-            routed = self._run_single_agent(agent_input, images, audio, geo_files, state, user_id)
-            final = self._apply_remediation(routed, state)
+                self._process_feedback(session, user_text, session.session_state)
+            agent_input = self._build_agent_input(session, user_text, session.session_state)
+            routed = self._run_single_agent(agent_input, images, audio, geo_files, session.session_state, user_id)
+            final = self._apply_remediation(routed, session)
 
         final = self._finalize_output(final, user_id)
         self._persist_session(session, input, final)
@@ -245,24 +244,25 @@ class Semente:
 
     def _load_session(
         self, user_id: str, session_id: str, session_state: Optional[dict]
-    ) -> AgentSession:
+    ) -> Session:
         """Load the (store-backed) session, or start a fresh one."""
         if self.store is not None:
             loaded = self.store.get(user_id, session_id)
             if loaded is not None:
-                return AgentSession(
+                return Session(
                     user_id=user_id,
                     session_id=session_id,
                     session_state=loaded.get("session_state", {}),
                     runs=loaded.get("runs", []),
+                    interaction_assessment=loaded.get("interaction_assessment"),
                 )
-        return AgentSession(
+        return Session(
             user_id=user_id,
             session_id=session_id,
             session_state=session_state or {},
         )
 
-    def _persist_session(self, session: AgentSession, user_input: Any, final: StepOutput) -> None:
+    def _persist_session(self, session: Session, user_input: Any, final: StepOutput) -> None:
         """Save the session state and append the run to the history."""
         if self.store is None:
             return
@@ -273,6 +273,7 @@ class Semente:
             session.session_id,
             session_state=session.session_state,
             runs=session.runs,
+            interaction_assessment=session.interaction_assessment,
         )
 
     # ------------------------------------------------------------------
@@ -456,7 +457,7 @@ class Semente:
 
     def _run_welcoming_agent(
         self,
-        session: AgentSession,
+        session: Session,
         user_text: str,
         images: Optional[list],
         audio: Optional[list],
@@ -473,7 +474,7 @@ class Semente:
         )
 
     def _summarize_conversation(
-        self, session: AgentSession, user_text: str, state: dict
+        self, session: Session, user_text: str, state: dict
     ) -> None:
         """Maintain the rolling conversation summary in session state.
 
@@ -538,21 +539,21 @@ class Semente:
         # tags).
         state["conversation_summary"] = summary_state.summary or ""
         
-    def _process_feedback(self, session: AgentSession, user_text: str, state: dict) -> None:
+    def _process_feedback(self, session: Session, user_text: str, state: dict) -> None:
         """Run the feedback loop: satisfaction, persistence, persona.
 
         Mirrors the old feedback sub-workflow: evaluate the satisfaction,
         route to the matching persistence branch, then conditionally update
         the user persona. Everything mutates ``state``; nothing is returned.
         """
-        self._evaluate_satisfaction(session, user_text, state)
-        self._persist_feedback(session, state)
+        self._evaluate_satisfaction(session, user_text)
+        self._persist_feedback(session)
         self._manage_persona(session, user_text, state)
         
     def _evaluate_satisfaction(
-        self, session: AgentSession, user_text: str, state: dict
+        self, session: Session, user_text: str
     ) -> None:
-        """Run the satisfaction agent and store the result in ``state['user_mood']``.
+        """Run the satisfaction agent and store the result on the session.
 
         On the first evaluation the result is stored under 'satisfaction';
         on subsequent evaluations (after remediation), under 'remediation'.
@@ -560,7 +561,7 @@ class Semente:
         from semente.agents.feedback_agent import satisfaction_evaluation_agent
 
         history_data = session.get_history(num_runs=1)
-        user_mood = state.get("user_mood", None)
+        prior = session.interaction_assessment
 
         effectiveness: Optional[dict] = None
 
@@ -574,7 +575,10 @@ class Semente:
             evaluator_msg += f"Current user message: {user_text}\n"
 
             turn = satisfaction_evaluation_agent.run(
-                AgentInput(text=evaluator_msg, session_state={"user_mood": user_mood})
+                AgentInput(
+                    text=evaluator_msg,
+                    session_state={"interaction_assessment": prior.model_dump() if prior else None},
+                )
             )
             if turn and turn.structured:
                 effectiveness = turn.structured
@@ -585,29 +589,35 @@ class Semente:
             log_debug("_evaluate_satisfaction: no effectiveness result, using default")
             effectiveness = _DEFAULT_SATISFACTION.copy()
 
-        if user_mood is None:
-            state["user_mood"] = {}
-            state["user_mood"]["satisfaction"] = effectiveness
+        if prior is None:
+            session.interaction_assessment = InteractionAssessment(
+                satisfaction=effectiveness
+            )
         else:
-            state["user_mood"]["remediation"] = effectiveness
+            prior.remediation = effectiveness
+            session.interaction_assessment = prior
 
-    def _persist_feedback(self, session: AgentSession, state: dict) -> None:
+    def _persist_feedback(self, session: Session) -> None:
         """Persist the interaction per the satisfaction level."""
         import datetime
         from semente.database.models import NegativeFeedback, PositiveFeedback
         from semente.database.session import SessionLocal
         from semente.guardrails.pii_gate import sanitize_json_pii
 
-        user_mood = state.get("user_mood", {})
-        satisfaction = user_mood.get("satisfaction", {}) if user_mood else {}
+        assessment = (
+            session.interaction_assessment.model_dump()
+            if session.interaction_assessment
+            else None
+        )
+        recent_runs = session.session_state.get("recent_agent_runs", [])
+
+        satisfaction = (assessment or {}).get("satisfaction") or {}
         satisfaction_level = satisfaction.get("level", 3)
 
-        recent_runs = state.get("recent_agent_runs", [])
         if not recent_runs:
             return
 
-    
-        remediation = user_mood.get("remediation", {}) if user_mood else {}
+        remediation = (assessment or {}).get("remediation") or {}
         effectiveness = (
             remediation.get("effectiveness", {})
             if isinstance(remediation, dict)
@@ -617,12 +627,11 @@ class Semente:
 
         db_session = SessionLocal()
         try:
-        
             if effectiveness_level >= 4:
                 if len(recent_runs) >= 2:
                     turn_rejected = recent_runs[-2]
                     turn_chosen = recent_runs[-1]
-                
+
                     payload = {
                         "prompt": turn_rejected.get("user", ""),
                         "rejected": turn_rejected.get("assistant", ""),
@@ -646,7 +655,6 @@ class Semente:
                     "negative feedback recorded with remediation (DPO dataset)"
                 )
 
-            
             elif satisfaction_level >= 4:
                 sanitized_trajectory = sanitize_json_pii(recent_runs)
                 feedback_record = PositiveFeedback(
@@ -663,15 +671,15 @@ class Semente:
             db_session.rollback()
         finally:
             db_session.close()
-        
-    def _manage_persona(self, session: AgentSession, user_text: str, state: dict) -> None:
+    def _manage_persona(self, session: Session, user_text: str, state: dict) -> None:
         """Conditionally run the persona manager agent and apply updates.
 
         Calls the persona manager agent only when the satisfaction level is
         >= 3, or the satisfaction is low but the remediation worked. After
-        applying updates (or skipping), clears user_mood from the state.
-        Name and role never change here: they are declared identity
-        (onboarding tools only) — deduction does not overwrite declaration.
+        applying updates (or skipping), clears the session's interaction
+        assessment. Name and role never change here: they are declared
+        identity (onboarding tools only) — deduction does not overwrite
+        declaration.
         """
         from semente.agents.persona_agent import persona_manager_agent
         from semente.schemas.user_persona import (
@@ -680,30 +688,36 @@ class Semente:
             UserPersona,
         )
 
-        raw_user_mood = state.get("user_mood", None)
-        if raw_user_mood is None:
+        assessment = session.interaction_assessment
+        if assessment is None:
             return
 
-        try:
-            user_mood = UserMood.model_validate(raw_user_mood)
-        except Exception as e:
-            # A malformed user_mood would stay in session_state and break
-            # every later run. Drop it and move on.
-            log_error(f"_manage_persona: invalid user_mood discarded: {e}")
-            state["user_mood"] = None
-            return
+        # A malformed assessment would break every subsequent comparison.
+        # Drop it and move on.
+        if not isinstance(assessment, InteractionAssessment):
+            try:
+                assessment = InteractionAssessment.model_validate(assessment)
+            except Exception as e:
+                log_error(f"_manage_persona: invalid assessment discarded: {e}")
+                session.interaction_assessment = None
+                return
 
         if (
-            user_mood.satisfaction.level < 3
-            and user_mood.remediation
-            and user_mood.remediation.effectiveness
-            and user_mood.remediation.effectiveness.level < 4
+            assessment.satisfaction.level < 3
+            and assessment.remediation
+            and assessment.remediation.effectiveness
+            and assessment.remediation.effectiveness.level < 4
         ):
+            # Keep the assessment: the remediation loop is still open and
+            # ``_apply_remediation`` needs it later this run.
             return
 
         try:
             turn = persona_manager_agent.run(
-                AgentInput(text=user_text, session_state={"user_mood": user_mood})
+                AgentInput(
+                    text=user_text,
+                    session_state={"interaction_assessment": assessment.model_dump()},
+                )
             )
             if turn and turn.structured:
                 # Parse the PersonaUpdate from the agent's response
@@ -748,19 +762,21 @@ class Semente:
 
                 state["user_persona"] = user_persona.model_dump()
 
-            state["user_mood"] = None
-
-        except Exception as e:
-            state["user_persona"] = user_persona.model_dump()
-
-            if user_mood.satisfaction.level >= 3 or user_mood.remediation is not None:
-                state["user_mood"] = None
+            # The assessment is consumed: clear it so the next run starts
+            # fresh (avoids re-persisting old feedback or re-running the
+            # satisfaction agent in remediation mode).
+            session.interaction_assessment = None
 
         except Exception as e:
             log_error(f"_manage_persona: agent failed: {e}")
+            # Keep the assessment only when the loop is still open (low
+            # satisfaction without a remediation attempt); otherwise the
+            # user already saw the final answer and the turn is done.
+            if assessment.satisfaction.level >= 3 or assessment.remediation is not None:
+                session.interaction_assessment = None
 
     def _build_agent_input(
-        self, session: AgentSession, user_text: str, state: dict
+        self, session: Session, user_text: str, state: dict
     ) -> str:
         """Assemble the input string for the single agent (or welcoming agent).
 
@@ -906,7 +922,7 @@ class Semente:
             metrics=turn.metrics,
         )
         
-    def _apply_remediation(self, routed: StepOutput, state: dict) -> StepOutput:
+    def _apply_remediation(self, routed: StepOutput, session: Session) -> StepOutput:
         """Merge the routed response with a remediation message when due.
 
         When the user is frustrated and a remediation effectiveness was
@@ -916,7 +932,7 @@ class Semente:
         """
         from semente.agents.feedback_agent import remediation_agent
 
-        if not _should_apply_remediation(state):
+        if not _should_apply_remediation(session):
             return routed
 
         audio_item = (
@@ -963,17 +979,18 @@ class Semente:
         return response
 
 
-def _should_apply_remediation(session_state: dict) -> bool:
-    """Verifica de forma segura se a remediação do humor deve ser aplicada."""
-    user_mood_raw = session_state.get("user_mood")
-    if not user_mood_raw:
+def _should_apply_remediation(session: Session) -> bool:
+    """Verifica de forma segura se a remediação deve ser aplicada."""
+    assessment = getattr(session, "interaction_assessment", None)
+    if not assessment:
         return False
 
     try:
-        user_mood = UserMood.model_validate(user_mood_raw)
-        return bool(user_mood.remediation and user_mood.remediation.effectiveness)
+        if not isinstance(assessment, InteractionAssessment):
+            assessment = InteractionAssessment.model_validate(assessment)
+        return bool(assessment.remediation and assessment.remediation.effectiveness)
     except Exception as exc:
-        log_error(f"_should_apply_remediation: failed to validate user_mood - {exc}")
+        log_error(f"_should_apply_remediation: failed to validate assessment - {exc}")
         return False
 
 
@@ -1027,14 +1044,14 @@ def _apply_prompts(manifest: Manifest) -> None:
             set_prompts_dir(lang_dir)
 
 
-_agent_cache: Semente | None = None
+_harness_cache: Harness | None = None
 
 
-def get_agent(manifest_path: str | None = None) -> Semente:
+def get_harness(manifest_path: str | None = None) -> Harness:
     """Load manifest + domain, apply language, build the agents, cache."""
-    global _agent_cache
-    if _agent_cache is not None:
-        return _agent_cache
+    global _harness_cache
+    if _harness_cache is not None:
+        return _harness_cache
 
     import os
 
@@ -1063,10 +1080,10 @@ def get_agent(manifest_path: str | None = None) -> Semente:
 
     agent = build_agent(domain_spec, manifest)
     welcoming_agent = build_welcoming_agent(tts_enabled=manifest.features.get("tts", True))
-    _agent_cache = Semente(
+    _harness_cache = Harness(
         agent=agent,
         welcoming_agent=welcoming_agent,
         manifest=manifest,
         store=store,
     )
-    return _agent_cache
+    return _harness_cache
