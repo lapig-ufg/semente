@@ -1,7 +1,7 @@
 from semente.database.models import NegativeFeedback, PositiveFeedback
 from semente.database.session import SessionLocal
 from semente.guardrails.pii_gate import sanitize_json_pii
-from semente.core.semente_agent import SementeAgent
+from semente.core.harness import Harness
 
 def test_e2e_negative_feedback():
     db = SessionLocal()
@@ -28,12 +28,12 @@ def test_e2e_negative_feedback():
 
     # 3. Instanciar agente fake/mock ou chamar direto a lógica de persistência
     # Aqui simulamos a chamada do _persist_feedback
-    from semente.core.semente_agent import SementeAgent
+    from semente.core.harness import Harness
     from semente.core.types import Session
     from semente.schemas.interaction_assessment import InteractionAssessment
 
-    # Criamos uma instância do SementeAgent (pode usar um manifesto simples)
-    agent = SementeAgent.__new__(SementeAgent) # instancia sem rodar o __init__ pesado se quiser
+    # Criamos uma instância do Harness (pode usar um manifesto simples)
+    agent = Harness.__new__(Harness) # instancia sem rodar o __init__ pesado se quiser
 
     # A avaliação agora vive na Session, não no session_state
     session = Session(user_id="test-local-db", session_id="test-local-db")

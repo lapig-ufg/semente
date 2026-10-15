@@ -1,4 +1,4 @@
-"""SementeAgent — the single-object pipeline that replaces the workflow engine.
+"""Harness — the single-object pipeline that replaces the workflow engine.
 
 One object owns the whole conversation turn: ``run()`` is a thin sequencer
 and each unique stage of the old workflow is a private method whose return
@@ -20,11 +20,11 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
 
 Media/summary/feedback/persona agents are imported lazily *inside* the
 methods: their modules build agents at import time, so they must only be
-imported after the language/prompts dir has been applied (``get_agent``).
+imported after the language/prompts dir has been applied (``get_harness``).
 
 External interface:
-    SementeAgent  -- the agent object the channels call.
-    get_agent     -- manifest + domain + prompts loading, cached singleton.
+    Harness  -- the harness object the channels call.
+    get_harness     -- manifest + domain + prompts loading, cached singleton.
 """
 
 from __future__ import annotations
@@ -150,10 +150,10 @@ def _convert_geo_files(files: list[File]) -> tuple[list[File], list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# SementeAgent
+# Harness
 # ---------------------------------------------------------------------------
 
-class SementeAgent:
+class Harness:
     """The whole conversation pipeline as a single object.
 
     Args:
@@ -206,7 +206,7 @@ class SementeAgent:
             The final :class:`StepOutput` (content, media, metrics).
         """
         if stream:
-            log_debug("SementeAgent.run(stream=True): running synchronously.")
+            log_debug("Harness.run(stream=True): running synchronously.")
 
         session: Session = self._load_session(user_id, session_id, session_state)
 
@@ -1044,14 +1044,14 @@ def _apply_prompts(manifest: Manifest) -> None:
             set_prompts_dir(lang_dir)
 
 
-_agent_cache: SementeAgent | None = None
+_harness_cache: Harness | None = None
 
 
-def get_agent(manifest_path: str | None = None) -> SementeAgent:
+def get_harness(manifest_path: str | None = None) -> Harness:
     """Load manifest + domain, apply language, build the agents, cache."""
-    global _agent_cache
-    if _agent_cache is not None:
-        return _agent_cache
+    global _harness_cache
+    if _harness_cache is not None:
+        return _harness_cache
 
     import os
 
@@ -1080,10 +1080,10 @@ def get_agent(manifest_path: str | None = None) -> SementeAgent:
 
     agent = build_agent(domain_spec, manifest)
     welcoming_agent = build_welcoming_agent(tts_enabled=manifest.features.get("tts", True))
-    _agent_cache = SementeAgent(
+    _harness_cache = Harness(
         agent=agent,
         welcoming_agent=welcoming_agent,
         manifest=manifest,
         store=store,
     )
-    return _agent_cache
+    return _harness_cache

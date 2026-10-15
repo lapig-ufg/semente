@@ -1,19 +1,19 @@
 """Semente core — the engine-free agent pipeline.
 
 External interface:
-    SementeAgent  -- the single-object pipeline the channels call.
-    get_agent     -- manifest + domain + prompts loading, cached singleton.
+    Harness  -- the single-object pipeline the channels call.
+    get_harness     -- manifest + domain + prompts loading, cached singleton.
     StepOutput    -- the run response envelope (content, media, metrics).
     AgentSession  -- per-(user, session) state and history record.
     SessionStore  -- SQLAlchemy-backed session persistence.
 """
 
-from semente.core.semente_agent import SementeAgent, get_agent
+from semente.core.harness import Harness, get_harness
 from semente.core.types import Session, SessionStore, StepOutput
 
 __all__ = [
-    "SementeAgent",
-    "get_agent",
+    "Harness",
+    "get_harness",
     "StepOutput",
     "Session",
     "SessionStore",

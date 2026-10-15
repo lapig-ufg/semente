@@ -312,7 +312,7 @@ def extract_workflow_debug_data(
     session_id: str,
     user_query: str,
 ) -> Dict[str, Any]:
-    """Top-level extractor called after SementeAgent.run().
+    """Top-level extractor called after Harness.run().
 
     Returns a dict with all debug data for this interaction, safe for
     st.session_state storage (all objects converted to plain types).
