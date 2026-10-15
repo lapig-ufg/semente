@@ -316,12 +316,14 @@ tutorial_tools:
         Tutorial accepted! Confirm warmly that the guided tutorial is
         starting and that the first step's lesson arrives right away. Do NOT
         teach the lesson here and do NOT ask anything about the step's work —
-        just confirm the enrollment (e.g.: "Perfeito! Tutorial aceito! Sua
-        próxima mensagem já vem com a primeira aula.").
+        just confirm the enrollment (e.g. write in the user's language:
+        "Great! Tutorial accepted! Your next message already comes with the
+        first lesson.").
       declined: |
-        Tutorial declined: confirm warmly and without any pressure (e.g.:
-        "Sem problema! Você já está pronto para usar o sistema — quando
-        quiser, é só pedir."). Do not offer the tutorial again.
+        Tutorial declined: confirm warmly and without any pressure (e.g.
+        write in the user's language: "No problem! You are ready to use the
+        system — just ask whenever you want."). Do not offer the tutorial
+        again.
 
 version_tools:
   consult_update_notes:

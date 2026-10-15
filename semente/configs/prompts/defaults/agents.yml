@@ -278,6 +278,12 @@ tutorial_agent:
     A graceful closing: no pressure — they can keep using the system normally
     and are welcome back to the tutorial whenever they want.
 
+  # Appended to the SUPERVISOR's input text (never to the user-visible reply)
+  # when the run carries geospatial files: the supervisor is text-only and
+  # must see that the attachment exists to judge a "send a file" step.
+  geo_attachment_note: >-
+    the user attached a geospatial file (converted to GeoJSON)
+
 tutorial_check_agent:
   name: "Tutorial Check"
   role: "Tutorial checkpoint — judges whether the current step's completion condition was met."

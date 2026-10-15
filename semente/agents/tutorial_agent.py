@@ -100,6 +100,21 @@ def _text(tutorial_config: dict, key: str, fallback: str) -> str:
     return value.strip()
 
 
+def build_geo_attachment_note() -> str:
+    """Text appended to the supervisor's input when the run has geo files.
+
+    The supervisor is text-only: to judge a "send a file" step it must see
+    that the converted GeoJSON attachment exists. The wording comes from
+    ``agents.yml`` (``tutorial_agent.geo_attachment_note``) so each app can
+    localize it; a missing key falls back to a generic English note.
+    """
+    return _text(
+        get_agent_config("tutorial_agent"),
+        "geo_attachment_note",
+        "the user attached a geospatial file (converted to GeoJSON)",
+    )
+
+
 # =====================================================================
 # SUPERVISOR — the first agent: routes every message (forward/lesson)
 # =====================================================================

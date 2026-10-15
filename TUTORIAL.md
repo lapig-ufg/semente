@@ -184,6 +184,7 @@ tutorial): `test_cli_status.py::test_status_env_missing`,
 | 2026-10-14 (CLI) | `config enable tutorial` scaffolds a working example + auto-wires the spec (safe-gated, manual-instruction fallback); `init --tutorial` + interactive y/N; disable = flag only. |
 | 2026-10-14 v3 | Step reshaping: keep `id`+`lesson` only; `forward_condition` (text) → supervisor prompt; `complete_condition` (str → checkpoint agent / callable → pipeline) judged **after a forwarded turn** with the single-agent output; callable receives `(session_state, user_text, agent_reply)`; supervisor no longer decides completion (`TutorialDecision.step_completed` removed); completion announced by APPENDING congrats + next lesson (or closing) to the same reply; new step born lesson-delivered; offer menu from ids. |
 | 2026-10-14 v3.1 | Both agents consolidated into one file (`semente/agents/tutorial_agent.py`); `semente/agents/tutorial_check_agent.py` deleted; yml tags unchanged. |
+| 2026-10-15 (de-Pasto-Legal) | Last Pasto Legal remnants removed from the tutorial feature: the supervisor's geo-attachment marker became the `tutorial_agent.geo_attachment_note` prompt key in `agents.yml` (fallback in code; tag `anexo` → `geo_attachment`), and the Portuguese example replies in `tools.yml` `set_tutorial_choice` results are now English. 49 tutorial tests. |
 
 ## 11. Open items / ideas (not decided — candidates only)
 
@@ -192,7 +193,9 @@ tutorial): `test_cli_status.py::test_status_env_missing`,
   step content in the users' language.
 - The supervisor's geo-attachment marker (in `_run_tutorial_supervisor`)
   is a hardcoded detail kept from the first attempt — genericize if the
-  concept of "attachments" appears in domain-taught steps.
+  concept of "attachments" appears in domain-taught steps.  →  **RESOLVED
+  2026-10-15**: it now reads the `tutorial_agent.geo_attachment_note`
+  prompt key (tag renamed `<anexo>` → `<geo_attachment>`).
 - Possibly expose the tutorial state to the debug panel / metrics later.
 
 ---

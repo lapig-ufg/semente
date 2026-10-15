@@ -602,11 +602,14 @@ class Semente:
             # The supervisor is text-only: make the converted attachment
             # explicit so it can judge a "send a geo file" step correctly
             # (when forwarding, the files still go to the normal agent).
+            # The wording is a localized prompt key, not a hardcoded string.
+            from semente.agents.tutorial_agent import build_geo_attachment_note
+
             agent_input = "\n".join(
                 part
                 for part in (
                     agent_input,
-                    "<anexo>o usuário anexou um arquivo geoespacial (convertido para GeoJSON)</anexo>",
+                    f"<geo_attachment>{build_geo_attachment_note()}</geo_attachment>",
                 )
                 if part
             )

@@ -21,6 +21,7 @@ import pytest
 
 from semente.agents.tutorial_agent import (
     build_completion_announcement,
+    build_geo_attachment_note,
     completion_payload,
     parse_completion_check,
     resolve_tutorial,
@@ -910,3 +911,31 @@ def test_parse_do_estado_da_posicao():
     assert parse_tutorial_state("2") == "2"
     assert parse_tutorial_state(1) == "1"
     assert parse_tutorial_state(TUTORIAL_COMPLETED) == TUTORIAL_COMPLETED
+
+
+def test_geo_attachment_note_generico():
+    """The supervisor's attachment note is a localized generic prompt key."""
+    nota = build_geo_attachment_note()
+    assert nota
+    assert "geospatial" in nota.lower()
+    assert "o usuário" not in nota  # no pt-BR leftover from the first attempt
+
+
+def test_supervisor_ve_o_anexo_geo(monkeypatch):
+    """Geo files in the run are announced to the text-only supervisor."""
+    agente = _nova_semente([TutorialDecision(forward=True)])
+    fake_file = SimpleNamespace(name="x.geojson")
+    monkeypatch.setattr(
+        agente, "_input_preprocessing", lambda *args, **kwargs: ("oi", [fake_file])
+    )
+    final = agente.run(
+        user_id=UID,
+        session_id="s1",
+        input="oi",
+        session_state=_mid_tutorial_state(0),
+    )
+
+    assert final.content == NORMAL_REPLY
+    entrada = agente.tutorial_agent.inputs[-1].text
+    assert "<geo_attachment>" in entrada
+    assert "anexo" not in entrada  # the marker tag is language-neutral now
