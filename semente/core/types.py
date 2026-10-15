@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from semente.logging import log_error
+from semente.schemas.interaction_assessment import InteractionAssessment
 
 
 @dataclass
@@ -34,7 +35,7 @@ class StepOutput:
 
 
 @dataclass
-class AgentSession:
+class Session:
     """Per-(user, session) conversation state and history.
 
     ``session_state`` is the mutable dict shared by every SementeAgent
@@ -45,6 +46,9 @@ class AgentSession:
     session_id: str
     session_state: dict = field(default_factory=dict)
     runs: list[dict] = field(default_factory=list)
+    # Per-turn assessment (satisfaction + remediation). Lives outside
+    # ``session_state`` and is persisted in its own DB column.
+    interaction_assessment: Optional[InteractionAssessment] = None
 
     def get_history(self, num_runs: Optional[int] = None) -> list[tuple[str, str]]:
         """Return ``(user, assistant)`` pairs, oldest first."""
@@ -71,11 +75,23 @@ class SessionStore:
             return {
                 "session_state": record.session_state or {},
                 "runs": record.runs or [],
+                "interaction_assessment": (
+                    InteractionAssessment.model_validate(record.interaction_assessment)
+                    if record.interaction_assessment
+                    else None
+                ),
             }
         finally:
             db.close()
 
-    def save(self, user_id: str, session_id: str, session_state: dict, runs: list) -> None:
+    def save(
+        self,
+        user_id: str,
+        session_id: str,
+        session_state: dict,
+        runs: list,
+        interaction_assessment: Optional[InteractionAssessment] = None,
+    ) -> None:
         db = self.session_factory()
         try:
             record = db.query(self.model).filter(
@@ -87,6 +103,11 @@ class SessionStore:
                 db.add(record)
             record.session_state = session_state
             record.runs = runs
+            record.interaction_assessment = (
+                interaction_assessment.model_dump(mode="json")
+                if interaction_assessment
+                else None
+            )
             db.commit()
         except Exception as exc:
             db.rollback()

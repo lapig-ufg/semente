@@ -10,7 +10,7 @@ class is structurally impossible; these tests pin that down.
 """
 
 from semente.core.semente_agent import SementeAgent
-from semente.core.types import AgentSession
+from semente.core.types import Session
 from semente.manifest import Manifest
 
 
@@ -22,8 +22,8 @@ def _agent() -> SementeAgent:
     )
 
 
-def _session(user_text: str) -> AgentSession:
-    return AgentSession(user_id="u", session_id="s")
+def _session(user_text: str) -> Session:
+    return Session(user_id="u", session_id="s")
 
 
 def test_agent_input_wraps_the_consolidated_user_text():
@@ -49,7 +49,7 @@ def test_agent_input_empty_text_is_empty_string():
 
 def test_agent_input_stashes_history_block_in_state():
     agent = _agent()
-    session = AgentSession(
+    session = Session(
         user_id="u",
         session_id="s",
         runs=[

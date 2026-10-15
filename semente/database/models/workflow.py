@@ -6,7 +6,7 @@ from sqlalchemy import Column, String, DateTime, JSON
 from semente.database.session import Base
 
 
-class WorkflowSessionRecord(Base):
+class SessionRecord(Base):
     """Canonical workflow session: state + history pairs per (user, session)."""
     __tablename__ = 'workflow_sessions'
 
@@ -14,4 +14,5 @@ class WorkflowSessionRecord(Base):
     user_id = Column(String, index=True)
     session_state = Column(JSON, default=dict)
     runs = Column(JSON, default=list)
+    interaction_assessment = Column(JSON, nullable=True, comment="Avaliação da interação (satisfação + remediação) da última rodada")
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)

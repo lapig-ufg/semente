@@ -1,3 +1,10 @@
+"""Per-turn assessment of the interaction quality (satisfaction + remediation).
+
+Stored as a typed property on ``Session`` (``interaction_assessment``) and
+persisted in its own JSON column on ``SessionRecord`` — never inside
+``session_state``.
+"""
+
 from typing import Optional
 from pydantic import BaseModel, Field
 
@@ -27,7 +34,9 @@ class Remediation(BaseModel):
     )
 
 
-class UserMood(BaseModel):
+class InteractionAssessment(BaseModel):
+    """How the interaction went: overall satisfaction, plus the remediation
+    attempt (if any) with its effectiveness."""
     satisfaction: Effectiveness = Field(
         description="Estado de satisfação e humor geral do usuário no momento atual"
     )

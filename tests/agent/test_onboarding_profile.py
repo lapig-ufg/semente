@@ -22,6 +22,7 @@ import pytest
 from semente.core.semente_agent import SementeAgent
 from semente.database.models import UserProfile, UserTermsAcceptance
 from semente.database.session import SessionLocal, engine
+from semente.services.session_migration import CURRENT_SCHEMA_VERSION
 from semente.manifest import Manifest
 
 
@@ -195,6 +196,6 @@ def test_estado_antigo_e_migrado_sem_quebrar(db):
     }
 
     assert _agent()._needs_onboarding(estado, UID) is False
-    assert estado["workflow_state"]["schema_version"] == 1
+    assert estado["workflow_state"]["schema_version"] == CURRENT_SCHEMA_VERSION
     assert estado["some_legacy_flag"] is True
     assert estado["user_persona"]["name"] == "João"

@@ -6,7 +6,7 @@ of which submodule defines it.
 
 from semente.database.models.user import UserTermsAcceptance, UserProfile
 from semente.database.models.feedback import NegativeFeedback, PositiveFeedback, AnalysisFeedback
-from semente.database.models.workflow import WorkflowSessionRecord
+from semente.database.models.workflow import SessionRecord
 
 __all__ = [
     "UserTermsAcceptance",
@@ -14,5 +14,5 @@ __all__ = [
     "NegativeFeedback",
     "PositiveFeedback",
     "AnalysisFeedback",
-    "WorkflowSessionRecord",
+    "SessionRecord",
 ]

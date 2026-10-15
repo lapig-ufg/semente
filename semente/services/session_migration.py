@@ -12,7 +12,7 @@ External interface:
 import copy
 from typing import Any, Callable, Dict
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 def migrate_v0_to_v1(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -22,14 +22,19 @@ def migrate_v0_to_v1(state: Dict[str, Any]) -> Dict[str, Any]:
     if "user_persona" not in state:
         state["user_persona"] = {}
 
-    if "user_mood" not in state:
-        state["user_mood"] = None
+    return state
 
+
+def migrate_v1_to_v2(state: Dict[str, Any]) -> Dict[str, Any]:
+    # user_mood moved out of session_state: it now lives on the Session
+    # object and its own SessionRecord column.
+    state.pop("user_mood", None)
     return state
 
 
 MIGRATIONS: Dict[int, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
     0: migrate_v0_to_v1,
+    1: migrate_v1_to_v2,
 }
 
 

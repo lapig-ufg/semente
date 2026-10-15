@@ -9,12 +9,12 @@ External interface:
 """
 
 from semente.core.semente_agent import SementeAgent, get_agent
-from semente.core.types import AgentSession, SessionStore, StepOutput
+from semente.core.types import Session, SessionStore, StepOutput
 
 __all__ = [
     "SementeAgent",
     "get_agent",
     "StepOutput",
-    "AgentSession",
+    "Session",
     "SessionStore",
 ]

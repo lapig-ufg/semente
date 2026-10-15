@@ -52,12 +52,6 @@ def _format_state_value(key: str, value: Any) -> Any:
     if key in ("workflow_route", "registration_state"):
         return str(value) if value else "None"
 
-    # User mood — nested dict with satisfaction data
-    if key == "user_mood":
-        if isinstance(value, dict):
-            return {k: truncate_string(v, 100) for k, v in value.items()}
-        return truncate_string(value, 200)
-
     # User persona — nested dict
     if key == "user_persona":
         if isinstance(value, dict):
