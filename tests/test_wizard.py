@@ -100,6 +100,35 @@ def test_run_wizard_partial_env(monkeypatch):
     assert answers == [{"key": "GOOGLE_API_KEY", "value": "key"}]
 
 
+def test_run_wizard_invalid_provider_reasked():
+    """A non-provider answer (e.g. a pasted API key) is rejected, not stored.
+
+    Regression: the key used to be saved as PRIMARY_MODEL_PROVIDER and the
+    provider's API-key prompt was silently skipped, so the launch crashed on
+    the missing key while the wizard reported success.
+    """
+    inputs = iter(["AIzaSyAf2h-key", "", ""])
+    prompts: list[str] = []
+
+    def input_fn(prompt):
+        prompts.append(prompt)
+        return next(inputs)
+
+    answers = wizard.run_wizard(
+        ["PRIMARY_MODEL_PROVIDER", "PRIMARY_MODEL_ID", "GOOGLE_API_KEY"],
+        {},
+        input_fn=input_fn,
+        getpass_fn=lambda prompt: "secret-key",
+    )
+    by_key = {a["key"]: a["value"] for a in answers}
+    assert by_key["PRIMARY_MODEL_PROVIDER"] == "google"
+    assert by_key["PRIMARY_MODEL_ID"] == "gemini-3.5-flash-lite"
+    assert by_key["GOOGLE_API_KEY"] == "secret-key"
+    # the bad answer triggered a rejection + re-prompt of the provider question
+    rejections = len([p for p in prompts if "Model provider" in p])
+    assert rejections == 2
+
+
 def test_save_to_env_file_preserves_lines(tmp_path):
     """Existing keys replaced in place, comments/other keys kept, new keys appended."""
     env_path = tmp_path / ".env"

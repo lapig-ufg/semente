@@ -66,6 +66,23 @@ def get_missing(env: dict[str, str]) -> list[str]:
     return [key for key in required_keys(env) if not (env.get(key) or "").strip()]
 
 
+def _ask_provider(current: str, input_fn=input) -> str:
+    """Ask for the provider until blank (-> keep ``current``) or a known one.
+
+    Rejects free-text answers instead of accepting them: a pasted API key or
+    typo used to be stored as ``PRIMARY_MODEL_PROVIDER`` and silently skipped
+    the provider's key block (the wizard reported success while the launch
+    crashed on the missing key).
+    """
+    while True:
+        answer = input_fn(f"Model provider ({'/'.join(_PROVIDER_KEYS)}) [{current}]: ").strip().lower()
+        if not answer:
+            return current
+        if answer in _PROVIDER_KEYS:
+            return answer
+        print(f"Invalid provider '{answer}' — valid options: {', '.join(_PROVIDER_KEYS)}.")
+
+
 def run_wizard(
     missing: list[str],
     env: dict[str, str],
@@ -82,8 +99,7 @@ def run_wizard(
     provider = (env.get("PRIMARY_MODEL_PROVIDER") or "google").strip().lower()
 
     if "PRIMARY_MODEL_PROVIDER" in missing:
-        answer = input_fn(f"Model provider (google/ollama) [{provider}]: ").strip().lower()
-        provider = answer or provider
+        provider = _ask_provider(provider, input_fn)
         answers.append({"key": "PRIMARY_MODEL_PROVIDER", "value": provider})
 
     if "PRIMARY_MODEL_ID" in missing:
@@ -166,4 +182,8 @@ def ensure_config(
         for answer in answers:
             os.environ[answer["key"]] = answer["value"]
         print(f"Saved to {env_path}.")
+        still_missing = get_missing(effective_env(env_path))
+        if still_missing:
+            print(f"WARNING: still missing after setup: {', '.join(still_missing)}")
+            print("(the launch will likely fail — fill them in .env or export them)")
     return answers
