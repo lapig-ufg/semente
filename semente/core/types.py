@@ -46,7 +46,7 @@ class Session:
     session_id: str
     session_state: dict = field(default_factory=dict)
     runs: list[dict] = field(default_factory=list)
-    # Per-turn assessment (satisfaction + remediation). Lives outside
+    # Per-turn assessment (satisfaction + topic check). Lives outside
     # ``session_state`` and is persisted in its own DB column.
     interaction_assessment: Optional[InteractionAssessment] = None
 

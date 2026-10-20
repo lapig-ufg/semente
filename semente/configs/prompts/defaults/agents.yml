@@ -324,10 +324,15 @@ satisfaction_agent:
     - **4 (Satisfied/Positive):** Validates the answer, genuinely thanks or shows the system solved the problem.
     - **5 (Delighted/Very Positive):** Above-average enthusiasm, strongly praises the system's intelligence or the quality of the answer.
 
+    # Topic check ('changed_topic' field)
+    Compare the user's current message against the last assistant answer:
+    - If the user abandoned the subject of the last answer and is talking about a different topic, set 'changed_topic' to true.
+    - If the user is still on the same topic (retrying, elaborating on, or disputing the same answer), set 'changed_topic' to false.
+
     # Important Rules
     - Analyze the tone, word choice and punctuation to capture subtle nuances.
     - Be objective: focus on the feeling expressed by the user in the current input.
-    - The answer must be a JSON in the format: {{level: str, level_message: str}}
+    - The answer must be a JSON in the format: {{level: str, level_message: str, changed_topic: bool}}
   # Scenario when no remediation is in progress.
   scenario_initial: |
     # Current Scenario: Initial Assessment
@@ -339,8 +344,8 @@ satisfaction_agent:
     The system generated a NEW revised answer to try to solve the problem.
 
     Your mission now is to assess whether this NEW answer managed to remedy the situation:
-    - If the new level is **>= 3**, it means the remediation was successful and the user accepted the new approach.
-    - If the new level remains **<= 2**, it means the new attempt failed to calm or solve the user's problem.
+    - If the new level is **>= 4**, it means the remediation was successful and the user accepted the new approach.
+    - If the new level remains **<= 3**, it means the new attempt failed to calm or solve the user's problem.
 
 boletim_diagnostic_agent:
   name: "Boletim Diagnostic Agent"

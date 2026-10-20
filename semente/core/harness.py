@@ -12,11 +12,26 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
     _needs_onboarding      terms + profile gate (always)
     ├─ True:  _run_welcoming_agent
     └─ False: _summarize_conversation (summarization)
-              _process_feedback      (feedback_workflow)
-              _run_single_agent      (always; sees summary + history)
-              _apply_remediation    (part of the feedback loop)
-    _finalize_output       audio transcript -> synthesized voice (tts)
+              _process_feedback      (feedback_workflow; returns whether a
+                                       remediation cycle is open: frustration
+                                       detected and the user did not change
+                                       the topic)
+              _run_single_agent      (always; sees summary + history; gets a
+                                       "generate a better answer" instruction
+                                       appended when the cycle is open)
+              _generate_apology      (part of the feedback loop: apology +
+                                       evaluation request around the new
+                                       answer)
+    _finalize_output       audio transcripts -> synthesized voice (tts)
     _persist_session       state + history back to the store
+
+The DPO feedback works in two turns. On frustration (turn n) the rejected
+half is registered right away (NegativeFeedback with ``chosen: null``) and
+``assessment.pending`` carries the record id plus the replacement answer
+after the agent runs. On the next turn, if the user evaluates the new
+answer positively, the stored row is completed with ``chosen`` (approved);
+on a negative evaluation the row is kept as a failed remediation (not for
+training); the pending is consumed either way.
 
 Media/summary/feedback/persona agents are imported lazily *inside* the
 methods: their modules build agents at import time, so they must only be
@@ -40,7 +55,10 @@ from semente.core.types import Session, SessionStore, StepOutput
 from semente.logging import log_debug, log_error, log_info
 from semente.manifest import Manifest
 from semente.schemas.input_manager import InputManager
-from semente.schemas.interaction_assessment import InteractionAssessment
+from semente.schemas.interaction_assessment import (
+    InteractionAssessment,
+    PendingFeedback,
+)
 from semente.schemas.user_persona import (
     is_persona_complete,
     is_persona_field_informed,
@@ -57,7 +75,24 @@ SUMMARY_THRESHOLD = 6
 HISTORY_WINDOW = 4
 
 # Default fallback satisfaction level when the evaluation agent fails.
-_DEFAULT_SATISFACTION = {"level": 3, "level_message": "Neutral (default)"}
+_DEFAULT_SATISFACTION = {
+    "level": 3,
+    "level_message": "Neutral (default)",
+    "changed_topic": False,
+}
+
+# Appended to the agent input on the turn that opens a remediation cycle:
+# the user disliked the last answer but stayed on the topic. The agent
+# should genuinely retry, never apologize (the apology is a separate step),
+# and move on to the next topic only when no better answer is possible.
+_REMEDIATION_INSTRUCTION = (
+    "<feedback_instruction>\n"
+    "ATENÇÃO: o usuário avaliou mal a resposta anterior e NÃO mudou de assunto.\n"
+    "Gere uma resposta melhor para a última pergunta, corrigindo o problema apontado.\n"
+    "NÃO peça desculpas e NÃO comente a insatisfação — entregue apenas a nova resposta.\n"
+    "Se não houver como gerar uma resposta melhor, siga em frente com o próximo tópico.\n"
+    "</feedback_instruction>"
+)
 
 
 def _file_name(file: File) -> str:
@@ -218,13 +253,30 @@ class Harness:
         if self._needs_onboarding(session.session_state, user_id):
             final = self._run_welcoming_agent(session, user_text, images, audio)
         else:
+            needs_remediation = False
             if self.features.get("summarization", True):
                 self._summarize_conversation(session, user_text, session.session_state)
             if self.features.get("feedback_workflow", True):
-                self._process_feedback(session, user_text, session.session_state)
-            agent_input = self._build_agent_input(session, user_text, session.session_state)
+                needs_remediation = self._process_feedback(session, user_text, session.session_state)
+            agent_input = self._build_agent_input(
+                session, user_text, session.session_state, needs_remediation
+            )
             routed = self._run_single_agent(agent_input, images, audio, geo_files, session.session_state, user_id)
-            final = self._apply_remediation(routed, session)
+
+            # The plain new answer (before the apology) is what completes
+            # the DPO pair; store it now, apology generation may fail.
+            assessment = session.interaction_assessment
+            if assessment and assessment.pending and not assessment.pending.new_response:
+                assessment.pending.new_response = routed.content or (
+                    "\n".join(
+                        a.transcript for a in (routed.audio or []) if a.transcript
+                    )
+                )
+
+            if needs_remediation:
+                routed = self._generate_apology(routed)
+
+            final = routed
 
         final = self._finalize_output(final, user_id)
         self._persist_session(session, input, final)
@@ -539,31 +591,43 @@ class Harness:
         # tags).
         state["conversation_summary"] = summary_state.summary or ""
         
-    def _process_feedback(self, session: Session, user_text: str, state: dict) -> None:
+    def _process_feedback(
+        self, session: Session, user_text: str, state: dict
+    ) -> bool:
         """Run the feedback loop: satisfaction, persistence, persona.
 
         Mirrors the old feedback sub-workflow: evaluate the satisfaction,
         route to the matching persistence branch, then conditionally update
-        the user persona. Everything mutates ``state``; nothing is returned.
+        the user persona. Everything mutates the session's assessment.
+
+        Returns True when a remediation cycle needs to run this turn (the
+        user is frustrated **and** did not change the topic) — the caller
+        then injects the retry instruction and runs the apology step.
         """
         self._evaluate_satisfaction(session, user_text)
-        self._persist_feedback(session)
+        needs_remediation = self._persist_feedback(session)
         self._manage_persona(session, user_text, state)
-        
+        return needs_remediation
+
     def _evaluate_satisfaction(
         self, session: Session, user_text: str
     ) -> None:
         """Run the satisfaction agent and store the result on the session.
 
-        On the first evaluation the result is stored under 'satisfaction';
-        on subsequent evaluations (after remediation), under 'remediation'.
+        The result also carries the topic check (``changed_topic``): it
+        decides whether a frustration opens a remediation cycle. The open
+        DPO pair (``pending``) is carried over from the previous
+        assessment — this turn's message may be its evaluation.
         """
         from semente.agents.feedback_agent import satisfaction_evaluation_agent
+        from semente.schemas.interaction_assessment import Effectiveness
 
         history_data = session.get_history(num_runs=1)
         prior = session.interaction_assessment
+        pending = prior.pending if prior else None
+        has_pending = pending is not None
 
-        effectiveness: Optional[dict] = None
+        effectiveness: Optional[Effectiveness] = None
 
         try:
             evaluator_msg = ""
@@ -577,85 +641,104 @@ class Harness:
             turn = satisfaction_evaluation_agent.run(
                 AgentInput(
                     text=evaluator_msg,
-                    session_state={"interaction_assessment": prior.model_dump() if prior else None},
+                    session_state={"pending_feedback": has_pending},
                 )
             )
             if turn and turn.structured:
                 effectiveness = turn.structured
+                if isinstance(effectiveness, dict):
+                    effectiveness = Effectiveness.model_validate(effectiveness)
         except Exception as e:
             log_error(f"_evaluate_satisfaction: agent failed: {e}")
 
         if effectiveness is None:
             log_debug("_evaluate_satisfaction: no effectiveness result, using default")
-            effectiveness = _DEFAULT_SATISFACTION.copy()
+            effectiveness = Effectiveness.model_validate(_DEFAULT_SATISFACTION)
 
-        if prior is None:
-            session.interaction_assessment = InteractionAssessment(
-                satisfaction=effectiveness
-            )
-        else:
-            prior.remediation = effectiveness
-            session.interaction_assessment = prior
+        session.interaction_assessment = InteractionAssessment(
+            satisfaction=effectiveness,
+            pending=pending,
+        )
 
-    def _persist_feedback(self, session: Session) -> None:
-        """Persist the interaction per the satisfaction level."""
+    def _persist_feedback(self, session: Session) -> bool:
+        """Persist the interaction per the satisfaction level (DPO two-phase).
+
+        The DPO pair is captured across two turns:
+
+        - Turn n (level <= 2): insert a NegativeFeedback row right away with
+          ``payload = {prompt, rejected, chosen: null}``, where the pair comes
+          from the last history run (the exchange that generated the
+          frustration). ``assessment.pending`` carries the record id so
+          the row can be completed later; ``run()`` fills ``new_response``
+          after the agent runs. Also returned: True when a remediation cycle
+          is open (frustration and the user did not change topic).
+        - Turn n + 1: if ``assessment.pending`` exists, this turn is the user's
+          evaluation of the new answer. Positive (level >= 4) completes the
+          stored row with ``chosen`` and ``approved: true``; negative
+          (level <= 2) marks the row as a failed remediation —
+          ``approved: false`` plus the rejected new answer (``rejected_new``)
+          — kept for manual analysis, not for training. Neutral leaves the
+          row untouched. Either way the pending is consumed and NO new cycle
+          opens this turn — if the user remains frustrated, a fresh cycle
+          opens on the following turn.
+
+        The SFT branch (positive satisfaction -> PositiveFeedback with the
+        recent runs trajectory) is unchanged.
+        """
         import datetime
         from semente.database.models import NegativeFeedback, PositiveFeedback
         from semente.database.session import SessionLocal
         from semente.guardrails.pii_gate import sanitize_json_pii
 
-        assessment = (
-            session.interaction_assessment.model_dump()
-            if session.interaction_assessment
-            else None
-        )
-        recent_runs = session.session_state.get("recent_agent_runs", [])
+        state = session.session_state
+        assessment = session.interaction_assessment
+        if assessment is None:
+            return False
+        satisfaction = assessment.satisfaction
+        satisfaction_level = satisfaction.level
+        changed_topic = satisfaction.changed_topic
 
-        satisfaction = (assessment or {}).get("satisfaction") or {}
-        satisfaction_level = satisfaction.get("level", 3)
-
-        if not recent_runs:
-            return
-
-        remediation = (assessment or {}).get("remediation") or {}
-        effectiveness = (
-            remediation.get("effectiveness", {})
-            if isinstance(remediation, dict)
-            else {}
-        )
-        effectiveness_level = effectiveness.get("level", 0)
+        recent_runs = state.get("recent_agent_runs", [])
 
         db_session = SessionLocal()
         try:
-            if effectiveness_level >= 4:
-                if len(recent_runs) >= 2:
-                    turn_rejected = recent_runs[-2]
-                    turn_chosen = recent_runs[-1]
+            # A pending pair makes this turn the evaluation turn: consume
+            # it and never open a new cycle on the same turn. The row's
+            # payload gains an ``approved`` marker: True (positive
+            # evaluation -> completed DPO pair) or False (failed
+            # remediation -> kept for manual analysis, not for training).
+            pending = assessment.pending
+            evaluation_turn = pending is not None
+            if pending:
+                if satisfaction_level >= 4 and pending.new_response:
+                    record = db_session.get(NegativeFeedback, pending.record_id)
+                    if record is not None and isinstance(record.payload, dict):
+                        payload = dict(record.payload)
+                        payload["chosen"] = sanitize_json_pii(pending.new_response)
+                        payload["approved"] = True
+                        record.payload = payload
+                        db_session.commit()
+                        log_debug(
+                            "pending negative feedback completed with the "
+                            "chosen response (DPO pair approved)"
+                        )
+                elif satisfaction_level <= 2 and pending.new_response:
+                    # Failed remediation: useless for training (no chosen)
+                    # but valuable for manual analysis of repeated issues.
+                    record = db_session.get(NegativeFeedback, pending.record_id)
+                    if record is not None and isinstance(record.payload, dict):
+                        payload = dict(record.payload)
+                        payload["rejected_new"] = sanitize_json_pii(pending.new_response)
+                        payload["approved"] = False
+                        record.payload = payload
+                        db_session.commit()
+                        log_debug(
+                            "pending negative feedback kept as a failed "
+                            "remediation (approved=false, not for training)"
+                        )
+                assessment.pending = None
 
-                    payload = {
-                        "prompt": turn_rejected.get("user", ""),
-                        "rejected": turn_rejected.get("assistant", ""),
-                        "chosen": turn_chosen.get("assistant", "")
-                    }
-                else:
-                    payload = {
-                        "prompt": recent_runs[-1].get("user", ""),
-                        "rejected": "",
-                        "chosen": recent_runs[-1].get("assistant", "")
-                    }
-
-                sanitized_payload = sanitize_json_pii(payload)
-                feedback_record = NegativeFeedback(
-                    timestamp=datetime.datetime.utcnow().isoformat(),
-                    payload=sanitized_payload,
-                )
-                db_session.add(feedback_record)
-                db_session.commit()
-                log_debug(
-                    "negative feedback recorded with remediation (DPO dataset)"
-                )
-
-            elif satisfaction_level >= 4:
+            if satisfaction_level >= 4 and recent_runs:
                 sanitized_trajectory = sanitize_json_pii(recent_runs)
                 feedback_record = PositiveFeedback(
                     timestamp=datetime.datetime.utcnow().isoformat(),
@@ -666,20 +749,50 @@ class Harness:
                 db_session.commit()
                 log_debug("positive feedback recorded (SFT dataset)")
 
+            if satisfaction_level <= 2 and not evaluation_turn:
+                history = session.get_history(num_runs=1)
+                if history:
+                    prompt, rejected = history[0]
+                    sanitized_payload = sanitize_json_pii(
+                        {"prompt": prompt, "rejected": rejected, "chosen": ""}
+                    )
+                    feedback_record = NegativeFeedback(
+                        timestamp=datetime.datetime.utcnow().isoformat(),
+                        payload=sanitized_payload,
+                    )
+                    db_session.add(feedback_record)
+                    db_session.commit()
+                    # Everything about the interaction assessment stays in
+                    # one object: the pending pair rides the assessment
+                    # (persisted on its own DB column), not session_state.
+                    assessment.pending = PendingFeedback(
+                        record_id=feedback_record.id
+                    )
+                    log_debug(
+                        "negative feedback registered with the rejected "
+                        "answer (DPO pair pending chosen)"
+                    )
+
         except Exception as e:
             log_error(f"_persist_feedback failed: {e}")
             db_session.rollback()
+            return False
         finally:
             db_session.close()
+
+        return (
+            satisfaction_level <= 2 and not changed_topic and not evaluation_turn
+        )
     def _manage_persona(self, session: Session, user_text: str, state: dict) -> None:
         """Conditionally run the persona manager agent and apply updates.
 
-        Calls the persona manager agent only when the satisfaction level is
-        >= 3, or the satisfaction is low but the remediation worked. After
-        applying updates (or skipping), clears the session's interaction
-        assessment. Name and role never change here: they are declared
-        identity (onboarding tools only) — deduction does not overwrite
-        declaration.
+        Runs the persona manager only when the user is not frustrated
+        (satisfaction >= 3). The assessment is NOT cleared here: it is
+        replaced wholesale by ``_evaluate_satisfaction`` on the next turn,
+        and its ``pending`` DPO pair must survive until it is consumed by
+        ``_persist_feedback`` on the evaluation turn. Name and role never
+        change here: they are declared identity (onboarding tools only) —
+        deduction does not overwrite declaration.
         """
         from semente.agents.persona_agent import persona_manager_agent
         from semente.schemas.user_persona import (
@@ -697,93 +810,82 @@ class Harness:
         if not isinstance(assessment, InteractionAssessment):
             try:
                 assessment = InteractionAssessment.model_validate(assessment)
+                session.interaction_assessment = assessment
             except Exception as e:
                 log_error(f"_manage_persona: invalid assessment discarded: {e}")
                 session.interaction_assessment = None
                 return
 
-        if (
-            assessment.satisfaction.level < 3
-            and assessment.remediation
-            and assessment.remediation.effectiveness
-            and assessment.remediation.effectiveness.level < 4
-        ):
-            # Keep the assessment: the remediation loop is still open and
-            # ``_apply_remediation`` needs it later this run.
-            return
-
         try:
-            turn = persona_manager_agent.run(
-                AgentInput(
-                    text=user_text,
-                    session_state={"interaction_assessment": assessment.model_dump()},
+            if assessment.satisfaction.level >= 3:
+                turn = persona_manager_agent.run(
+                    AgentInput(
+                        text=user_text,
+                        session_state={"interaction_assessment": assessment.model_dump()},
+                    )
                 )
-            )
-            if turn and turn.structured:
-                # Parse the PersonaUpdate from the agent's response
-                persona_update = turn.structured
-                if isinstance(persona_update, dict):
-                    persona_update = PersonaUpdate.model_validate(persona_update)
+                if turn and turn.structured:
+                    # Parse the PersonaUpdate from the agent's response
+                    persona_update = turn.structured
+                    if isinstance(persona_update, dict):
+                        persona_update = PersonaUpdate.model_validate(persona_update)
 
-                # Apply updates to state["user_persona"]
-                current_persona = state.get("user_persona", {})
-                user_persona = (
-                    UserPersona.model_validate(current_persona)
-                    if current_persona
-                    else UserPersona()
-                )
+                    # Apply updates to state["user_persona"]
+                    current_persona = state.get("user_persona", {})
+                    user_persona = (
+                        UserPersona.model_validate(current_persona)
+                        if current_persona
+                        else UserPersona()
+                    )
 
-                # Apply scalar field updates (only if non-None)
-                if persona_update.regionality is not None:
-                    user_persona.regionality = persona_update.regionality
+                    # Apply scalar field updates (only if non-None)
+                    if persona_update.regionality is not None:
+                        user_persona.regionality = persona_update.regionality
 
-                # Apply preference updates (add new, update existing)
-                existing_prefs = {
-                    p.key: i for i, p in enumerate(user_persona.communication_preferences)
-                }
-                for new_pref in persona_update.communication_preferences:
-                    normalized_key = new_pref.key.strip().lower()
-                    if normalized_key in existing_prefs:
-                        idx = existing_prefs[normalized_key]
-                        user_persona.communication_preferences[idx] = CommunicationPreference(
-                            key=normalized_key,
-                            description=new_pref.description,
-                        )
-                    else:
-                        user_persona.communication_preferences.append(
-                            CommunicationPreference(
+                    # Apply preference updates (add new, update existing)
+                    existing_prefs = {
+                        p.key: i for i, p in enumerate(user_persona.communication_preferences)
+                    }
+                    for new_pref in persona_update.communication_preferences:
+                        normalized_key = new_pref.key.strip().lower()
+                        if normalized_key in existing_prefs:
+                            idx = existing_prefs[normalized_key]
+                            user_persona.communication_preferences[idx] = CommunicationPreference(
                                 key=normalized_key,
                                 description=new_pref.description,
                             )
-                        )
-                        existing_prefs[normalized_key] = len(
-                            user_persona.communication_preferences
-                        ) - 1
+                        else:
+                            user_persona.communication_preferences.append(
+                                CommunicationPreference(
+                                    key=normalized_key,
+                                    description=new_pref.description,
+                                )
+                            )
+                            existing_prefs[normalized_key] = len(
+                                user_persona.communication_preferences
+                            ) - 1
 
-                state["user_persona"] = user_persona.model_dump()
-
-            # The assessment is consumed: clear it so the next run starts
-            # fresh (avoids re-persisting old feedback or re-running the
-            # satisfaction agent in remediation mode).
-            session.interaction_assessment = None
+                    state["user_persona"] = user_persona.model_dump()
 
         except Exception as e:
             log_error(f"_manage_persona: agent failed: {e}")
-            # Keep the assessment only when the loop is still open (low
-            # satisfaction without a remediation attempt); otherwise the
-            # user already saw the final answer and the turn is done.
-            if assessment.satisfaction.level >= 3 or assessment.remediation is not None:
-                session.interaction_assessment = None
 
     def _build_agent_input(
-        self, session: Session, user_text: str, state: dict
+        self,
+        session: Session,
+        user_text: str,
+        state: dict,
+        remediate: bool = False,
     ) -> str:
         """Assemble the input string for the single agent (or welcoming agent).
 
         Wraps the consolidated user text in ``<input>`` tags and stashes the
         dynamic conversation-history block in ``state['history_context']`` so
         the agent's dynamic instructions can read it. The history grows and
-        shrinks via ``InputManager.runs_count``.
+        shrinks via ``InputManager.runs_count``. When ``remediate`` is set
+        (frustration detected and the user did not change the topic), a
+        ``<feedback_instruction>`` block is appended: the agent must generate
+        a better answer without apologizing, or move on to the next topic.
         """
         input_manager = InputManager.model_validate(state.get("summary_state", {}))
 
@@ -806,6 +908,9 @@ class Harness:
         parts: list[str] = []
         if user_text:
             parts.append(f"<input>\n{user_text}\n</input>")
+
+        if remediate:
+            parts.append(_REMEDIATION_INSTRUCTION)
 
         return "\n".join(parts)
 
@@ -922,35 +1027,43 @@ class Harness:
             metrics=turn.metrics,
         )
         
-    def _apply_remediation(self, routed: StepOutput, session: Session) -> StepOutput:
-        """Merge the routed response with a remediation message when due.
+    def _generate_apology(self, routed: StepOutput) -> StepOutput:
+        """Wrap the new answer with an apology + evaluation request.
 
-        When the user is frustrated and a remediation effectiveness was
-        recorded, runs the remediation agent to rewrite the response into a
-        softer message (text or audio transcript). Otherwise passes the
-        response through unchanged.
+        Runs the remediation agent on the plain new answer. The agent's
+        output has three parts separated by ``[PAUSE]``: the apology, the
+        answer (echoed unchanged), and the evaluation call-to-action. The
+        final message keeps the fixed order: FIRST the apology with the
+        evaluation request, THEN the new answer.
+
+        On failure the main answer is still delivered unchanged.
         """
         from semente.agents.feedback_agent import remediation_agent
+        from semente.tools.types import Audio
 
-        if not _should_apply_remediation(session):
+        base = routed.content or ""
+        if not base and routed.audio:
+            base = "\n".join(a.transcript for a in routed.audio if a.transcript)
+        if not base:
             return routed
 
-        audio_item = (
-            routed.audio[0] if (routed.audio and len(routed.audio) > 0) else None
-        )
-        is_audio = bool(audio_item and audio_item.transcript)
-        current_content = audio_item.transcript if is_audio else routed.content
-
         try:
-            turn = remediation_agent.run(AgentInput(text=current_content))
-
-            if is_audio:
-                audio_item.transcript = turn.content
-            else:
-                routed.content = turn.content
+            turn = remediation_agent.run(AgentInput(text=base))
+            raw = (turn.content or "").split("[PAUSE]")
+            apology = raw[0].strip()
+            evaluation = raw[2].strip() if len(raw) > 2 else ""
+            first = "\n\n".join(p for p in (apology, evaluation) if p)
         except Exception as exc:
-            log_error(f"_apply_remediation: remediation agent failed - {exc}")
-            return StepOutput(content="")
+            log_error(f"_generate_apology: remediation agent failed - {exc}")
+            return routed
+
+        if not first:
+            return routed
+
+        routed.content = f"{first}\n\n{base}"
+
+        if routed.audio:
+            routed.audio = [Audio(transcript=p) for p in (first, base)]
 
         return routed
 
@@ -962,36 +1075,27 @@ class Harness:
         """Handle the response's voice output: transcribe it back to text and
         regenerate the synthesized speech.
 
-        When the response carries audio, the transcript becomes the content
-        and the speech is regenerated for the user (the raw engine audio is
-        not echoed back).
+        When the response carries audio, each item's transcript becomes the
+        content and the speech is regenerated per item (the raw engine audio
+        is not echoed back). Audio items are kept in order, so a remediated
+        turn arrives as [apology + evaluation request, new answer].
         """
         if response.audio:
             from semente.services.audio.tts import generate_speech
 
-            audio_transcript = "\n\n".join(a.transcript for a in response.audio)
-
-            response.content = audio_transcript
+            transcripts = [a.transcript or "" for a in response.audio]
+            response.content = "\n\n".join(transcripts)
             response.audio = [
-                generate_speech(text=audio_transcript, user_id=user_id)
+                speech
+                for speech in (
+                    generate_speech(text=transcript, user_id=user_id)
+                    for transcript in transcripts
+                    if transcript.strip()
+                )
+                if speech is not None
             ]
 
         return response
-
-
-def _should_apply_remediation(session: Session) -> bool:
-    """Verifica de forma segura se a remediação deve ser aplicada."""
-    assessment = getattr(session, "interaction_assessment", None)
-    if not assessment:
-        return False
-
-    try:
-        if not isinstance(assessment, InteractionAssessment):
-            assessment = InteractionAssessment.model_validate(assessment)
-        return bool(assessment.remediation and assessment.remediation.effectiveness)
-    except Exception as exc:
-        log_error(f"_should_apply_remediation: failed to validate assessment - {exc}")
-        return False
 
 
 def _input_as_string(input: Any) -> Optional[str]:

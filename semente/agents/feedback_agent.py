@@ -20,14 +20,16 @@ remediation_agent = get_backend().build_agent(
 
 def get_satisfaction_instructions(run_context: Context) -> str:
     session_state = run_context.session_state or {}
-    user_assessment_dict = session_state.get("interaction_assessment", None)
+    # Pending DPO pair from last turn: the user received a new (better)
+    # answer and this turn's message is the evaluation of it.
+    has_pending = bool(session_state.get("pending_feedback"))
 
     base_instructions = _satisfaction_config["base_instructions"].strip()
 
-    if user_assessment_dict is None:
-        scenario_text = _satisfaction_config["scenario_initial"].strip()
-    else:
+    if has_pending:
         scenario_text = _satisfaction_config["scenario_remediation"].strip()
+    else:
+        scenario_text = _satisfaction_config["scenario_initial"].strip()
 
     return f"{base_instructions}\n\n{scenario_text}"
 
