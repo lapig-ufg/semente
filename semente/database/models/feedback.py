@@ -10,11 +10,13 @@ class NegativeFeedback(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(Text)
-    original_question = Column(Text)
-    reason_frustration = Column(Text)
-    desired_answer = Column(Text)
-    context = Column(Text)
-    payload = Column(JSON, comment="Trajetória sanitizada para DPO (prompt, chosen, rejected)")
+    payload = Column(JSON, comment=(
+        "Par DPO (prompt, rejected, chosen, approved)"
+    ))
+    history = Column(JSON, comment=(
+        "Últimas 3 rodadas do ciclo de frustração (tuples user/assistant), "
+        "a partir do momento em que a frustração foi detectada"
+    ))
 
 
 class PositiveFeedback(Base):
@@ -22,11 +24,7 @@ class PositiveFeedback(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(Text)
-    user_message = Column(Text)
-    assistant_response = Column(Text)
-    handler_message = Column(Text)
     grade = Column(Integer)
-    context = Column(Text)
     trajectory = Column(JSON, comment="Trajetória sanitizada para SFT (messages)")
 
 
@@ -37,4 +35,6 @@ class AnalysisFeedback(Base):
     timestamp = Column(Text)
     original_question = Column(Text)
     desired_analysis = Column(Text)
-    context = Column(Text)
+    history = Column(JSON, comment=(
+        "Últimas 3 rodadas da conversa (tuples user/assistant)"
+    ))

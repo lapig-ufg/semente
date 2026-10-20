@@ -39,6 +39,12 @@ class PendingFeedback(BaseModel):
       evaluation comes back positive, this text is written as ``chosen`` on
       the stored row; otherwise the pending is dropped and the row stays
       open with ``chosen`` empty.
+    - ``cycle_start``: index into ``session.runs`` at which the frustration
+      cycle began. The evaluation turn (``closed``) finalizes the row's
+      ``history`` with the (max 3) runs from this index onward.
+    - ``closed``: the evaluation turn consumed this pair. The history
+      finalizer still has to write the cycle's ``history`` onto the stored
+      row; it clears the pending when done.
     """
 
     record_id: int = Field(
@@ -47,6 +53,20 @@ class PendingFeedback(BaseModel):
     new_response: str = Field(
         default="",
         description="Nova resposta gerada pelo agente no turno da frustração.",
+    )
+    cycle_start: int = Field(
+        default=0,
+        description=(
+            "Índice em session.runs onde o ciclo de frustração começou "
+            "(a rodada do usuário frustrado)."
+        ),
+    )
+    closed: bool = Field(
+        default=False,
+        description=(
+            "True quando o turno de avaliação consumiu o par DPO; a "
+            "história ainda deve ser escrita na linha pelo finalizador."
+        ),
     )
 
 

@@ -395,20 +395,6 @@ weather_tools:
         Unexpected error: {error}
 
 feedback_tools:
-  record_frustration_feedback:
-    description: |
-      Records a user's correction when the assistant provides an incorrect answer.
-      Use this function strictly when the following sequence of events occurs:
-      1. The user asks a question.
-      2. The assistant answers.
-      3. The user complains about the answer.
-      4. The assistant asks the user to explain what the correct answer would be.
-      5. The user provides the answer.
-    results:
-      success: |
-        Feedback successfully registered in the system. Thank you very much for helping to improve Pasto Legal!
-      error: |
-        Failed to register feedback: {error}.
   record_analisys_feedback:
     description: |
       Records a suggestion of a new feature or data analysis.

@@ -141,6 +141,8 @@ def test_frustration_registers_rejected_and_opens_pending(db, feedback_agents):
     assert pending is not None
     assert pending.record_id
     assert pending.new_response == ""
+    # The cycle's history starts at the run _persist_session will append.
+    assert pending.cycle_start == len(session.runs)
 
     record = db.query(NegativeFeedback).filter(
         NegativeFeedback.id == pending.record_id
@@ -166,6 +168,7 @@ def test_topic_change_registers_but_skips_remediation(db, feedback_agents):
     assert needs_remediation is False
     # The rejected half is still registered — pending for evaluation next turn.
     assert session.interaction_assessment.pending is not None
+    assert session.interaction_assessment.pending.closed is False
 
 
 def test_remediation_instruction_injection():
@@ -235,12 +238,54 @@ def test_positive_evaluation_completes_dpo_pair(db, feedback_agents):
     )
 
     assert needs_remediation is False
-    assert session.interaction_assessment.pending is None
+    # The pending is closed, awaiting only the history finalizer.
+    assert session.interaction_assessment.pending.closed is True
 
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
     assert record.payload["chosen"] == "A área é 1.500 hectares."
     assert record.payload["rejected"] == "A área é 150 hectares."
     assert record.payload["approved"] is True
+
+
+def test_history_written_when_cycle_completes(db, feedback_agents):
+    """The evaluation turn closes the pending; after the evaluation run is
+    appended, the finalizer writes the cycle's ``history`` (up to 3 runs,
+    from the frustration moment onward) onto the row and drops the pending."""
+    feedback_agents["satisfaction"].level = 1
+    harness = _harness()
+
+    session = _session_with_bad_answer()
+    session.session_state["recent_agent_runs"] = [
+        {"user": "tudo certo até aqui?", "assistant": "Sim!", "tools": [], "messages": []}
+    ]
+    harness._process_feedback(session, "resposta errada!", session.session_state)
+    record_id = session.interaction_assessment.pending.record_id
+    session.interaction_assessment.pending.new_response = "A área é 1.500 hectares."
+
+    # The frustration turn ends: its run is appended (as _persist_session does).
+    session.runs.append(
+        {"user": "resposta errada!", "assistant": "A área é 1.500 hectares."}
+    )
+
+    # Turn n+1: the user approves the remediation.
+    feedback_agents["satisfaction"].level = 5
+    harness._process_feedback(session, "Muito melhor!", session.session_state)
+    pending = session.interaction_assessment.pending
+    assert pending is not None and pending.closed is True
+
+    # The evaluation run is appended, then the history is finalized.
+    session.runs.append({"user": "Muito melhor!", "assistant": "A área é 1.500 hectares."})
+    harness._finalize_pending_history(session)
+
+    assert session.interaction_assessment.pending is None
+    record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
+    assert len(record.history) == 2
+    assert record.history[0] == {
+        "user": "resposta errada!", "assistant": "A área é 1.500 hectares."
+    }
+    assert record.history[1] == {
+        "user": "Muito melhor!", "assistant": "A área é 1.500 hectares."
+    }
 
 
 def test_failed_remediation_recorded_for_analysis(db, feedback_agents):
@@ -259,7 +304,7 @@ def test_failed_remediation_recorded_for_analysis(db, feedback_agents):
     feedback_agents["satisfaction"].level = 2
     harness._process_feedback(session, "Piorou ainda!", session.session_state)
 
-    assert session.interaction_assessment.pending is None
+    assert session.interaction_assessment.pending.closed is True
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
     assert record.payload["chosen"] == ""
     assert record.payload["approved"] is False
@@ -280,7 +325,7 @@ def test_neutral_evaluation_leaves_row_untouched(db, feedback_agents):
     feedback_agents["satisfaction"].level = 3
     harness._process_feedback(session, "Me diz o clima de hoje?", session.session_state)
 
-    assert session.interaction_assessment.pending is None
+    assert session.interaction_assessment.pending.closed is True
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
     assert record.payload["chosen"] == ""
     assert "approved" not in record.payload
@@ -301,7 +346,7 @@ def test_negative_evaluation_marks_row_approved_false(db, feedback_agents):
     feedback_agents["satisfaction"].level = 2
     harness._process_feedback(session, "Não, continua errado!", session.session_state)
 
-    assert session.interaction_assessment.pending is None
+    assert session.interaction_assessment.pending.closed is True
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
     assert record.payload["chosen"] == ""
     assert record.payload["approved"] is False
@@ -322,7 +367,7 @@ def test_new_frustration_after_cycle_closes(db, feedback_agents):
     # Turn n+1: negative evaluation — cycle closes, pending consumed.
     feedback_agents["satisfaction"].level = 2
     harness._process_feedback(session, "Ainda não gostei!", session.session_state)
-    assert session.interaction_assessment.pending is None
+    assert session.interaction_assessment.pending.closed is True
     assert db.query(NegativeFeedback).count() == 1  # no new row this turn
 
     # Turn n+2: frustrated again over the latest bad exchange.

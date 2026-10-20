@@ -2,14 +2,11 @@ import re
 from datetime import datetime
 from semente import tool
 from semente.context import Context as RunContext
-from semente.logging import log_debug, log_warning, log_error
-
-from semente.backends.base import AgentInput, AgentSpec
-from semente.backends.registry import get_backend
-from semente.configs.config import config
+from semente.logging import log_debug, log_error
 from semente.configs.prompts import get_tool_description
+
 from semente.database.session import SessionLocal, engine
-from semente.database.models import NegativeFeedback, AnalysisFeedback
+from semente.database.models import AnalysisFeedback
 
 def _mask_pii(text: str) -> str:
     """ Fallback Determinístico: Mascara dados sensíveis usando Regex """
@@ -29,94 +26,25 @@ def _mask_pii(text: str) -> str:
         
     return masked_text
 
-def _get_sanitized_history(run_context: RunContext) -> str:
-    """ Função auxiliar: Filtra as últimas 3 interações limpas e passa pelo sanitizador semântico """
-    if not run_context.messages:
-        return ""
-        
-    history = []
-    user_msg_count = 0
+def _get_masked_history(run_context: RunContext) -> list[dict]:
+    """ Últimas 3 rodadas (tuples user/assistant), com PII mascarado """
+    if not run_context or not run_context.messages:
+        return []
 
-    # 1. Filtro de Histórico Real (Ignora lixo e para na 3ª msg do user)
-    for msg in reversed(run_context.messages):
-        if user_msg_count == 3:
-            break
-
+    runs: list[dict] = []
+    for msg in run_context.messages:
         role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", "")
         content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+        if role == "user":
+            runs.append({"user": str(content or ""), "assistant": ""})
+        elif role == "assistant" and runs:
+            runs[-1]["assistant"] = str(content or "")
 
-        if role in ["user", "assistant"]:
-            history.append(f"{role.upper()}: {content}")
-            if role == "user":
-                user_msg_count += 1
-
-    history_text = "\n".join(history[::-1])
-
-    # 2. Agente Sanitizador In-Line (Camada 1 - IA)
-    if not history_text:
-        return ""
-        
-    sanitizer_agent = get_backend().build_agent(
-        AgentSpec(
-            name="pii_sanitizer",
-            instructions=lambda run_context: (
-                "Você é um filtro de privacidade estrito. Leia a transcrição e reescreva semanticamente os dados, "
-                "substituindo nomes próprios de pessoas, cidades e propriedades rurais por tags genéricas "
-                "(como [USUARIO], [MUNICIPIO], [FAZENDA]). MANTENHA TODO O CONTEXTO AGRONÔMICO INTACTO."
-            ),
-        )
-    )
-    
-    try:
-        sanitizer_response = sanitizer_agent.run(AgentInput(text=history_text))
-        sanitized_history = sanitizer_response.content if sanitizer_response and sanitizer_response.content else history_text
-    except Exception as sanitizer_error:
-        log_warning(f"Sanitizador semântico falhou, usando fallback determinístico: {sanitizer_error}")
-        sanitized_history = history_text
-        
-    # 3. Fallback Determinístico (Camada 2 - Regex)
-    return _mask_pii(sanitized_history)
-
-@tool(description=get_tool_description("feedback_tools", "record_frustration_feedback"))
-def record_frustration_feedback(
-    reason_frustration: str, 
-    desired_answer: str,
-    run_context: RunContext = None
-) -> str:
-    """
-    Registra uma correção do usuário quando o assistente fornece uma resposta incorreta.
-    Use esta função estritamente quando a seguinte sequência de eventos ocorrer:
-    1. O usuário faz uma pergunta.
-    2. O assistente responde.
-    3. O usuário reclama da resposta.
-    4. O assistente pede para o usuário explicar como seria a resposta correta.
-    5. O usuário fornece a resposta.
-    """
-    NegativeFeedback.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    log_debug("record_frustration_feedback: iniciando registro")
-    try:
-        # Puxa o histórico já limpo e anonimizado pela nossa esteira
-        sanitized_history = _get_sanitized_history(run_context)
-        
-        novo_feedback = NegativeFeedback(
-            timestamp=datetime.now().isoformat(),
-            original_question="",
-            reason_frustration=_mask_pii(reason_frustration),
-            desired_answer=_mask_pii(desired_answer),
-            context=sanitized_history
-        )
-        
-        db.add(novo_feedback)
-        db.commit()
-        log_debug("record_frustration_feedback: feedback registrado com sucesso")
-        return "Feedback registrado com sucesso no sistema. Muito obrigado por ajudar a melhorar o sistema!"
-    except Exception as e:
-        db.rollback()
-        log_error(f"record_frustration_feedback: erro ao registrar feedback: {e}")
-        return f"Erro ao registrar feedback: {str(e)}"
-    finally:
-        db.close()
+    history = runs[-3:]
+    for run in history:
+        run["user"] = _mask_pii(run["user"])
+        run["assistant"] = _mask_pii(run["assistant"])
+    return history
 
 @tool(description=get_tool_description("feedback_tools", "record_analisys_feedback"))
 def record_analisys_feedback(
@@ -132,14 +60,14 @@ def record_analisys_feedback(
     db = SessionLocal()
     log_debug("record_analisys_feedback: iniciando registro")
     try:
-        # Puxa o histórico já limpo e anonimizado pela nossa esteira
-        final_safe_context = _get_sanitized_history(run_context)
+        # Histórico das últimas 3 rodadas, com PII mascarado deterministicamente
+        final_safe_history = _get_masked_history(run_context)
         
         novo_feedback = AnalysisFeedback(
             timestamp=datetime.now().isoformat(),
             original_question=_mask_pii(original_question),
             desired_analysis=_mask_pii(desired_analysis),
-            context=final_safe_context
+            history=final_safe_history
         )
         
         db.add(novo_feedback)

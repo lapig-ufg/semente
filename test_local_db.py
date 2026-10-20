@@ -52,14 +52,25 @@ def test_e2e_negative_feedback():
     completed = harness._persist_feedback(session)
 
     assert completed is False, "turn n+1 is an evaluation turn, no new cycle"
-    assert session.interaction_assessment.pending is None
+    pending = session.interaction_assessment.pending
+    assert pending is not None and pending.closed is True
+
+    # The turn ends (run appended) and the history finalizer runs.
+    session.runs.append(
+        {"user": "Agora sim!", "assistant": "A área da fazenda é de 1.500 hectares."}
+    )
+    harness._finalize_pending_history(session)
 
     db.expire(record)
     assert record.payload["chosen"] == "A área da fazenda é de 1.500 hectares."
     assert record.payload["approved"] is True
+    assert session.interaction_assessment.pending is None
+    assert record.history and record.history[-1]["user"] == "Agora sim!"
     print("✅ Turn n+1: par DPO completado com a nova resposta (approved=True).")
     print("📝 Payload final (Sanitizado):")
     print(record.payload)
+    print("📜 História do ciclo:")
+    print(record.history)
 
     db.close()
 
@@ -77,8 +88,8 @@ def test_negative_evaluation_leaves_record_open():
     )
 
     assert harness._persist_feedback(session) is False
-    assert session.interaction_assessment.pending is None
-    print("✅ Avaliação negativa: pendência descartada (linha seria marcada approved=False).")
+    assert session.interaction_assessment.pending.closed is True
+    print("✅ Avaliação negativa: pendência fechada (linha seria marcada approved=False).")
 
 
 if __name__ == "__main__":

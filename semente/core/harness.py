@@ -24,14 +24,18 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
                                        answer)
     _finalize_output       audio transcripts -> synthesized voice (tts)
     _persist_session       state + history back to the store
+    _finalize_pending_history  closed DPO cycle -> ``history`` on the row
 
 The DPO feedback works in two turns. On frustration (turn n) the rejected
 half is registered right away (NegativeFeedback with ``chosen: null``) and
 ``assessment.pending`` carries the record id plus the replacement answer
-after the agent runs. On the next turn, if the user evaluates the new
-answer positively, the stored row is completed with ``chosen`` (approved);
-on a negative evaluation the row is kept as a failed remediation (not for
-training); the pending is consumed either way.
+after the agent runs — and ``cycle_start``, the index where the cycle began.
+On the next turn, if the user evaluates the new answer positively, the
+stored row is completed with ``chosen`` (approved); on a negative evaluation
+the row is kept as a failed remediation (not for training). Either way the
+pending is marked closed and the cycle's history (up to 3 runs, from the
+moment the frustration was noticed) is written onto the row when the turn
+ends.
 
 Media/summary/feedback/persona agents are imported lazily *inside* the
 methods: their modules build agents at import time, so they must only be
@@ -261,12 +265,24 @@ class Harness:
             agent_input = self._build_agent_input(
                 session, user_text, session.session_state, needs_remediation
             )
-            routed = self._run_single_agent(agent_input, images, audio, geo_files, session.session_state, user_id)
+            # Cycle turns (the frustration turn + the turn evaluating the
+            # remediation) and onboarding are never recorded as clean SFT
+            # trajectories.
+            assessment = session.interaction_assessment
+            cycle_turn = needs_remediation or (
+                assessment is not None and assessment.pending is not None
+            )
+            routed = self._run_single_agent(
+                agent_input, images, audio, geo_files,
+                session.session_state, user_id, record=not cycle_turn,
+            )
 
             # The plain new answer (before the apology) is what completes
             # the DPO pair; store it now, apology generation may fail.
-            assessment = session.interaction_assessment
-            if assessment and assessment.pending and not assessment.pending.new_response:
+            if (
+                assessment and assessment.pending and not assessment.pending.closed
+                and not assessment.pending.new_response
+            ):
                 assessment.pending.new_response = routed.content or (
                     "\n".join(
                         a.transcript for a in (routed.audio or []) if a.transcript
@@ -280,6 +296,7 @@ class Harness:
 
         final = self._finalize_output(final, user_id)
         self._persist_session(session, input, final)
+        self._finalize_pending_history(session)
         return final
 
     def get_session_state(self, user_id: Optional[str] = None, session_id: str = "") -> dict:
@@ -514,7 +531,11 @@ class Harness:
         images: Optional[list],
         audio: Optional[list],
     ) -> StepOutput:
-        """Run the staged welcoming agent (terms, then persona)."""
+        """Run the staged welcoming agent (terms, then persona).
+
+        Onboarding turns (terms acceptance, persona setup) are SFT noise:
+        they are never recorded into ``recent_agent_runs``.
+        """
         return self._invoke_agent(
             self.welcoming_agent,
             self._build_agent_input(session, user_text, session.session_state),
@@ -523,6 +544,7 @@ class Harness:
             files=None,
             state=session.session_state,
             user_id=session.user_id,
+            record=False,
         )
 
     def _summarize_conversation(
@@ -625,7 +647,10 @@ class Harness:
         history_data = session.get_history(num_runs=1)
         prior = session.interaction_assessment
         pending = prior.pending if prior else None
-        has_pending = pending is not None
+        # A closed pending is a leftover awaiting only the history
+        # finalizer — it is never an evaluation turn, but it must be
+        # carried so the finalizer can retry writing the row's history.
+        has_pending = pending is not None and not pending.closed
 
         effectiveness: Optional[Effectiveness] = None
 
@@ -672,23 +697,31 @@ class Harness:
           the row can be completed later; ``run()`` fills ``new_response``
           after the agent runs. Also returned: True when a remediation cycle
           is open (frustration and the user did not change topic).
-        - Turn n + 1: if ``assessment.pending`` exists, this turn is the user's
-          evaluation of the new answer. Positive (level >= 4) completes the
-          stored row with ``chosen`` and ``approved: true``; negative
-          (level <= 2) marks the row as a failed remediation —
-          ``approved: false`` plus the rejected new answer (``rejected_new``)
-          — kept for manual analysis, not for training. Neutral leaves the
-          row untouched. Either way the pending is consumed and NO new cycle
-          opens this turn — if the user remains frustrated, a fresh cycle
-          opens on the following turn.
+        - Turn n + 1: if ``assessment.pending`` exists (and is not closed),
+          this turn is the user's evaluation of the new answer. Positive
+          (level >= 4) completes the stored row with ``chosen`` and
+          ``approved: true``; negative (level <= 2) marks the row as a failed
+          remediation — ``approved: false`` plus the rejected new answer
+          (``rejected_new``) — kept for manual analysis, not for training.
+          Neutral leaves the row untouched. Either way the pending is marked
+          closed: :meth:`_finalize_pending_history` (called after the run is
+          appended to ``session.runs``) writes the cycle's ``history`` onto
+          the row and drops the pending. NO new cycle opens this turn — if
+          the user remains frustrated, a fresh cycle opens on the following
+          turn.
 
         The SFT branch (positive satisfaction -> PositiveFeedback with the
-        recent runs trajectory) is unchanged.
+        recent runs trajectory) only sees clean, non-cycle turns: cycle
+        turns and onboarding are never recorded into ``recent_agent_runs``.
         """
         import datetime
         from semente.database.models import NegativeFeedback, PositiveFeedback
-        from semente.database.session import SessionLocal
+        from semente.database.session import SessionLocal, engine
         from semente.guardrails.pii_gate import sanitize_json_pii
+
+        # The legacy feedback tools used to create the feedback tables via
+        # create_all; after their removal the harness owns table creation.
+        NegativeFeedback.metadata.create_all(bind=engine)
 
         state = session.session_state
         assessment = session.interaction_assessment
@@ -702,12 +735,18 @@ class Harness:
 
         db_session = SessionLocal()
         try:
-            # A pending pair makes this turn the evaluation turn: consume
-            # it and never open a new cycle on the same turn. The row's
-            # payload gains an ``approved`` marker: True (positive
-            # evaluation -> completed DPO pair) or False (failed
-            # remediation -> kept for manual analysis, not for training).
+            # A pending pair that is not closed makes this turn the
+            # evaluation turn: consume it and never open a new cycle on
+            # the same turn. The row's payload gains an ``approved``
+            # marker: True (positive evaluation -> completed DPO pair)
+            # or False (failed remediation -> kept for manual analysis,
+            # not for training). The pending is marked closed (not
+            # dropped): the history finalizer still needs its
+            # record_id + cycle_start to write the cycle's history.
             pending = assessment.pending
+            if pending is not None and pending.closed:
+                # Leftover from a failed finalization — not an eval turn.
+                pending = None
             evaluation_turn = pending is not None
             if pending:
                 if satisfaction_level >= 4 and pending.new_response:
@@ -736,7 +775,7 @@ class Harness:
                             "pending negative feedback kept as a failed "
                             "remediation (approved=false, not for training)"
                         )
-                assessment.pending = None
+                pending.closed = True
 
             if satisfaction_level >= 4 and recent_runs:
                 sanitized_trajectory = sanitize_json_pii(recent_runs)
@@ -766,7 +805,11 @@ class Harness:
                     # one object: the pending pair rides the assessment
                     # (persisted on its own DB column), not session_state.
                     assessment.pending = PendingFeedback(
-                        record_id=feedback_record.id
+                        record_id=feedback_record.id,
+                        # The frustration run itself will be appended by
+                        # _persist_session right after this turn — the
+                        # cycle's history starts exactly there.
+                        cycle_start=len(session.runs),
                     )
                     log_debug(
                         "negative feedback registered with the rejected "
@@ -783,6 +826,50 @@ class Harness:
         return (
             satisfaction_level <= 2 and not changed_topic and not evaluation_turn
         )
+
+    def _finalize_pending_history(self, session: Session) -> None:
+        """Write the frustration cycle's ``history`` onto the stored row.
+
+        Called after ``_persist_session`` so the evaluation run is already
+        in ``session.runs``: the history is the (up to 3) ``{user,
+        assistant}`` runs from ``pending.cycle_start`` (the moment the
+        system noticed the frustration) onward. On success (or when there
+        is nothing to write) the pending is dropped; on failure it stays
+        closed so a later turn can retry.
+        """
+        assessment = session.interaction_assessment
+        if assessment is None or assessment.pending is None:
+            return
+        pending = assessment.pending
+        if not pending.closed:
+            return
+
+        from semente.database.models import NegativeFeedback
+        from semente.database.session import SessionLocal, engine
+        from semente.guardrails.pii_gate import sanitize_json_pii
+
+        NegativeFeedback.metadata.create_all(bind=engine)
+
+        history = [
+            {"user": run.get("user", ""), "assistant": run.get("assistant", "")}
+            for run in session.runs[pending.cycle_start:][:3]
+        ]
+
+        db_session = SessionLocal()
+        try:
+            if history:
+                record = db_session.get(NegativeFeedback, pending.record_id)
+                if record is not None:
+                    record.history = sanitize_json_pii(history)
+                    db_session.commit()
+                    log_debug("frustration cycle history written (max 3 runs)")
+            assessment.pending = None
+        except Exception as e:
+            log_error(f"_finalize_pending_history failed: {e}")
+            db_session.rollback()  # pending stays closed for a retry
+        finally:
+            db_session.close()
+
     def _manage_persona(self, session: Session, user_text: str, state: dict) -> None:
         """Conditionally run the persona manager agent and apply updates.
 
@@ -914,6 +1001,24 @@ class Harness:
 
         return "\n".join(parts)
 
+    @staticmethod
+    def _raw_user_text(text: str) -> str:
+        """Extract the raw user message from the decorated agent input.
+
+        The agent input wraps the user text in ``<input>`` tags and may
+        append a ``<feedback_instruction>`` block. SFT trajectories must
+        store only what the user actually said, so the wrappers are stripped
+        (falling back to tag removal when the extraction fails).
+        """
+        start = text.find("<input>")
+        if start != -1:
+            start += len("<input>")
+            end = text.find("</input>", start)
+            if end != -1 and text[start:end].strip():
+                return text[start:end].strip()
+        raw = text.split("<feedback_instruction>")[0]
+        return raw.replace("<input>", "").replace("</input>", "").strip()
+
     def _run_single_agent(
         self,
         agent_input: str,
@@ -922,6 +1027,7 @@ class Harness:
         geo_files: Optional[list[File]],
         state: dict,
         user_id: str,
+        record: bool = True,
     ) -> StepOutput:
         """Run the single agent with the enriched input and full state."""
         if geo_files:
@@ -938,6 +1044,7 @@ class Harness:
             files=geo_files,
             state=state,
             user_id=user_id,
+            record=record,
         )
 
     def _invoke_agent(
@@ -949,11 +1056,16 @@ class Harness:
         files: Optional[list[File]],
         state: dict,
         user_id: str,
+        record: bool = True,
     ) -> StepOutput:
         """Run one backend agent and wrap the turn as a :class:`StepOutput`.
 
         On agent failure, logs the error and returns a friendly message —
-        the channel always has something to deliver to the user.
+        the channel always has something to deliver to the user. When
+        ``record`` is set, the turn is appended to
+        ``state['recent_agent_runs']`` (the SFT trajectory source): onboarding
+        and remediation-cycle turns pass ``record=False`` so they never
+        pollute the clean-turn history.
         """
         try:
             turn = agent.run(
@@ -966,11 +1078,11 @@ class Harness:
                     user_id=user_id,
                 )
             )
-            
+
             feedback_config = self.features.get("feedback", {})
             is_enabled = False
             window_size = 5
-            
+
             if hasattr(feedback_config, "enable"):
                 is_enabled = feedback_config.enable
                 window_size = getattr(feedback_config, "window_size", 5)
@@ -978,9 +1090,12 @@ class Harness:
                 is_enabled = feedback_config.get("enable", True)
                 window_size = feedback_config.get("window_size", 5)
 
-            if is_enabled:
+            if is_enabled and record:
                 turn_record = {
-                    "user": text,
+                    # Store the RAW user text: the decorated ``text`` carries
+                    # XML wrappers (<input>, <feedback_instruction>) that are
+                    # meaningless for training data.
+                    "user": self._raw_user_text(text),
                     "assistant": turn.content or "",
                     "tools": [],
                     "messages": []
