@@ -22,10 +22,10 @@ def test_manifest_feedback_config(tmp_path):
 
 def test_json_pii_sanitizer():
     raw_data = {
-        "user_query": "meu email é teste@teste.com e o cpf 123.456.789-09",
+        "user_query": "my email is teste@teste.com and the cpf 123.456.789-09",
         "nested_data": [
-            {"id": 1, "text": "cpf falso 000.000.000-00"},
-            {"id": 2, "text": "cartão 4111 1111 1111 1111"}
+            {"id": 1, "text": "fake cpf 000.000.000-00"},
+            {"id": 2, "text": "card 4111 1111 1111 1111"}
         ],
         "is_active": True,
         "count": 42
@@ -34,17 +34,17 @@ def test_json_pii_sanitizer():
     sanitized = sanitize_json_pii(raw_data)
     
     assert "teste@teste.com" not in sanitized["user_query"]
-    assert "[EMAIL_OCULTO]" in sanitized["user_query"]
+    assert "[EMAIL_HIDDEN]" in sanitized["user_query"]
     assert "123.456.789-09" not in sanitized["user_query"]
-    assert "[CPF_OCULTO]" in sanitized["user_query"]
+    assert "[CPF_HIDDEN]" in sanitized["user_query"]
     
-    # Valida que o CPF falso (sem dígito verificador real) não é alterado, preservando o comportamento da gate
-    assert sanitized["nested_data"][0]["text"] == "cpf falso 000.000.000-00"
+    # Validates that the fake CPF (no real check digit) is not changed, preserving the gate behavior
+    assert sanitized["nested_data"][0]["text"] == "fake cpf 000.000.000-00"
     
     assert "4111 1111 1111 1111" not in sanitized["nested_data"][1]["text"]
-    assert "[CARTAO_OCULTO]" in sanitized["nested_data"][1]["text"]
+    assert "[CARD_HIDDEN]" in sanitized["nested_data"][1]["text"]
     
-    # Valida que booleanos e inteiros foram preservados sem corromper o JSON
+    # Validates that booleans and integers were preserved without corrupting the JSON
     assert sanitized["is_active"] is True
     assert sanitized["count"] == 42
 
@@ -52,8 +52,8 @@ def test_json_pii_sanitizer():
 def test_fine_tuning_export_schemas():
     valid_sft = {
         "messages": [
-            {"role": "user", "content": "Quero solicitar um serviço."},
-            {"role": "assistant", "content": "Como posso ajudar?"}
+            {"role": "user", "content": "I want to request a service."},
+            {"role": "assistant", "content": "How can I help?"}
         ]
     }
     sft_row = SFTDatasetRow.model_validate(valid_sft)
@@ -61,14 +61,14 @@ def test_fine_tuning_export_schemas():
     assert sft_row.messages[0].role == "user"
     
     valid_dpo = {
-        "prompt": "Quero solicitar um serviço.",
-        "chosen": "Como posso ajudar?",
-        "rejected": "Não faço isso."
+        "prompt": "I want to request a service.",
+        "chosen": "How can I help?",
+        "rejected": "I don't do that."
     }
     dpo_row = DPODatasetRow.model_validate(valid_dpo)
-    assert dpo_row.prompt == "Quero solicitar um serviço."
-    assert dpo_row.chosen == "Como posso ajudar?"
+    assert dpo_row.prompt == "I want to request a service."
+    assert dpo_row.chosen == "How can I help?"
     
-    # Valida a restrição de tamanho mínimo da lista de mensagens (min_length=1)
+    # Validates the minimum-length constraint of the messages list (min_length=1)
     with pytest.raises(ValidationError):
         SFTDatasetRow.model_validate({"messages": []})

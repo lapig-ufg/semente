@@ -428,7 +428,7 @@ persona_tools:
       or a technical assistant/agronomist.
 
       Args:
-          role (Literal["Produtor", "Técnico"]): The identified professional role.
+          role (Literal["Producer", "Technician"]): The identified professional role.
     results:
       success: |
         Professional role successfully updated to: {role}

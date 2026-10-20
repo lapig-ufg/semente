@@ -10,24 +10,24 @@ class NegativeFeedback(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(Text)
-    prompt = Column(Text, comment="Mensagem do usuário geradora da resposta rejeitada")
-    rejected = Column(Text, comment="Resposta avaliada como ruim (dado DPO)")
+    prompt = Column(Text, comment="User message that produced the rejected answer")
+    rejected = Column(Text, comment="Answer rated as bad (DPO data)")
     chosen = Column(Text, default="", comment=(
-        "Resposta corrigida, escrita quando a avaliação da remediação é "
-        "positiva (approved=True); fica vazia enquanto o par está aberto"
+        "Corrected answer, written when the remediation evaluation is "
+        "positive (approved=True); stays empty while the pair is open"
     ))
     approved = Column(Boolean, comment=(
-        "Resultado da avaliação da remediação: True (par DPO válido para "
-        "treino) ou False (remediação falhou, só análise); vazio enquanto "
-        "não avaliado"
+        "Outcome of the remediation evaluation: True (DPO pair valid for "
+        "training) or False (remediation failed, analysis only); empty while "
+        "not yet evaluated"
     ))
     rejected_new = Column(Text, comment=(
-        "Resposta corrigida rejeitada pelo usuário (remediação falhou; "
-        "útil apenas para análise manual)"
+        "Corrected answer rejected by the user (remediation failed; "
+        "useful only for manual analysis)"
     ))
     history = Column(JSON, comment=(
-        "Últimas 3 rodadas do ciclo de frustração (tuples user/assistant), "
-        "a partir do momento em que a frustração foi detectada"
+        "Last 3 rounds of the frustration cycle (user/assistant tuples), "
+        "starting from the moment the frustration was detected"
     ))
 
 
@@ -38,8 +38,8 @@ class PositiveFeedback(Base):
     timestamp = Column(Text)
     grade = Column(Integer)
     history = Column(JSON, comment=(
-        "Rodadas limpas (tuples user/assistant) do momento satisfatório, "
-        "para o dataset SFT"
+        "Clean rounds (user/assistant tuples) from the satisfying moment, "
+        "for the SFT dataset"
     ))
 
 
@@ -51,5 +51,5 @@ class AnalysisFeedback(Base):
     original_question = Column(Text)
     desired_analysis = Column(Text)
     history = Column(JSON, comment=(
-        "Últimas 3 rodadas da conversa (tuples user/assistant)"
+        "Last 3 rounds of the conversation (user/assistant tuples)"
     ))

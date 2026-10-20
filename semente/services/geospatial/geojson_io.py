@@ -220,8 +220,8 @@ def _read_layers(path: Path, driver: str | None = None) -> List["gpd.GeoDataFram
 
     if not dataframes:
         raise GeoFileError(
-            f"Não foi possível ler nenhuma camada do arquivo {path.name}. "
-            "Verifique se o arquivo está íntegro."
+            f"Could not read any layer from file {path.name}. "
+            "Check that the file is intact."
         )
     return dataframes
 
@@ -252,7 +252,7 @@ def _extract_archive(content: bytes, filename: str, destination: Path) -> None:
                 archive.extractall(destination)
         except zipfile.BadZipFile as error:
             raise GeoFileError(
-                "O arquivo .zip enviado é inválido ou está corrompido."
+                "The uploaded .zip file is invalid or corrupted."
             ) from error
         return
 
@@ -260,8 +260,8 @@ def _extract_archive(content: bytes, filename: str, destination: Path) -> None:
         import rarfile
     except ImportError as error:  # pragma: no cover - dependency check
         raise GeoFileError(
-            "O suporte a arquivos .rar não está disponível no servidor no momento. "
-            "Envie o arquivo como .zip ou .kmz."
+            "Support for .rar files is not available on the server at the moment. "
+            "Send the file as .zip or .kmz."
         ) from error
 
     archive_path = destination / filename
@@ -271,13 +271,13 @@ def _extract_archive(content: bytes, filename: str, destination: Path) -> None:
             archive.extractall(destination)
     except rarfile.RarCannotExec as error:
         raise GeoFileError(
-            "Não foi possível extrair o arquivo .rar: o extrator não está instalado "
-            "no servidor. Envie o arquivo como .zip ou .kmz."
+            "Could not extract the .rar file: the extractor is not installed "
+            "on the server. Send the file as .zip or .kmz."
         ) from error
     except Exception as error:
         raise GeoFileError(
-            f"Não foi possível extrair o arquivo .rar. Verifique se ele está íntegro. "
-            f"Detalhes: {error}"
+            f"Could not extract the .rar file. Check that it is intact. "
+            f"Details: {error}"
         ) from error
 
 
@@ -295,8 +295,8 @@ def _collect_dataframes(content: bytes, filename: str, workdir: Path) -> List["g
         )
         if not vector_files:
             raise GeoFileError(
-                "O arquivo enviado não contém nenhum shapefile (.shp), KML ou GeoJSON. "
-                "Envie um .zip/.rar com os arquivos do shapefile."
+                "The uploaded file contains no shapefile (.shp), KML or GeoJSON. "
+                "Send a .zip/.rar with the shapefile files."
             )
 
         dataframes: List[gpd.GeoDataFrame] = []
@@ -307,7 +307,7 @@ def _collect_dataframes(content: bytes, filename: str, workdir: Path) -> List["g
                 continue
         if not dataframes:
             raise GeoFileError(
-                "Não foi possível ler os arquivos vetoriais contidos no arquivo enviado."
+                "Could not read the vector files contained in the uploaded file."
             )
         return dataframes
 
@@ -326,7 +326,7 @@ def _normalize_layer(gdf: "gpd.GeoDataFrame") -> "gpd.GeoDataFrame":  # noqa: F8
     import shapely
 
     if gdf.crs is None:
-        log_warning("geojson_io: arquivo sem sistema de referência; assumindo EPSG:4326")
+        log_warning("geojson_io: file has no coordinate reference system; assuming EPSG:4326")
         gdf = gdf.set_crs(_WGS84_EPSG)
     elif gdf.crs.to_epsg() != _WGS84_EPSG:
         gdf = gdf.to_crs(_WGS84_EPSG)
@@ -360,8 +360,8 @@ def convert_geo_file_to_geojson(content: bytes, filename: str) -> bytes:
     suffix = Path(filename or "").suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
         raise UnsupportedFormatError(
-            f"Formato não suportado ({suffix or 'desconhecido'}). "
-            "Envie um arquivo .zip, .rar, .kmz, .kml ou .geojson."
+            f"Unsupported format ({suffix or 'unknown'}). "
+            "Send a .zip, .rar, .kmz, .kml or .geojson file."
         )
 
     with tempfile.TemporaryDirectory(prefix="geojson_io_") as tmp:
@@ -377,8 +377,8 @@ def convert_geo_file_to_geojson(content: bytes, filename: str) -> bytes:
 
     if not polygons:
         raise GeoFileError(
-            "Nenhum polígono foi encontrado no arquivo enviado. "
-            "São aceitos apenas arquivos com polígonos (limites da propriedade ou piquetes)."
+            "No polygon was found in the uploaded file. "
+            "Only files with polygons are accepted (property boundaries or paddocks)."
         )
 
     geometry: Union[Polygon, MultiPolygon]

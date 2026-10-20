@@ -29,7 +29,7 @@ def get_instructions(run_context: Context) -> str:
 
     instructions = _persona_config["instructions"].strip().format(
         user_persona=str(user_persona),
-        satisfaction_level=user_satisfaction.level_message if user_satisfaction else 'Não informado',
+        satisfaction_level=user_satisfaction.level_message if user_satisfaction else 'Not informed',
         last_message=session_state.messages.last_message if hasattr(session_state, 'messages') else '',
         negative_prompt=negative_prompt,
     )

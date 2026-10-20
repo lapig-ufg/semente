@@ -10,15 +10,15 @@ from semente.database.models import UserProfile
 
 
 # =====================================================================
-# HELPERS INTERNOS (não são tools — o agente não enxerga)
+# INTERNAL HELPERS (not tools — invisible to the agent)
 # =====================================================================
 
 
-def _persistir_perfil(user_id: str, **campos) -> bool:
-    """Grava nome e/ou papel na tabela user_profile (cria a linha se não existir).
+def _persist_profile(user_id: str, **fields) -> bool:
+    """Writes the name and/or role to the user_profile table (creates the row if it does not exist).
 
-    Recebe os campos por keyword (name=..., role=...) para que cada tool grave
-    apenas o que ela conhece, sem apagar o que a outra já gravou.
+    Fields are received as keywords (name=..., role=...) so that each tool
+    writes only what it knows, without wiping out what the other already saved.
     """
     UserProfile.metadata.create_all(bind=engine)
 
@@ -26,78 +26,78 @@ def _persistir_perfil(user_id: str, **campos) -> bool:
     try:
         record = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
         if record is None:
-            record = UserProfile(user_id=user_id, **campos)
+            record = UserProfile(user_id=user_id, **fields)
             db.add(record)
         else:
-            for chave, valor in campos.items():
-                setattr(record, chave, valor)
+            for field, value in fields.items():
+                setattr(record, field, value)
         db.commit()
         return True
     except Exception as e:
         db.rollback()
-        log_error(f"_persistir_perfil: falha para user_id={user_id}: {e}")
+        log_error(f"_persist_profile: failed for user_id={user_id}: {e}")
         return False
     finally:
         db.close()
 
 
 # =====================================================================
-# TOOLS PARA ATRIBUTOS PRINCIPAIS
+# TOOLS FOR MAIN ATTRIBUTES
 # =====================================================================
 
 @tool(description=get_tool_description("persona_tools", "update_persona_name"))
 def update_persona_name(name: str, run_context: RunContext) -> str:
     """
-    Atualiza organicamente o nome da persona (perfil) do usuário no estado da sessão.
+    Organically updates the user's persona (profile) name in the session state.
 
-    Use esta ferramenta apenas quando o usuário informar ou confirmar o seu nome 
-    durante a conversa de forma natural.
+    Use this tool only when the user states or confirms their name naturally
+    during the conversation.
 
     Args:
-        name (str): Nome próprio do usuário (ex: "João", "Maria").
+        name (str): The user's given name (e.g. "John", "Maria").
     """
     log_debug(f"update_persona_name: name={name}")
     try:
-        nome = name.strip()
+        clean_name = name.strip()
 
-        if not nome or len(nome) > 60 or any(c.isdigit() for c in nome):
-            log_warning(f"update_persona_name: nome recusado -> {nome!r}")
+        if not clean_name or len(clean_name) > 60 or any(c.isdigit() for c in clean_name):
+            log_warning(f"update_persona_name: name rejected -> {clean_name!r}")
             return (
-                "Nome inválido. Peça ao usuário que informe apenas como prefere "
-                "ser chamado, sem números."
+                "Invalid name. Ask the user to state only how they prefer "
+                "to be called, without numbers."
             )
 
         session_state = run_context.session_state or {}
         user_persona = session_state.get("user_persona", {})
 
-        user_persona['name'] = nome
+        user_persona['name'] = clean_name
 
         session_state['user_persona'] = user_persona
         run_context.session_state = session_state
 
         user_id = run_context.user_id or session_state.get("user_id")
         if user_id:
-            _persistir_perfil(user_id, name=nome)
+            _persist_profile(user_id, name=clean_name)
         else:
-            log_warning("update_persona_name: user_id ausente, perfil salvo apenas na sessão")
+            log_warning("update_persona_name: missing user_id, profile saved to session only")
 
-        log_debug(f"update_persona_name: nome atualizado para {nome}")
-        return f"Nome atualizado com sucesso para: {nome}"
+        log_debug(f"update_persona_name: name updated to {clean_name}")
+        return f"Name updated successfully to: {clean_name}"
     except Exception as e:
         log_error(f"update_persona_name: {e}")
-        return f"Erro ao atualizar nome da persona: {str(e)}"
+        return f"Error updating persona name: {str(e)}"
 
 
 @tool(description=get_tool_description("persona_tools", "update_persona_role"))
-def update_persona_role(role: Literal["Produtor", "Técnico"], run_context: RunContext) -> str:
+def update_persona_role(role: Literal["Producer", "Technician"], run_context: RunContext) -> str:
     """
-    Atualiza organicamente o papel profissional da persona do usuário no estado da sessão.
+    Organically updates the user's professional role in the persona on the session state.
 
-    Use esta ferramenta quando identificar claramente se o usuário é um produtor rural
-    ou um assistente técnico/agrônomo.
+    Use this tool when it is clearly established whether the user is a rural
+    producer or a technical assistant/agronomist.
 
     Args:
-        role (Literal["Produtor", "Técnico"]): O papel profissional identificado.
+        role (Literal["Producer", "Technician"]): The identified professional role.
     """
     log_debug(f"update_persona_role: role={role}")
     try:
@@ -111,26 +111,26 @@ def update_persona_role(role: Literal["Produtor", "Técnico"], run_context: RunC
 
         user_id = run_context.user_id or session_state.get("user_id")
         if user_id:
-            _persistir_perfil(user_id, role=role)
+            _persist_profile(user_id, role=role)
         else:
-            log_warning("update_persona_role: user_id ausente, perfil salvo apenas na sessão")
+            log_warning("update_persona_role: missing user_id, profile saved to session only")
 
-        log_debug(f"update_persona_role: papel atualizado para {role}")
-        return f"Papel profissional atualizado com sucesso para: {role}"
+        log_debug(f"update_persona_role: role updated to {role}")
+        return f"Professional role updated successfully to: {role}"
     except Exception as e:
         log_error(f"update_persona_role: {e}")
-        return f"Erro ao atualizar papel da persona: {str(e)}"
+        return f"Error updating persona role: {str(e)}"
 
 
 @tool(description=get_tool_description("persona_tools", "update_persona_region"))
 def update_persona_region(regionality: str, run_context: RunContext) -> str:
     """
-    Atualiza organicamente a regionalidade/localização da persona no estado da sessão.
+    Organically updates the persona's regionality/location in the session state.
 
-    Use esta ferramenta quando o usuário mencionar a cidade, estado ou região onde atua.
+    Use this tool when the user mentions the city, state or region where they operate.
 
     Args:
-        regionality (str): Cidade, estado ou região do usuário (ex: "Sorriso - MT", "Sul de Minas").
+        regionality (str): The user's city, state or region (e.g. "Sorriso - MT", "South of Minas").
     """
     log_debug(f"update_persona_region: regionality={regionality}")
     try:
@@ -141,34 +141,35 @@ def update_persona_region(regionality: str, run_context: RunContext) -> str:
 
         session_state['user_persona'] = user_persona
         run_context.session_state = session_state
-        log_debug(f"update_persona_region: regionalidade atualizada para {user_persona['regionality']}")
-        return f"Regionalidade atualizada com sucesso para: {user_persona['regionality']}"
+        log_debug(f"update_persona_region: regionality updated to {user_persona['regionality']}")
+        return f"Regionality updated successfully to: {user_persona['regionality']}"
     except Exception as e:
         log_error(f"update_persona_region: {e}")
-        return f"Erro ao atualizar regionalidade da persona: {str(e)}"
+        return f"Error updating persona regionality: {str(e)}"
 
 
 # =====================================================================
-# TOOLS PARA GERENCIAMENTO DE PREFERÊNCIAS
+# TOOLS FOR PREFERENCE MANAGEMENT
 # =====================================================================
 
 @tool(description=get_tool_description("persona_tools", "create_persona_preference"))
 def create_persona_preference(key: str, description: str, run_context: RunContext) -> str:
     """
-    Adiciona uma nova preferência, interesse, hobbie ou comportamento descoberto sobre o usuário.
+    Adds a newly discovered preference, interest, hobby or behavior about the user.
 
-    Use esta ferramenta de forma sutil sempre que captar um gosto, rotina ou preferência do usuário.
-    Evite duplicar chaves existentes. Se a chave já existir, use 'update_persona_preference'.
+    Use this tool subtly whenever you pick up a liking, routine or preference
+    of the user. Avoid duplicating existing keys. If the key already exists,
+    use 'update_persona_preference' instead.
 
     Args:
-        key (str): Uma palavra-chave curta em minúsculas identificando a categoria (ex: "cultura", "cafe", "horario_contato", "canal_favorito").
-        description (str): Detalhes sobre o gosto ou comportamento do usuário naquela categoria.
+        key (str): A short lowercase keyword identifying the category (e.g. "culture", "coffee", "contact_time", "favorite_channel").
+        description (str): Details about the user's liking or behavior in that category.
     """
     log_debug(f"create_persona_preference: key={key}")
     try:
         session_state = run_context.session_state or {}
         user_persona = session_state.get("user_persona", {})
-        
+
         if "preferences" not in user_persona or not isinstance(user_persona["preferences"], list):
             user_persona["preferences"] = []
 
@@ -176,8 +177,8 @@ def create_persona_preference(key: str, description: str, run_context: RunContex
 
         for pref in user_persona["preferences"]:
             if pref.get("key") == normalized_key:
-                log_warning(f"Preferência já existe: {normalized_key}")
-                return f"A preferência '{key}' já existe. Use 'update_persona_preference' para modificá-la."
+                log_warning(f"Preference already exists: {normalized_key}")
+                return f"The preference '{key}' already exists. Use 'update_persona_preference' to modify it."
 
         user_persona["preferences"].append({
             "key": normalized_key,
@@ -186,24 +187,24 @@ def create_persona_preference(key: str, description: str, run_context: RunContex
 
         session_state['user_persona'] = user_persona
         run_context.session_state = session_state
-        log_debug(f"create_persona_preference: preferência '{normalized_key}' registrada")
-        return f"Nova preferência registrada: {normalized_key.title()} -> {description}"
+        log_debug(f"create_persona_preference: preference '{normalized_key}' registered")
+        return f"New preference registered: {normalized_key.title()} -> {description}"
     except Exception as e:
         log_error(f"create_persona_preference: {e}")
-        return f"Erro ao registrar preferência: {str(e)}"
+        return f"Error registering preference: {str(e)}"
 
 
 @tool(description=get_tool_description("persona_tools", "update_persona_preference"))
 def update_persona_preference(key: str, description: str, run_context: RunContext) -> str:
     """
-    Atualiza uma preferência ou comportamento já existente na persona do usuário.
+    Updates a preference or behavior that already exists in the user's persona.
 
-    Use esta ferramenta quando o usuário mudar de opinião ou trouxer novas informações 
-    sobre um ponto que já havia sido mapeado anteriormente.
+    Use this tool when the user changes their mind or brings new information
+    about a point that was already mapped previously.
 
     Args:
-        key (str): A palavra-chave exata da preferência a ser atualizada (ex: "cultura", "cafe").
-        description (str): A nova descrição atualizada que substituirá a anterior.
+        key (str): The exact keyword of the preference to be updated (e.g. "culture", "coffee").
+        description (str): The new updated description that will replace the previous one.
     """
     log_debug(f"update_persona_preference: key={key}")
     try:
@@ -221,25 +222,25 @@ def update_persona_preference(key: str, description: str, run_context: RunContex
                 break
 
         if not updated:
-            log_warning(f"Preferência não encontrada para atualizar: {normalized_key}")
-            return f"Não foi possível atualizar: A preferência com a chave '{key}' não foi encontrada."
+            log_warning(f"Preference not found to update: {normalized_key}")
+            return f"Could not update: The preference with the key '{key}' was not found."
 
         session_state['user_persona'] = user_persona
         run_context.session_state = session_state
-        log_debug(f"update_persona_preference: preferência '{normalized_key}' atualizada")
-        return f"Preferência '{normalized_key.title()}' atualizada com sucesso."
+        log_debug(f"update_persona_preference: preference '{normalized_key}' updated")
+        return f"Preference '{normalized_key.title()}' updated successfully."
     except Exception as e:
         log_error(f"update_persona_preference: {e}")
-        return f"Erro ao atualizar preferência: {str(e)}"
+        return f"Error updating preference: {str(e)}"
 
 
 @tool(description=get_tool_description("persona_tools", "remove_persona_preference"))
 def remove_persona_preference(key: str, run_context: RunContext) -> str:
     """
-    Remove uma preferência específica do perfil do usuário caso ela não seja mais válida.
+    Removes a specific preference from the user's profile when it is no longer valid.
 
     Args:
-        key (str): A palavra-chave da preferência que deve ser removida.
+        key (str): The keyword of the preference that should be removed.
     """
     log_debug(f"remove_persona_preference: key={key}")
     try:
@@ -248,19 +249,19 @@ def remove_persona_preference(key: str, run_context: RunContext) -> str:
         preferences = user_persona.get("preferences", [])
 
         normalized_key = key.strip().lower()
-        
+
         initial_count = len(preferences)
         updated_preferences = [pref for pref in preferences if pref.get("key") != normalized_key]
 
         if len(updated_preferences) == initial_count:
-            log_warning(f"Preferência não encontrada para remoção: {normalized_key}")
-            return f"Nenhuma preferência encontrada com a chave '{key}' para remoção."
+            log_warning(f"Preference not found to remove: {normalized_key}")
+            return f"No preference found with the key '{key}' to remove."
 
         user_persona["preferences"] = updated_preferences
         session_state['user_persona'] = user_persona
         run_context.session_state = session_state
-        log_debug(f"remove_persona_preference: preferência '{normalized_key}' removida")
-        return f"Preferência '{normalized_key.title()}' removida com sucesso."
+        log_debug(f"remove_persona_preference: preference '{normalized_key}' removed")
+        return f"Preference '{normalized_key.title()}' removed successfully."
     except Exception as e:
         log_error(f"remove_persona_preference: {e}")
-        return f"Erro ao remover preferência: {str(e)}"
+        return f"Error removing preference: {str(e)}"

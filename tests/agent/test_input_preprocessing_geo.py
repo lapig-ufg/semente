@@ -45,13 +45,13 @@ def _zipped_shapefile_bytes() -> bytes:
 
 def test_geo_file_is_converted_and_returned():
     user_text, geo_files = _agent()._input_preprocessing(
-        input="Quero registrar minha propriedade",
+        input="I want to register my property",
         images=None,
         audio=None,
         files=[File(content=_zipped_shapefile_bytes(), name="shape.zip")],
     )
 
-    assert user_text == "Quero registrar minha propriedade"
+    assert user_text == "I want to register my property"
     assert geo_files and len(geo_files) == 1
     converted = geo_files[0]
     assert converted.format == "geojson"
@@ -64,7 +64,7 @@ def test_geo_file_is_converted_and_returned():
 
 def test_invalid_geo_file_appends_error_note_and_no_file():
     user_text, geo_files = _agent()._input_preprocessing(
-        input="Segue o arquivo",
+        input="Here is the file",
         images=None,
         audio=None,
         files=[File(content=b"not a geo file", name="shape.zip")],
@@ -72,19 +72,19 @@ def test_invalid_geo_file_appends_error_note_and_no_file():
 
     assert geo_files is None
     assert user_text
-    assert "[ARQUIVO GEOESPACIAL]" in user_text
+    assert "[GEOSPATIAL FILE]" in user_text
 
 
 def test_non_geo_file_is_ignored():
     user_text, geo_files = _agent()._input_preprocessing(
-        input="Olá",
+        input="Hello",
         images=None,
         audio=None,
         files=[File(content=b"%PDF-1.4 ...", name="document.pdf")],
     )
 
     assert geo_files is None
-    assert user_text == "Olá"
+    assert user_text == "Hello"
 
 
 def test_zip_without_filename_is_detected_by_magic_bytes():
@@ -100,11 +100,11 @@ def test_zip_without_filename_is_detected_by_magic_bytes():
 
 def test_text_passes_through_untouched():
     user_text, geo_files = _agent()._input_preprocessing(
-        input="Olá, tudo bem?",
+        input="Hello, how are you?",
         images=None,
         audio=None,
         files=None,
     )
 
-    assert user_text == "Olá, tudo bem?"
+    assert user_text == "Hello, how are you?"
     assert geo_files is None

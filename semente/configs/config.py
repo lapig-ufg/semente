@@ -5,15 +5,15 @@ from dotenv import load_dotenv
 # Ollama is imported lazily inside the model properties so the framework works
 # without the `ollama` package installed (it's only needed for the ollama provider).
 
-# Define o caminho base do projeto (onde o .env geralmente fica)
+# Sets the project base path (where the .env usually lives)
 BASE_DIR = Path.cwd()
 
-# Carrega as variáveis do arquivo .env para o ambiente
+# Loads the .env file variables into the environment
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 
 class BaseConfig:
-    """Configurações comuns para todos os ambientes."""
+    """Common settings for all environments."""
     APP_ENV: str = os.getenv("APP_ENV", "development")
 
     ARGO_APP_NAME: str = os.getenv("ARGO_APP_NAME", "Semente App")
@@ -70,12 +70,12 @@ class BaseConfig:
 
 
 class DevelopmentConfig(BaseConfig):
-    """Configurações específicas para Desenvolvimento."""
+    """Settings specific to Development."""
     DEBUG_MODE: bool = True
 
 
 class ProductionConfig(BaseConfig):
-    """Configurações específicas para Produção."""
+    """Settings specific to Production."""
     DEBUG_MODE: bool = False
 
     def __init__(self):
@@ -111,11 +111,11 @@ class ProductionConfig(BaseConfig):
 
 
 class StaggingConfig(ProductionConfig):
-    """Configurações específicas para Stagging."""
+    """Settings specific to Staging."""
     DEBUG_MODE: bool = True
 
 
-# Dicionário de mapeamento dos ambientes
+# Mapping dictionary of the environments
 config_map = {
     "production": ProductionConfig,
     "development": DevelopmentConfig,
@@ -127,7 +127,7 @@ env_app = os.getenv("APP_ENV", "development").lower()
 if env_app not in ["production", "development", "stagging"]:
     raise ValueError("APP_ENV has to be 'production', 'development' or 'stagging'.")
 
-# Instancia a classe de configuração correta
+# Instantiates the correct configuration class
 config: BaseConfig = config_map[env_app]()
 
 from semente.configs.logging_config import setup_logging  # noqa: E402

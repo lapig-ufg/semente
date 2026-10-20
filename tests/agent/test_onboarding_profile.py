@@ -44,158 +44,158 @@ def _agent() -> Harness:
 def db():
     """Clean DB session before and after each test."""
     UserProfile.metadata.create_all(bind=engine)
-    sessao = SessionLocal()
-    _limpar(sessao)
-    yield sessao
-    _limpar(sessao)
-    sessao.close()
+    db_session = SessionLocal()
+    _cleanup(db_session)
+    yield db_session
+    _cleanup(db_session)
+    db_session.close()
 
 
-def _limpar(sessao) -> None:
-    sessao.query(UserProfile).filter(UserProfile.user_id == UID).delete()
-    sessao.query(UserTermsAcceptance).filter(UserTermsAcceptance.user_id == UID).delete()
-    sessao.commit()
+def _cleanup(db_session) -> None:
+    db_session.query(UserProfile).filter(UserProfile.user_id == UID).delete()
+    db_session.query(UserTermsAcceptance).filter(UserTermsAcceptance.user_id == UID).delete()
+    db_session.commit()
 
 
-def _aceitar_termos(sessao) -> None:
-    sessao.add(UserTermsAcceptance(
+def _accept_terms(db_session) -> None:
+    db_session.add(UserTermsAcceptance(
         user_id=UID, accepted=True, accepted_at=datetime.datetime.utcnow(),
     ))
-    sessao.commit()
+    db_session.commit()
 
 
-def _gravar_perfil(sessao, name=None, role=None) -> None:
-    sessao.add(UserProfile(user_id=UID, name=name, role=role))
-    sessao.commit()
+def _save_profile(db_session, name=None, role=None) -> None:
+    db_session.add(UserProfile(user_id=UID, name=name, role=role))
+    db_session.commit()
 
 
 # ---------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------
-def test_sem_user_id_pede_onboarding(db):
+def test_no_user_id_requires_onboarding(db):
     """No identifier: no way to query the database — fail safe."""
-    estado: dict[str, Any] = {}
-    assert _agent()._needs_onboarding(estado, None) is True
+    state: dict[str, Any] = {}
+    assert _agent()._needs_onboarding(state, None) is True
 
 
-def test_usuario_novo_pede_onboarding(db):
+def test_new_user_requires_onboarding(db):
     """Nothing in the database, nothing in the session."""
-    estado: dict[str, Any] = {}
-    assert _agent()._needs_onboarding(estado, UID) is True
+    state: dict[str, Any] = {}
+    assert _agent()._needs_onboarding(state, UID) is True
 
 
-def test_termos_aceitos_sem_perfil_pede_onboarding(db):
+def test_terms_accepted_without_profile_requires_onboarding(db):
     """The classic bug: accepted the terms and would pass without identifying."""
-    _aceitar_termos(db)
-    estado: dict[str, Any] = {}
-    assert _agent()._needs_onboarding(estado, UID) is True
-    assert estado["terms_accepted"] is True  # the acceptance was recognized
+    _accept_terms(db)
+    state: dict[str, Any] = {}
+    assert _agent()._needs_onboarding(state, UID) is True
+    assert state["terms_accepted"] is True  # the acceptance was recognized
 
 
-def test_perfil_incompleto_pede_onboarding(db):
+def test_incomplete_profile_requires_onboarding(db):
     """Gave the name and vanished before the role."""
-    _aceitar_termos(db)
-    _gravar_perfil(db, name="João")
-    estado: dict[str, Any] = {}
-    assert _agent()._needs_onboarding(estado, UID) is True
+    _accept_terms(db)
+    _save_profile(db, name="João")
+    state: dict[str, Any] = {}
+    assert _agent()._needs_onboarding(state, UID) is True
 
 
-def test_perfil_completo_libera_e_carrega_na_sessao(db):
+def test_complete_profile_releases_and_loads_into_session(db):
     """The case issue #148 exists to solve.
 
     A user who already went through onboarding comes back in a brand new,
     empty session. The gate must recognize them from the database AND hand
     the profile to the agent.
     """
-    _aceitar_termos(db)
-    _gravar_perfil(db, name="João", role="Produtor")
-    estado: dict[str, Any] = {}
+    _accept_terms(db)
+    _save_profile(db, name="João", role="Producer")
+    state: dict[str, Any] = {}
 
-    assert _agent()._needs_onboarding(estado, UID) is False
+    assert _agent()._needs_onboarding(state, UID) is False
 
-    assert estado["user_persona"]["name"] == "João"
-    assert estado["user_persona"]["role"] == "Produtor"
+    assert state["user_persona"]["name"] == "João"
+    assert state["user_persona"]["role"] == "Producer"
 
 
-def test_sessao_completa_nao_consulta_o_banco(db):
+def test_complete_session_skips_the_database(db):
     """Performance shortcut: with everything in the session, no DB query.
 
     Nothing was written to the database in this test. If the gate queried it,
     it would find no profile and return True.
     """
-    estado: dict[str, Any] = {
+    state: dict[str, Any] = {
         "terms_accepted": True,
-        "user_persona": {"name": "João", "role": "Produtor"},
+        "user_persona": {"name": "João", "role": "Producer"},
     }
-    assert _agent()._needs_onboarding(estado, UID) is False
+    assert _agent()._needs_onboarding(state, UID) is False
 
 
-def test_sessao_nao_sobrescreve_nome_recem_gravado(db):
+def test_session_does_not_overwrite_recently_saved_name(db):
     """The tool just changed the name in the session; the DB still has the old one."""
-    _aceitar_termos(db)
-    _gravar_perfil(db, name="João", role="Produtor")
-    estado: dict[str, Any] = {"user_persona": {"name": "Zé do Pasto"}}
+    _accept_terms(db)
+    _save_profile(db, name="João", role="Producer")
+    state: dict[str, Any] = {"user_persona": {"name": "Zé do Pasto"}}
 
-    assert _agent()._needs_onboarding(estado, UID) is False
-    assert estado["user_persona"]["name"] == "Zé do Pasto"
-    assert estado["user_persona"]["role"] == "Produtor"
+    assert _agent()._needs_onboarding(state, UID) is False
+    assert state["user_persona"]["name"] == "Zé do Pasto"
+    assert state["user_persona"]["role"] == "Producer"
 
 
-def test_persona_sentinela_no_banco_incompleto_pede_onboarding(db):
+def test_persona_sentinel_in_db_incomplete_requires_onboarding(db):
     """A persona holding the schema sentinel value does not count as filled.
 
-    `UserPersona` defaults to "Ainda não conhecido", so a persona built from
+    `UserPersona` defaults to "Not yet known", so a persona built from
     the schema looks filled but is not. With no DB profile, onboarding is
     still required.
     """
-    _aceitar_termos(db)
-    estado: dict[str, Any] = {
-        "user_persona": {"name": "Ainda não conhecido", "role": "Ainda não conhecido"},
+    _accept_terms(db)
+    state: dict[str, Any] = {
+        "user_persona": {"name": "Not yet known", "role": "Not yet known"},
     }
-    assert _agent()._needs_onboarding(estado, UID) is True
+    assert _agent()._needs_onboarding(state, UID) is True
 
 
-def test_sentinela_na_sessao_e_preenchida_pelo_banco(db):
+def test_sentinel_in_session_is_filled_from_db(db):
     """Sentinel in the session + complete profile in the DB: release and cure the session.
 
     The gate must recognize the sentinel is not a real name, fetch the DB
     profile and overwrite the sentinel fields — not just fill missing keys.
     """
-    _aceitar_termos(db)
-    _gravar_perfil(db, name="João", role="Produtor")
-    estado: dict[str, Any] = {
-        "user_persona": {"name": "Ainda não conhecido", "role": "Ainda não conhecido"},
+    _accept_terms(db)
+    _save_profile(db, name="João", role="Producer")
+    state: dict[str, Any] = {
+        "user_persona": {"name": "Not yet known", "role": "Not yet known"},
     }
 
-    assert _agent()._needs_onboarding(estado, UID) is False
-    assert estado["user_persona"]["name"] == "João"
-    assert estado["user_persona"]["role"] == "Produtor"
+    assert _agent()._needs_onboarding(state, UID) is False
+    assert state["user_persona"]["name"] == "João"
+    assert state["user_persona"]["role"] == "Producer"
 
 
-def test_perfil_parcial_sentinela_e_preenchido_sem_apagar_sessao(db):
+def test_partial_profile_sentinel_is_filled_without_wiping_session(db):
     """Real name in the session + sentinel role: the DB fills only the role."""
-    _aceitar_termos(db)
-    _gravar_perfil(db, name="João", role="Técnico")
-    estado: dict[str, Any] = {
-        "user_persona": {"name": "Zé do Pasto", "role": "Ainda não conhecido"},
+    _accept_terms(db)
+    _save_profile(db, name="João", role="Technician")
+    state: dict[str, Any] = {
+        "user_persona": {"name": "Zé do Pasto", "role": "Not yet known"},
     }
 
-    assert _agent()._needs_onboarding(estado, UID) is False
-    assert estado["user_persona"]["name"] == "Zé do Pasto"
-    assert estado["user_persona"]["role"] == "Técnico"
+    assert _agent()._needs_onboarding(state, UID) is False
+    assert state["user_persona"]["name"] == "Zé do Pasto"
+    assert state["user_persona"]["role"] == "Technician"
 
 
-def test_estado_antigo_e_migrado_sem_quebrar(db):
+def test_old_state_is_migrated_without_breaking(db):
     """An old (pre-schema_version) session state is migrated in place, not rejected."""
-    _aceitar_termos(db)
-    _gravar_perfil(db, name="João", role="Produtor")
-    estado: dict[str, Any] = {
+    _accept_terms(db)
+    _save_profile(db, name="João", role="Producer")
+    state: dict[str, Any] = {
         "terms_accepted": True,
-        "user_persona": {"name": "Ainda não conhecido", "role": "Ainda não conhecido"},
+        "user_persona": {"name": "Not yet known", "role": "Not yet known"},
         "some_legacy_flag": True,
     }
 
-    assert _agent()._needs_onboarding(estado, UID) is False
-    assert estado["workflow_state"]["schema_version"] == CURRENT_SCHEMA_VERSION
-    assert estado["some_legacy_flag"] is True
-    assert estado["user_persona"]["name"] == "João"
+    assert _agent()._needs_onboarding(state, UID) is False
+    assert state["workflow_state"]["schema_version"] == CURRENT_SCHEMA_VERSION
+    assert state["some_legacy_flag"] is True
+    assert state["user_persona"]["name"] == "João"

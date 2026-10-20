@@ -5,9 +5,9 @@ from pydantic import BaseModel, Field
 class InputManager(BaseModel):
     summary: Optional[str] = Field(
         default=None,
-        description="Resumo acumulado do contexto da conversa."
+        description="Accumulated summary of the conversation context."
     )
     runs_count: int = Field(
         default=0,
-        description="Contador de execuções desde o último resumo."
+        description="Counter of runs since the last summary."
     )

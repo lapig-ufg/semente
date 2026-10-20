@@ -17,7 +17,7 @@ st.set_page_config(page_title="Semente", page_icon="🌱")
 
 DB_FILE = "users_db.json"
 
-# ==================== BANCO DE DADOS ====================
+# ==================== DATABASE ====================
 
 def get_users():
     if not os.path.exists(DB_FILE):
@@ -37,7 +37,7 @@ def new_user(user_id, user_name):
         with open(DB_FILE, "w") as f:
             json.dump(users, f, indent=4)
 
-def login_user(user_id, user_name="Anônimo"):
+def login_user(user_id, user_name="Anonymous"):
     st.session_state["session_id"] = user_id
     st.session_state["user_name"] = user_name
     st.session_state["logged_in"] = True
@@ -63,7 +63,7 @@ def logout():
 
     st.rerun()
 
-# ==================== TELA DE LOGIN ====================
+# ==================== LOGIN SCREEN ====================
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
@@ -73,55 +73,55 @@ if not st.session_state["logged_in"]:
 
     col1, col2, col3 = st.columns(3)
 
-    # 1. Lista de Usuários Armazenados
+    # 1. Stored user list
     with col1:
-        st.subheader("Historico")
+        st.subheader("History")
         stored_users = get_users()
         
         if stored_users:
             selected_obj = st.selectbox(
-                "Escolha o usuário:", 
+                "Choose a user:", 
                 stored_users, 
-                format_func=lambda x: x.get('user_name', 'Usuário')
+                format_func=lambda x: x.get('user_name', 'User')
             )
             
-            if st.button("Entrar"):
+            if st.button("Log In"):
                 login_user(selected_obj['id'], selected_obj['nickname'])
         else:
-            st.info("Vazio")
+            st.info("Empty")
 
-    # 2. Criar Novo Usuário (Com Nome)
+    # 2. Create new user (with name)
     with col2:
-        st.subheader("🆕 Novo")
-        new_name_input = st.text_input("Identificação do usuário")
+        st.subheader("🆕 New")
+        new_name_input = st.text_input("User identification")
         
-        if st.button("Criar"):
+        if st.button("Create"):
             if new_name_input.strip():
                 new_id = str(uuid.uuid4())
                 new_user(new_id, new_name_input)
                 login_user(new_id, new_name_input)
             else:
-                st.warning("Por favor, digite um nome para salvar.")
+                st.warning("Please type a name to save.")
 
-    # 3. Entrar Anonimamente
+    # 3. Log in anonymously
     with col3:
-        st.subheader("Anonimo")
-        if st.button("Entrar Anonimamente"):
+        st.subheader("Anonymous")
+        if st.button("Log In Anonymously"):
             anon_id = str(uuid.uuid4())
-            login_user(anon_id, "Visitante Anônimo")
+            login_user(anon_id, "Anonymous Visitor")
 
     st.stop()
 
 # ==========================================
-# APLICAÇÃO PRINCIPAL (CHAT)
+# MAIN APPLICATION (CHAT)
 # ==========================================
 
 with st.sidebar:
-    st.sidebar.title("Configurações")
-    st.write(f"**Usuario:** {st.session_state.get('user_name', 'Desconhecido')}")
+    st.sidebar.title("Settings")
+    st.write(f"**User:** {st.session_state.get('user_name', 'Unknown')}")
     st.caption(f"ID: {st.session_state['session_id']}")
     st.divider()
-    if st.button("Sair / Trocar Usuário"):
+    if st.button("Log Out / Switch User"):
         logout()
 
     # Debug panel (only available in debug mode)
@@ -135,7 +135,7 @@ with st.sidebar:
         if st.session_state.debug_mode_enabled:
             render_debug_panel()
 
-st.title(f"Ola, {st.session_state.get('user_name', '')}")
+st.title(f"Hello, {st.session_state.get('user_name', '')}")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -154,7 +154,7 @@ if "debug_metrics" not in st.session_state:
 if "debug_messages" not in st.session_state:
     st.session_state.debug_messages = []
 
-# Exibe mensagens anteriores
+# Display previous messages
 for msg_idx, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -173,19 +173,19 @@ for msg_idx, message in enumerate(st.session_state.messages):
         if "files" in message:
             for file_idx, f in enumerate(message["files"]):
                 st.download_button(
-                    label=f"Baixar {f['name'] or 'arquivo'}",
+                    label=f"Download {f['name'] or 'file'}",
                     data=f["content"],
-                    file_name=f["name"] or f"arquivo_{file_idx}.pdf",
+                    file_name=f["name"] or f"file_{file_idx}.pdf",
                     mime=f["mime_type"] or "application/octet-stream",
                     key=f"dl_hist_{msg_idx}_{file_idx}",
                 )
 
-# Inputs do usuário
+# User inputs
 if 'file_uploader_key' not in st.session_state:
     st.session_state.file_uploader_key = 0
 
 files_uploaded = st.file_uploader(
-    "Envie imagens/áudio (png, jpg, mp3, etc)",
+    "Upload images/audio (png, jpg, mp3, etc)",
     key=f"file_uploader_{st.session_state.file_uploader_key}",
     type=["png", "jpg", "jpeg", "webp", "wav", "mp3", "mp4"],
     accept_multiple_files=True,
@@ -195,27 +195,27 @@ if "audio_uploader_key" not in st.session_state:
     st.session_state.audio_uploader_key = 0
 
 audio_input_value = st.audio_input(
-    "Gravar audio",
+    "Record audio",
     key=f"audio_uploader_{st.session_state.audio_uploader_key}",
     )
 
-chat_input_value = st.chat_input("Pergunte sobre pastagem...")
+chat_input_value = st.chat_input("Ask about pasture...")
 
 col_btn, _ = st.columns([0.4, 0.6])
 with col_btn:
-    loc_input_value = st.button("Enviar Localizacao da Propriedade")
+    loc_input_value = st.button("Send Property Location")
 
 user_query = None
 
 if loc_input_value:
-    user_query = """Minhas coordenadas são 2°46'32.94"S 48°31'41.74"W."""
+    user_query = """My coordinates are 2°46'32.94"S 48°31'41.74"W."""
 elif chat_input_value:
     user_query = chat_input_value
 elif audio_input_value:
-    user_query = "[Áudio recebido]"
+    user_query = "[Audio received]"
 
 def process_uploaded_files(uploaded_files) -> List[str]:
-    """Salva arquivos temporariamente e retorna os caminhos para o Agente."""
+    """Saves files temporarily and returns the paths for the Agent."""
     file_paths = []
     if uploaded_files:
         for uploaded_file in uploaded_files:
@@ -225,9 +225,10 @@ def process_uploaded_files(uploaded_files) -> List[str]:
     return file_paths
 
 if user_query:
-    # Mesma redação que o WhatsApp aplica no MessageContent.__post_init__.
-    # Sem isso o texto cru entra no agente e fica gravado no campo `input`
-    # da run, que é persistido — o guardrail limpa depois, tarde demais.
+    # Same redaction the WhatsApp flow applies in MessageContent.__post_init__.
+    # Without it, the raw text enters the agent and gets recorded in the run's
+    # `input` field, which is persisted — the guardrail scrubs it afterwards,
+    # too late.
     user_query, _pii_removida = redigir_pii(user_query)
 
     st.session_state.messages.append({"role": "user", "content": user_query})
@@ -275,13 +276,13 @@ if user_query:
             if geo_files:
                 run_kwargs["files"] = geo_files
 
-            with st.spinner("Analisando dados e gerando resposta..."):
+            with st.spinner("Analyzing data and generating response..."):
                 response = get_harness().run(**run_kwargs)
             
             if hasattr(response, 'content'):
                 full_response = response.content
             else:
-                full_response = "Erro"#str(response)
+                full_response = "Error"#str(response)
 
             # Extract and store debug data
             try:
@@ -330,20 +331,20 @@ if user_query:
                 for file_idx, f in enumerate(response.files):
                     if f.content:
                         st.download_button(
-                            label=f"Baixar {f.name or 'arquivo'}",
+                            label=f"Download {f.name or 'file'}",
                             data=f.content,
-                            file_name=f.name or f"arquivo_{file_idx}.{f.format or 'bin'}",
+                            file_name=f.name or f"file_{file_idx}.{f.format or 'bin'}",
                             mime=f.mime_type or "application/octet-stream",
                             key=f"dl_{st.session_state.session_id}_{len(st.session_state.messages)}_{file_idx}",
                         )
-            # Exibe a resposta final
+            # Display the final response
             message_placeholder.markdown(full_response)
 
         except Exception as e:
             import traceback
             traceback.print_exc()
-            st.error(f"Erro ao processar: {e}")
-            full_response = f"Desculpe, ocorreu um erro: {str(e)}"
+            st.error(f"Error processing: {e}")
+            full_response = f"Sorry, an error occurred: {str(e)}"
         finally:
             for path in image_path:
                 try:

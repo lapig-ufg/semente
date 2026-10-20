@@ -11,7 +11,7 @@ _hook_texts = get_hook_texts("tool_hooks")
 
 def validate_selected_property_hook(run_context: Context, function_call: Callable, arguments: Dict[str, Any]) -> Any:
     """
-    Hook de validação para garantir que há uma propriedade armazenada no sistema.
+    Validation hook to guarantee that a property is stored in the system.
     """
     session_state = run_context.session_state
 
@@ -21,7 +21,7 @@ def validate_selected_property_hook(run_context: Context, function_call: Callabl
     return _hook_texts["no_property_selected"].strip()
 
 def validate_rate_limit_hook(run_context: Any, function_call: Callable, arguments: Dict[str, Any]) -> Any:
-    """ Hook universal para evitar reprocessamento e controlar expiração (7 dias). """
+    """ Universal hook to avoid reprocessing and control expiration (7 days). """
     session_state = run_context.session_state or {}
 
     delivered_media = session_state.get("delivered_media", {})
@@ -41,7 +41,7 @@ def validate_rate_limit_hook(run_context: Any, function_call: Callable, argument
 
     try:
         result = function_call(**arguments)        
-        if hasattr(result, 'content') and "Erro" in str(result.content):
+        if hasattr(result, 'content') and "Error" in str(result.content):
             return result
         
         if not hasattr(result, 'images') or not result.images:

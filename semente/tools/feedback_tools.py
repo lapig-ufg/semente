@@ -9,7 +9,7 @@ from semente.database.session import SessionLocal, engine
 from semente.database.models import AnalysisFeedback
 
 def _mask_pii(text: str) -> str:
-    """ Fallback Determinístico: Mascara dados sensíveis usando Regex """
+    """Deterministic fallback: masks sensitive data using regex."""
     if not text:
         return ""
     
@@ -22,12 +22,12 @@ def _mask_pii(text: str) -> str:
     
     masked_text = str(text)
     for label, pattern in patterns.items():
-        masked_text = pattern.sub(f"[{label}_OCULTO]", masked_text)
+        masked_text = pattern.sub(f"[{label}_HIDDEN]", masked_text)
         
     return masked_text
 
 def _get_masked_history(run_context: RunContext) -> list[dict]:
-    """ Últimas 3 rodadas (tuples user/assistant), com PII mascarado """
+    """ Last 3 rounds (user/assistant tuples), with PII masked """
     if not run_context or not run_context.messages:
         return []
 
@@ -53,30 +53,30 @@ def record_analisys_feedback(
     run_context: RunContext = None
 ) -> str:
     """
-    Registra uma sugestão de nova funcionalidade ou análise de dados.
-    Use quando o usuário solicitar uma análise que o assistente ainda não possui ferramentas para gerar.
+    Records a suggestion of a new feature or data analysis.
+    Use when the user requests an analysis the assistant does not yet have tools to generate.
     """
     AnalysisFeedback.metadata.create_all(bind=engine)
     db = SessionLocal()
-    log_debug("record_analisys_feedback: iniciando registro")
+    log_debug("record_analisys_feedback: starting registration")
     try:
-        # Histórico das últimas 3 rodadas, com PII mascarado deterministicamente
+        # History of the last 3 rounds, with PII masked deterministically
         final_safe_history = _get_masked_history(run_context)
         
-        novo_feedback = AnalysisFeedback(
+        new_feedback = AnalysisFeedback(
             timestamp=datetime.now().isoformat(),
             original_question=_mask_pii(original_question),
             desired_analysis=_mask_pii(desired_analysis),
             history=final_safe_history
         )
         
-        db.add(novo_feedback)
+        db.add(new_feedback)
         db.commit()
-        log_debug("record_analisys_feedback: feedback registrado com sucesso")
-        return "Feedback registrado com sucesso no sistema. Muito obrigado por ajudar a melhorar o sistema!"
+        log_debug("record_analisys_feedback: feedback registered successfully")
+        return "Feedback registered successfully in the system. Thank you very much for helping to improve it!"
     except Exception as e:
         db.rollback()
-        log_error(f"record_analisys_feedback: erro ao registrar feedback: {e}")
-        return f"Erro ao registrar feedback: {str(e)}"
+        log_error(f"record_analisys_feedback: failed to register feedback: {e}")
+        return f"Failed to register feedback: {str(e)}"
     finally:
         db.close()

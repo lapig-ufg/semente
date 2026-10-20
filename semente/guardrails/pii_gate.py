@@ -1,58 +1,57 @@
-"""Detecção de PII (dados pessoais) na camada de ingestão.
+"""PII (personal data) detection at the ingestion layer.
 
-Reúne detectores determinísticos (regex + validação de dígitos verificadores)
-e uma camada de intenção. Em vez de barrar a mensagem inteira, o dado sensível
-é trocado por um marcador — o resto do pedido do usuário segue em frente.
+Brings together deterministic detectors (regex + check-digit validation)
+and an intent layer. Instead of blocking the whole message, the sensitive
+data is replaced with a marker — the rest of the user's request goes through.
 
-Interface externa:
-    detecta_cpf(text)        -- True se o texto contém um CPF válido.
-    detecta_cnpj(text)       -- True se o texto contém um CNPJ válido.
-    detecta_cartao(text)     -- True se o texto contém um número de cartão válido.
-    detecta_email(text)      -- True se o texto contém um endereço de e-mail.
-    detecta_rg(text)         -- True se o texto contém um RG no formato pontuado.
-    check_pii(text)          -- lista dos tipos de PII encontrados (vazia se limpo).
-    redigir_pii(text)        -- troca dados pessoais por marcadores.
-    mascarar_pii(text)       -- substitui PII por [oculto], para logs seguros.
+External interface:
+    detecta_cpf(text)        -- True if the text contains a valid CPF.
+    detecta_cnpj(text)       -- True if the text contains a valid CNPJ.
+    detecta_cartao(text)     -- True if the text contains a valid card number.
+    detecta_email(text)      -- True if the text contains an e-mail address.
+    detecta_rg(text)         -- True if the text contains an RG in the punctuated format.
+    check_pii(text)          -- list of the PII types found (empty if clean).
+    redigir_pii(text)        -- replaces personal data with markers.
+    mascarar_pii(text)       -- replaces PII with [hidden], for safe logs.
 """
 
 import re
 from typing import Callable, Dict, List, Tuple
 
 # =====================================================================
-# Camada 0 — Exclusão de escopo conhecido
+# Layer 0 — Exclusion of known scope
 # =====================================================================
-# Antes de procurar PII, tiramos do texto os identificadores que são do
-# próprio sistema.
+# Before scanning for PII, we remove from the text the identifiers that
+# belong to the system itself.
 #
-# Motivo: o dígito verificador é um sinal fraco — cerca de 1 em cada 100
-# sequências aleatórias de 11 ou 14 dígitos passa por acaso (e 1 em 9 no
-# Luhn do cartão). Então qualquer identificador longo, como o CAR com seus
-# 32 caracteres hexadecimais, mais cedo ou mais tarde contém um trecho que
-# parece um documento válido. Medido: 1 a cada ~3.000 códigos CAR era
-# bloqueado indevidamente.
+# Reason: the check digit is a weak signal — about 1 in every 100 random
+# sequences of 11 or 14 digits passes by chance (and 1 in 9 on the card
+# Luhn). So any long identifier, such as the CAR with its 32 hexadecimal
+# characters, sooner or later contains a stretch that looks like a valid
+# document. Measured: 1 in ~3,000 CAR codes was being blocked wrongly.
 #
-# Endurecer o regex não resolve essa classe de problema — só reduz a
-# frequência. Removendo o trecho antes da varredura, o detector nunca
-# chega a vê-lo.
+# Hardening the regex does not solve this class of problem — it only
+# reduces the frequency. Removing the stretch before the scan, the
+# detector never gets to see it.
 
-# CAR (Cadastro Ambiental Rural): UF + código do município + identificador.
-# Ex.: GO-5212303-27057D4194F64CE3A498B90BFAC2E5F9
-# Domain-flavored, mas engine-safe: domínios podem estender _ESCOPO_CONHECIDO
-# com seus próprios identificadores longos.
+# CAR (Rural Environmental Registry): state (UF) code + municipality code + identifier.
+# E.g.: GO-5212303-27057D4194F64CE3A498B90BFAC2E5F9
+# Domain-flavored, but engine-safe: domains may extend _KNOWN_SCOPE
+# with their own long identifiers.
 _CAR_RE = re.compile(r"\b[A-Z]{2}-\d{7}-[A-F0-9]{32}\b", re.IGNORECASE)
-_ESCOPO_CONHECIDO = [
+_KNOWN_SCOPE = [
     _CAR_RE,
 ]
 
 
 def remover_escopo_conhecido(text: str) -> str:
-    """Remove identificadores do próprio sistema antes da varredura de PII.
+    """Removes the system's own identifiers before the PII scan.
 
-    Substitui por espaço (e não por string vazia) de propósito: sem isso, o
-    que estava dos dois lados gruda e pode formar um número que não existia
-    no texto original.
+    Replaces with a space (and not with an empty string) on purpose: without
+    that, whatever was on both sides glues together and can form a number
+    that did not exist in the original text.
     """
-    for rx in _ESCOPO_CONHECIDO:
+    for rx in _KNOWN_SCOPE:
         text = rx.sub(" ", text)
     return text
 
@@ -60,12 +59,13 @@ _NB_L = r"(?<!\d)(?<!\d[.,])"
 _NB_R = r"(?!\d)(?![.,]\d)"
 
 # --- CPF ---
-# Três formas aceitas, sempre completas — nunca meio a meio:
-#   pontuada  123.456.789-01
-#   espaçada  123 456 789 01
-#   crua      12345678901
-# A forma espaçada existe porque é como muita gente digita, e sem ela o CPF
-# só era pego pela camada de intenção (dependia da palavra "cpf" por perto).
+# Three accepted forms, always complete — never half of it:
+#   dotted   123.456.789-01
+#   spaced   123 456 789 01
+#   raw      12345678901
+# The spaced form exists because that's how many people type, and without
+# it the CPF was only caught by the intent layer (it depended on the word
+# "cpf" being nearby).
 _CPF_RE = re.compile(
     _NB_L
     + r"(?:\d{3}\.\d{3}\.\d{3}-\d{2}|\d{3} \d{3} \d{3} \d{2}|\d{11})"
@@ -73,83 +73,83 @@ _CPF_RE = re.compile(
 )
 
 
-def _valida_cpf(digitos: str) -> bool:
-    """Valida os dois dígitos verificadores de um CPF (recebe só números)."""
-    if len(digitos) != 11 or digitos == digitos[0] * 11:
+def _valid_cpf(digits: str) -> bool:
+    """Validates the two check digits of a CPF (receives digits only)."""
+    if len(digits) != 11 or digits == digits[0] * 11:
         return False
 
-    # 1º dígito verificador: pesos 10..2 sobre os 9 primeiros números.
-    soma = sum(int(digitos[i]) * (10 - i) for i in range(9))
-    resto = (soma * 10) % 11
-    if resto == 10:
-        resto = 0
-    if resto != int(digitos[9]):
+    # 1st check digit: weights 10..2 over the first 9 digits.
+    total = sum(int(digits[i]) * (10 - i) for i in range(9))
+    remainder = (total * 10) % 11
+    if remainder == 10:
+        remainder = 0
+    if remainder != int(digits[9]):
         return False
 
-    # 2º dígito verificador: pesos 11..2 sobre os 10 primeiros números.
-    soma = sum(int(digitos[i]) * (11 - i) for i in range(10))
-    resto = (soma * 10) % 11
-    if resto == 10:
-        resto = 0
-    return resto == int(digitos[10])
+    # 2nd check digit: weights 11..2 over the first 10 digits.
+    total = sum(int(digits[i]) * (11 - i) for i in range(10))
+    remainder = (total * 10) % 11
+    if remainder == 10:
+        remainder = 0
+    return remainder == int(digits[10])
 
 
 def detecta_cpf(text: str) -> bool:
-    """Retorna True se o texto contém pelo menos um CPF válido."""
-    for trecho in _CPF_RE.findall(text):
-        digitos = re.sub(r"\D", "", trecho)
-        if _valida_cpf(digitos):
+    """Returns True if the text contains at least one valid CPF."""
+    for candidate in _CPF_RE.findall(text):
+        digits = re.sub(r"\D", "", candidate)
+        if _valid_cpf(digits):
             return True
     return False
 
 # --- CNPJ ---
-# Mesmas três formas do CPF:
-#   pontuada  12.345.678/0001-90
-#   espaçada  12 345 678 0001 90
-#   crua      12345678000190
+# Same three forms as the CPF:
+#   dotted   12.345.678/0001-90
+#   spaced   12 345 678 0001 90
+#   raw      12345678000190
 _CNPJ_RE = re.compile(
     _NB_L
     + r"(?:\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}|\d{2} \d{3} \d{3} \d{4} \d{2}|\d{14})"
     + _NB_R
 )
 
-# Pesos oficiais para o cálculo dos dígitos verificadores do CNPJ.
-_CNPJ_PESOS_1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-_CNPJ_PESOS_2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+# Official weights for computing the CNPJ check digits.
+_CNPJ_WEIGHTS_1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+_CNPJ_WEIGHTS_2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
 
 
-def _valida_cnpj(digitos: str) -> bool:
-    """Valida os dois dígitos verificadores de um CNPJ (recebe só números)."""
-    if len(digitos) != 14 or digitos == digitos[0] * 14:
+def _valid_cnpj(digits: str) -> bool:
+    """Validates the two check digits of a CNPJ (receives digits only)."""
+    if len(digits) != 14 or digits == digits[0] * 14:
         return False
 
-    # 1º dígito verificador: soma ponderada dos 12 primeiros números.
-    soma = sum(int(digitos[i]) * _CNPJ_PESOS_1[i] for i in range(12))
-    resto = soma % 11
-    dv1 = 0 if resto < 2 else 11 - resto
-    if dv1 != int(digitos[12]):
+    # 1st check digit: weighted sum of the first 12 digits.
+    total = sum(int(digits[i]) * _CNPJ_WEIGHTS_1[i] for i in range(12))
+    remainder = total % 11
+    dv1 = 0 if remainder < 2 else 11 - remainder
+    if dv1 != int(digits[12]):
         return False
 
-    # 2º dígito verificador: soma ponderada dos 13 primeiros números.
-    soma = sum(int(digitos[i]) * _CNPJ_PESOS_2[i] for i in range(13))
-    resto = soma % 11
-    dv2 = 0 if resto < 2 else 11 - resto
-    return dv2 == int(digitos[13])
+    # 2nd check digit: weighted sum of the first 13 digits.
+    total = sum(int(digits[i]) * _CNPJ_WEIGHTS_2[i] for i in range(13))
+    remainder = total % 11
+    dv2 = 0 if remainder < 2 else 11 - remainder
+    return dv2 == int(digits[13])
 
 
 def detecta_cnpj(text: str) -> bool:
-    """Retorna True se o texto contém pelo menos um CNPJ válido."""
-    for trecho in _CNPJ_RE.findall(text):
-        digitos = re.sub(r"\D", "", trecho)
-        if _valida_cnpj(digitos):
+    """Returns True if the text contains at least one valid CNPJ."""
+    for candidate in _CNPJ_RE.findall(text):
+        digits = re.sub(r"\D", "", candidate)
+        if _valid_cnpj(digits):
             return True
     return False
 
-# --- Cartão de crédito ---
-# Duas formas, sempre completas: agrupamento visual (4-4-4-1..4, com espaço
-# ou traço) OU prefixo de bandeira real (4x Visa, 5[1-5]x Mastercard, 3[47]x
-# Amex, 6(011|5xx) Discover). Número cru de 13-16 dígitos + Luhn é ruído —
-# não detecta mais (1 em 9 sequências passa por acaso).
+# --- Credit card ---
+# Two forms, always complete: visual grouping (4-4-4-1..4, with space or
+# dash) OR a real brand prefix (4x Visa, 5[1-5]x Mastercard, 3[47]x
+# Amex, 6(011|5xx) Discover). A raw 13-16 digit number + Luhn is noise —
+# no longer detected (1 in 9 sequences passes by chance).
 _CARTAO_RE = re.compile(
     _NB_L
     + r"(?:"
@@ -163,160 +163,162 @@ _CARTAO_RE = re.compile(
 )
 
 
-def _luhn(digitos: str) -> bool:
-    """Valida um número de cartão pelo algoritmo de Luhn (recebe só números)."""
-    soma = 0
-    for i, ch in enumerate(reversed(digitos)):
+def _luhn(digits: str) -> bool:
+    """Validates a card number using the Luhn algorithm (receives digits only)."""
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
         n = int(ch)
-        if i % 2 == 1:          # dobra dígitos alternados, da direita p/ esquerda
+        if i % 2 == 1:          # doubles alternating digits, right to left
             n *= 2
             if n > 9:
                 n -= 9
-        soma += n
-    return soma % 10 == 0
+        total += n
+    return total % 10 == 0
 
 
 def detecta_cartao(text: str) -> bool:
-    """Retorna True se o texto contém um número de cartão válido (Luhn)."""
-    for trecho in _CARTAO_RE.findall(text):
-        digitos = re.sub(r"\D", "", trecho)
-        if 13 <= len(digitos) <= 16 and _luhn(digitos):
+    """Returns True if the text contains a valid card number (Luhn)."""
+    for candidate in _CARTAO_RE.findall(text):
+        digits = re.sub(r"\D", "", candidate)
+        if 13 <= len(digits) <= 16 and _luhn(digits):
             return True
     return False
 
 # --- E-mail ---
-# Formato padrão: usuario@dominio.extensao
+# Standard format: user@domain.extension
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
 
 def detecta_email(text: str) -> bool:
-    """Retorna True se o texto contém um endereço de e-mail."""
+    """Returns True if the text contains an e-mail address."""
     return bool(_EMAIL_RE.search(text))
 
 
-# --- RG (formato pontuado) ---
-# RG não tem padrão nacional, então cobrimos só o formato claramente escrito
-# (12.345.678-9). Número cru NÃO entra, pra não bloquear valores/quantidades à toa.
+# --- RG (punctuated format) ---
+# RG has no national pattern, so we only cover the clearly written format
+# (12.345.678-9). A raw number is NOT included, to avoid needlessly blocking
+# values/amounts.
 _RG_RE = re.compile(r"\b\d{2}\.\d{3}\.\d{3}-[\dxX]\b")
 
 
 def detecta_rg(text: str) -> bool:
-    """Retorna True se o texto contém um RG no formato pontuado (ex.: 12.345.678-9)."""
+    """Returns True if the text contains an RG in the punctuated format (e.g.: 12.345.678-9)."""
     return bool(_RG_RE.search(text))
 
 
-# --- Intenção de documento (pega mesmo número falso/inválido) ---
-# Se o usuário cita o documento e emenda um número (ex.: "meu cpf é 322443"),
-# detectamos mesmo que o número não seja válido — a intenção já é enviar o dado.
-_INTENCAO_RE = {
+# --- Document intent (catches a fake/invalid number too) ---
+# If the user mentions the document and appends a number (e.g.: "my cpf is 322443"),
+# we detect it even if the number is not valid — the intent is already to send the data.
+_INTENT_RE = {
     "CPF":    re.compile(r"\bcpf\b.{0,12}?\d{3,}|\d{3,}.{0,12}?\bcpf\b", re.IGNORECASE),
     "CNPJ":   re.compile(r"\bcnpj\b.{0,12}?\d{3,}|\d{3,}.{0,12}?\bcnpj\b", re.IGNORECASE),
     "RG":     re.compile(r"\brg\b.{0,12}?\d{3,}|\d{3,}.{0,12}?\brg\b", re.IGNORECASE),
-    "cartão": re.compile(r"\bcart[ãa]o\b.{0,12}?\d{3,}|\d{3,}.{0,12}?\bcart[ãa]o\b", re.IGNORECASE),
+    "card":   re.compile(r"\b(?:card|cart[ãa]o)\b.{0,12}?\d{3,}|\d{3,}.{0,12}?\b(?:card|cart[ãa]o)\b", re.IGNORECASE),
 }
 
-# --- Orquestrador ---
+# --- Orchestrator ---
 
-_DETECTORES: Dict[str, Callable[[str], bool]] = {
+_DETECTORS: Dict[str, Callable[[str], bool]] = {
     "CPF": detecta_cpf,
     "CNPJ": detecta_cnpj,
-    "cartão": detecta_cartao,
-    "e-mail": detecta_email,
+    "card": detecta_cartao,
+    "email": detecta_email,
     "RG": detecta_rg,
 }
 
 
 def check_pii(text: str) -> List[str]:
-    """Tipos de PII no texto: documentos válidos + intenção clara de enviar documento."""
+    """PII types present in the text: valid documents + clear intent to send a document."""
 
     text = remover_escopo_conhecido(text)
 
-    tipos = [tipo for tipo, detector in _DETECTORES.items() if detector(text)]
+    types = [kind for kind, detector in _DETECTORS.items() if detector(text)]
 
-    # Camada de intenção: citou "cpf/cnpj/rg" e emendou número → pega mesmo inválido.
-    for tipo, rx in _INTENCAO_RE.items():
-        if tipo not in tipos and rx.search(text):
-            tipos.append(tipo)
-    return tipos
+    # Intent layer: mentioned "cpf/cnpj/rg" and appended a number → catches invalid ones too.
+    for kind, rx in _INTENT_RE.items():
+        if kind not in types and rx.search(text):
+            types.append(kind)
+    return types
 
-# --- Redação ---
-# Em vez de recusar a mensagem inteira, troca só o dado sensível por um
-# marcador e deixa o resto seguir. Assim o usuário não perde os pedidos que
-# fez junto, e o dado não chega ao agente nem ao banco.
-_MARCADOR = {
-    "CPF": "[CPF_OCULTO]",
-    "CNPJ": "[CNPJ_OCULTO]",
-    "cartão": "[CARTAO_OCULTO]",
-    "RG": "[RG_OCULTO]",
-    "e-mail": "[EMAIL_OCULTO]",
+# --- Redaction ---
+# Instead of refusing the whole message, replaces only the sensitive data
+# with a marker and lets the rest go through. That way the user doesn't
+# lose the requests made alongside, and the data never reaches the agent
+# or the database.
+_MARKERS = {
+    "CPF": "[CPF_HIDDEN]",
+    "CNPJ": "[CNPJ_HIDDEN]",
+    "card": "[CARD_HIDDEN]",
+    "RG": "[RG_HIDDEN]",
+    "email": "[EMAIL_HIDDEN]",
 }
 
 
 def redigir_pii(text: str) -> Tuple[str, List[str]]:
-    """Substitui dados pessoais por marcadores.
+    """Replaces personal data with markers.
 
-    Devolve (texto_redigido, tipos_removidos). Se não achou nada, devolve o
-    texto original e lista vazia.
+    Returns (redacted_text, removed_types). If nothing was found, returns
+    the original text and an empty list.
     """
     if not text:
         return text, []
 
-    # Trechos de escopo conhecido (CAR) são intocáveis: um CAR pode conter,
-    # por acaso, uma sequência que valida como documento.
-    protegidos = [mt.span() for rx in _ESCOPO_CONHECIDO for mt in rx.finditer(text)]
+    # Known-scope spans (CAR) are untouchable: a CAR may contain, by chance,
+    # a sequence that validates as a document.
+    protected_spans = [mt.span() for rx in _KNOWN_SCOPE for mt in rx.finditer(text)]
 
-    def _protegido(ini: int, fim: int) -> bool:
-        return any(ini < p_fim and fim > p_ini for p_ini, p_fim in protegidos)
+    def _is_protected(start: int, end: int) -> bool:
+        return any(start < p_end and end > p_start for p_start, p_end in protected_spans)
 
-    achados = []  # (inicio, fim, tipo)
-    for tipo, rx in (
+    findings = []  # (start, end, type)
+    for kind, rx in (
         ("CPF", _CPF_RE),
         ("CNPJ", _CNPJ_RE),
-        ("cartão", _CARTAO_RE),
+        ("card", _CARTAO_RE),
         ("RG", _RG_RE),
-        ("e-mail", _EMAIL_RE),
+        ("email", _EMAIL_RE),
     ):
         for mt in rx.finditer(text):
-            ini, fim = mt.span()
-            if _protegido(ini, fim):
+            start, end = mt.span()
+            if _is_protected(start, end):
                 continue
-            digitos = re.sub(r"\D", "", mt.group())
-            # CPF, CNPJ e cartão só contam se o verificador bater.
-            # RG e e-mail não têm verificador: o formato já é a evidência.
-            if tipo == "CPF" and not _valida_cpf(digitos):
+            digits = re.sub(r"\D", "", mt.group())
+            # CPF, CNPJ and card only count if the check digit matches.
+            # RG and email have no check digit: the format itself is the evidence.
+            if kind == "CPF" and not _valid_cpf(digits):
                 continue
-            if tipo == "CNPJ" and not _valida_cnpj(digitos):
+            if kind == "CNPJ" and not _valid_cnpj(digits):
                 continue
-            if tipo == "cartão" and not (13 <= len(digitos) <= 16 and _luhn(digitos)):
+            if kind == "card" and not (13 <= len(digits) <= 16 and _luhn(digits)):
                 continue
-            achados.append((ini, fim, tipo))
+            findings.append((start, end, kind))
 
-    if not achados:
+    if not findings:
         return text, []
 
-    # Substitui de trás para frente para os índices não saírem do lugar,
-    # descartando sobreposições entre detectores.
-    achados.sort(key=lambda a: a[0])
-    limpo, tipos, ultimo_inicio = text, [], len(text)
-    for ini, fim, tipo in reversed(achados):
-        if fim > ultimo_inicio:
+    # Replace back to front so the indexes don't shift,
+    # discarding overlaps between detectors.
+    findings.sort(key=lambda a: a[0])
+    clean, types, last_start = text, [], len(text)
+    for start, end, kind in reversed(findings):
+        if end > last_start:
             continue
-        limpo = limpo[:ini] + _MARCADOR[tipo] + limpo[fim:]
-        tipos.append(tipo)
-        ultimo_inicio = ini
+        clean = clean[:start] + _MARKERS[kind] + clean[end:]
+        types.append(kind)
+        last_start = start
 
-    return limpo, sorted(set(tipos))
+    return clean, sorted(set(types))
 
 
-# --- Mascaramento (para logs seguros) ---
+# --- Masking (for safe logs) ---
 
-_MASCARAR_RES = [_CPF_RE, _CNPJ_RE, _CARTAO_RE, _EMAIL_RE, _RG_RE] + list(_INTENCAO_RE.values())
+_MASKING_RES = [_CPF_RE, _CNPJ_RE, _CARTAO_RE, _EMAIL_RE, _RG_RE] + list(_INTENT_RE.values())
 
 
 def mascarar_pii(text: str) -> str:
-    """Substitui qualquer trecho que pareça PII por [oculto] — para logs seguros."""
-    for rx in _MASCARAR_RES:
-        text = rx.sub("[oculto]", text)
+    """Replaces any span that looks like PII with [hidden] — for safe logs."""
+    for rx in _MASKING_RES:
+        text = rx.sub("[hidden]", text)
     return text
 
 def sanitize_json_pii(data):

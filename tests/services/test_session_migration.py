@@ -3,7 +3,7 @@ from semente.services.session_migration import CURRENT_SCHEMA_VERSION, migrate_s
 
 def test_migrate_v0_to_v1_maintains_data():
     raw_state = {
-        "user_persona": {"name": "Produtor Teste", "role": "Produtor"},
+        "user_persona": {"name": "Test Producer", "role": "Producer"},
         "some_legacy_flag": True,
     }
 

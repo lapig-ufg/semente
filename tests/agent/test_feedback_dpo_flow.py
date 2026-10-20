@@ -89,17 +89,17 @@ def _harness() -> Harness:
 def db():
     NegativeFeedback.metadata.create_all(bind=engine)
     PositiveFeedback.metadata.create_all(bind=engine)
-    sessao = SessionLocal()
-    _limpar(sessao)
-    yield sessao
-    _limpar(sessao)
-    sessao.close()
+    db_session = SessionLocal()
+    _cleanup(db_session)
+    yield db_session
+    _cleanup(db_session)
+    db_session.close()
 
 
-def _limpar(sessao) -> None:
-    sessao.query(NegativeFeedback).delete()
-    sessao.query(PositiveFeedback).delete()
-    sessao.commit()
+def _cleanup(db_session) -> None:
+    db_session.query(NegativeFeedback).delete()
+    db_session.query(PositiveFeedback).delete()
+    db_session.commit()
 
 
 @pytest.fixture
@@ -133,7 +133,7 @@ def test_frustration_registers_rejected_and_opens_pending(db, feedback_agents):
 
     session = _session_with_bad_answer()
     needs_remediation = harness._process_feedback(
-        session, "Essa resposta está errada!", session.session_state
+        session, "This answer is wrong!", session.session_state
     )
 
     assert needs_remediation is True
@@ -148,8 +148,8 @@ def test_frustration_registers_rejected_and_opens_pending(db, feedback_agents):
         NegativeFeedback.id == pending.record_id
     ).first()
     assert record is not None
-    assert record.prompt == "Qual a área da fazenda?"
-    assert record.rejected == "A área é 150 hectares."
+    assert record.prompt == "What's the area of the farm?"
+    assert record.rejected == "The area is 150 hectares."
     assert record.chosen == ""  # completed only on turn n+1
     assert record.approved is None
 
@@ -163,7 +163,7 @@ def test_topic_change_registers_but_skips_remediation(db, feedback_agents):
 
     session = _session_with_bad_answer()
     needs_remediation = harness._process_feedback(
-        session, "Quanto é 2 + 2?", session.session_state
+        session, "What's 2 + 2?", session.session_state
     )
 
     assert needs_remediation is False
@@ -188,23 +188,23 @@ def test_remediation_instruction_injection():
 
 def test_generate_apology_orders_apology_first(feedback_agents):
     """Final message: FIRST apology + evaluation request, THEN the new answer."""
-    feedback_agents["remediation"].apology = "Desculpe! A resposta anterior estava errada."
-    feedback_agents["remediation"].evaluation = "Essa nova resposta ficou melhor?"
+    feedback_agents["remediation"].apology = "Sorry! The previous answer was wrong."
+    feedback_agents["remediation"].evaluation = "Is this new answer better?"
     harness = _harness()
-    routed = StepOutput(content="A resposta corrigida.")
+    routed = StepOutput(content="The corrected answer.")
 
     final = harness._generate_apology(routed)
 
-    assert final.content.startswith("Desculpe! A resposta anterior estava errada.")
-    assert "Essa nova resposta ficou melhor?" in final.content
-    assert final.content.endswith("A resposta corrigida.")
+    assert final.content.startswith("Sorry! The previous answer was wrong.")
+    assert "Is this new answer better?" in final.content
+    assert final.content.endswith("The corrected answer.")
 
     # Audio channel: two items in the same order.
-    audio_routed = StepOutput(content="A resposta corrigida.", audio=[object()])
+    audio_routed = StepOutput(content="The corrected answer.", audio=[object()])
     audio_final = harness._generate_apology(audio_routed)
     assert len(audio_final.audio) == 2
-    assert audio_final.audio[0].transcript.startswith("Desculpe!")
-    assert audio_final.audio[1].transcript == "A resposta corrigida."
+    assert audio_final.audio[0].transcript.startswith("Sorry!")
+    assert audio_final.audio[1].transcript == "The corrected answer."
 
 
 def test_generate_apology_failure_keeps_answer(feedback_agents):
@@ -212,10 +212,10 @@ def test_generate_apology_failure_keeps_answer(feedback_agents):
     feedback_agents["remediation"].fail = True
     harness = _harness()
 
-    routed = StepOutput(content="A resposta corrigida.")
+    routed = StepOutput(content="The corrected answer.")
     final = harness._generate_apology(routed)
 
-    assert final.content == "A resposta corrigida."
+    assert final.content == "The corrected answer."
 
 
 # ---------------------------------------------------------------------
@@ -228,14 +228,14 @@ def test_positive_evaluation_completes_dpo_pair(db, feedback_agents):
     harness = _harness()
 
     session = _session_with_bad_answer()
-    harness._process_feedback(session, "resposta errada!", session.session_state)
+    harness._process_feedback(session, "wrong answer!", session.session_state)
     record_id = session.interaction_assessment.pending.record_id
-    session.interaction_assessment.pending.new_response = "A área é 1.500 hectares."
+    session.interaction_assessment.pending.new_response = "The area is 1,500 hectares."
 
     # Turn n+1: the user confirms the new answer helped.
     feedback_agents["satisfaction"].level = 5
     needs_remediation = harness._process_feedback(
-        session, "Agora sim, perfeito!", session.session_state
+        session, "Now it's perfect!", session.session_state
     )
 
     assert needs_remediation is False
@@ -243,8 +243,8 @@ def test_positive_evaluation_completes_dpo_pair(db, feedback_agents):
     assert session.interaction_assessment.pending.closed is True
 
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
-    assert record.chosen == "A área é 1.500 hectares."
-    assert record.rejected == "A área é 150 hectares."
+    assert record.chosen == "The area is 1,500 hectares."
+    assert record.rejected == "The area is 150 hectares."
     assert record.approved is True
 
 
@@ -257,35 +257,35 @@ def test_history_written_when_cycle_completes(db, feedback_agents):
 
     session = _session_with_bad_answer()
     session.session_state["recent_agent_runs"] = [
-        {"user": "tudo certo até aqui?", "assistant": "Sim!", "tools": [], "messages": []}
+        {"user": "all good so far?", "assistant": "Yes!", "tools": [], "messages": []}
     ]
-    harness._process_feedback(session, "resposta errada!", session.session_state)
+    harness._process_feedback(session, "wrong answer!", session.session_state)
     record_id = session.interaction_assessment.pending.record_id
-    session.interaction_assessment.pending.new_response = "A área é 1.500 hectares."
+    session.interaction_assessment.pending.new_response = "The area is 1,500 hectares."
 
     # The frustration turn ends: its run is appended (as _persist_session does).
     session.runs.append(
-        {"user": "resposta errada!", "assistant": "A área é 1.500 hectares."}
+        {"user": "wrong answer!", "assistant": "The area is 1,500 hectares."}
     )
 
     # Turn n+1: the user approves the remediation.
     feedback_agents["satisfaction"].level = 5
-    harness._process_feedback(session, "Muito melhor!", session.session_state)
+    harness._process_feedback(session, "Much better!", session.session_state)
     pending = session.interaction_assessment.pending
     assert pending is not None and pending.closed is True
 
     # The evaluation run is appended, then the history is finalized.
-    session.runs.append({"user": "Muito melhor!", "assistant": "A área é 1.500 hectares."})
+    session.runs.append({"user": "Much better!", "assistant": "The area is 1,500 hectares."})
     harness._finalize_pending_history(session)
 
     assert session.interaction_assessment.pending is None
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
     assert len(record.history) == 2
     assert record.history[0] == {
-        "user": "resposta errada!", "assistant": "A área é 1.500 hectares."
+        "user": "wrong answer!", "assistant": "The area is 1,500 hectares."
     }
     assert record.history[1] == {
-        "user": "Muito melhor!", "assistant": "A área é 1.500 hectares."
+        "user": "Much better!", "assistant": "The area is 1,500 hectares."
     }
 
 
@@ -297,19 +297,19 @@ def test_failed_remediation_recorded_for_analysis(db, feedback_agents):
     harness = _harness()
 
     session = _session_with_bad_answer()
-    harness._process_feedback(session, "resposta errada!", session.session_state)
+    harness._process_feedback(session, "wrong answer!", session.session_state)
     record_id = session.interaction_assessment.pending.record_id
-    session.interaction_assessment.pending.new_response = "A área é 999 hectares."
+    session.interaction_assessment.pending.new_response = "The area is 999 hectares."
 
     # Turn n+1: still dissatisfied with the new answer.
     feedback_agents["satisfaction"].level = 2
-    harness._process_feedback(session, "Piorou ainda!", session.session_state)
+    harness._process_feedback(session, "It got even worse!", session.session_state)
 
     assert session.interaction_assessment.pending.closed is True
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
     assert record.chosen == ""
     assert record.approved is False
-    assert record.rejected_new == "A área é 999 hectares."
+    assert record.rejected_new == "The area is 999 hectares."
 
 
 def test_neutral_evaluation_leaves_row_untouched(db, feedback_agents):
@@ -318,13 +318,13 @@ def test_neutral_evaluation_leaves_row_untouched(db, feedback_agents):
     harness = _harness()
 
     session = _session_with_bad_answer()
-    harness._process_feedback(session, "resposta errada!", session.session_state)
+    harness._process_feedback(session, "wrong answer!", session.session_state)
     record_id = session.interaction_assessment.pending.record_id
-    session.interaction_assessment.pending.new_response = "A área é 1.500 hectares."
+    session.interaction_assessment.pending.new_response = "The area is 1,500 hectares."
 
     # Turn n+1: the user moves on without evaluating.
     feedback_agents["satisfaction"].level = 3
-    harness._process_feedback(session, "Me diz o clima de hoje?", session.session_state)
+    harness._process_feedback(session, "Tell me today's weather?", session.session_state)
 
     assert session.interaction_assessment.pending.closed is True
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
@@ -339,19 +339,19 @@ def test_negative_evaluation_marks_row_approved_false(db, feedback_agents):
     harness = _harness()
 
     session = _session_with_bad_answer()
-    harness._process_feedback(session, "resposta errada!", session.session_state)
+    harness._process_feedback(session, "wrong answer!", session.session_state)
     record_id = session.interaction_assessment.pending.record_id
-    session.interaction_assessment.pending.new_response = "A área é 1.500 hectares."
+    session.interaction_assessment.pending.new_response = "The area is 1,500 hectares."
 
     # Turn n+1: still dissatisfied with the new answer.
     feedback_agents["satisfaction"].level = 2
-    harness._process_feedback(session, "Não, continua errado!", session.session_state)
+    harness._process_feedback(session, "No, it's still wrong!", session.session_state)
 
     assert session.interaction_assessment.pending.closed is True
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
     assert record.chosen == ""
     assert record.approved is False
-    assert record.rejected_new == "A área é 1.500 hectares."
+    assert record.rejected_new == "The area is 1,500 hectares."
 
 
 def test_new_frustration_after_cycle_closes(db, feedback_agents):
@@ -362,28 +362,28 @@ def test_new_frustration_after_cycle_closes(db, feedback_agents):
     # Turn n: first frustration (level 1).
     feedback_agents["satisfaction"].level = 1
     session = _session_with_bad_answer()
-    harness._process_feedback(session, "resposta errada!", session.session_state)
+    harness._process_feedback(session, "wrong answer!", session.session_state)
     first_record_id = session.interaction_assessment.pending.record_id
 
     # Turn n+1: negative evaluation — cycle closes, pending consumed.
     feedback_agents["satisfaction"].level = 2
-    harness._process_feedback(session, "Ainda não gostei!", session.session_state)
+    harness._process_feedback(session, "Still didn't like it!", session.session_state)
     assert session.interaction_assessment.pending.closed is True
     assert db.query(NegativeFeedback).count() == 1  # no new row this turn
 
     # Turn n+2: frustrated again over the latest bad exchange.
     session.runs.append(
-        {"user": "Não, continua errado!",
-         "assistant": "A área da fazenda continua 150 hectares."}
+        {"user": "No, it's still wrong!",
+         "assistant": "The farm's area is still 150 hectares."}
     )
     feedback_agents["satisfaction"].level = 1
-    harness._process_feedback(session, "Continua errado!", session.session_state)
+    harness._process_feedback(session, "Still wrong!", session.session_state)
 
     pending = session.interaction_assessment.pending
     assert pending.record_id != first_record_id
 
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == pending.record_id).first()
-    assert record.rejected == "A área da fazenda continua 150 hectares."
+    assert record.rejected == "The farm's area is still 150 hectares."
 
 
 def test_positive_without_pending_still_saves_history(db, feedback_agents):
@@ -394,9 +394,9 @@ def test_positive_without_pending_still_saves_history(db, feedback_agents):
 
     session = _session_with_bad_answer()
     session.session_state["recent_agent_runs"] = [
-        {"user": "Qual a área da fazenda?", "assistant": "A área é 150 hectares.", "tools": [], "messages": []}
+        {"user": "What's the area of the farm?", "assistant": "The area is 150 hectares.", "tools": [], "messages": []}
     ]
-    harness._process_feedback(session, "valeu!", session.session_state)
+    harness._process_feedback(session, "thanks!", session.session_state)
 
     assert session.interaction_assessment.pending is None
     assert db.query(PositiveFeedback).filter(
@@ -415,6 +415,6 @@ def _session_with_bad_answer():
     session = Session(user_id="test:dpo", session_id="test:dpo")
     # The bad exchange is the last history entry.
     session.runs = [
-        {"user": "Qual a área da fazenda?", "assistant": "A área é 150 hectares."}
+        {"user": "What's the area of the farm?", "assistant": "The area is 150 hectares."}
     ]
     return session

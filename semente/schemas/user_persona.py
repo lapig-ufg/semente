@@ -6,34 +6,34 @@ from pydantic import BaseModel, Field
 class CommunicationPreference(BaseModel):
     key: str = Field(
         description=(
-            "A chave da preferência de comunicação/interação com o usuário "
-            "(ex: 'tom_de_voz', 'tamanho_resposta', 'formato_explicacao', 'uso_emojis'). "
+            "The key of the communication/interaction preference with the user "
+            "(e.g. 'tone_of_voice', 'response_length', 'explanation_format', 'emoji_usage'). "
         )
     )
     description: str = Field(
         description=(
-            "A especificação de como o agente deve se comportar ao responder "
-            "(ex: 'Prefere respostas em tópicos e bem diretas', 'Gosta de tom informal e descontraído')."
+            "The specification of how the agent should behave when responding "
+            "(e.g. 'Prefers answers in bullet points and very direct', 'Likes an informal and relaxed tone')."
         )
     )
 
 
 class UserPersona(BaseModel):
     name: Optional[str] = Field(
-        default="Ainda não conhecido",
-        description="Nome do usuário."
+        default="Not yet known",
+        description="The user's name."
     )
     role: Optional[str] = Field(
-        default="Ainda não conhecido",
-        description="O papel ou profissão do usuário (ex: 'Produtor', 'Técnico')."
+        default="Not yet known",
+        description="The user's role or profession (e.g. 'Producer', 'Technician')."
     )
     regionality: Optional[str] = Field(
-        default="Ainda não conhecido",
-        description="Localização regional, cidade ou estado do usuário."
+        default="Not yet known",
+        description="The user's regional location, city or state."
     )
     communication_preferences: List[CommunicationPreference] = Field(
         default_factory=list,
-        description="Lista de preferências exclusivamente focadas em como o agente deve interagir e formatar as respostas."
+        description="List of preferences focused exclusively on how the agent should interact and format its responses."
     )
 
     def __str__(self) -> str:
@@ -42,9 +42,9 @@ class UserPersona(BaseModel):
         )
 
         return textwrap.dedent(f"""
-            - Nome: {self.name}
-            - Profissão: {self.role}
-            - Regionalidade: {self.regionality}{preferences_text}
+            - Name: {self.name}
+            - Role: {self.role}
+            - Regionality: {self.regionality}{preferences_text}
         """).strip()
 
 
@@ -72,25 +72,26 @@ def is_persona_complete(persona) -> bool:
 
 
 class PersonaUpdate(BaseModel):
-    """Structured output do agente gerenciador de persona.
+    """Structured output of the persona manager agent.
 
-    Representa as mudanças que o agente deseja aplicar na persona do usuário.
-    Apenas campos preenchidos serão atualizados.
+    Represents the changes the agent wants to apply to the user's persona.
+    Only filled-in fields will be updated.
 
-    Nome e função NÃO aparecem aqui de propósito: são identidade declarada
-    pelo usuário no onboarding e só mudam a pedido explícito dele, pelas tools
-    `update_persona_name` e `update_persona_role`. Este agente roda sozinho a
-    cada resposta e trabalha por dedução — dedução não sobrescreve declaração.
+    Name and role are deliberately NOT here: they are identity declared by
+    the user during onboarding and only change at their explicit request,
+    through the `update_persona_name` and `update_persona_role` tools. This
+    agent runs on its own on every reply and works by deduction — deduction
+    does not override declaration.
     """
 
     regionality: Optional[str] = Field(
         default=None,
-        description="Cidade/estado/região atualizada, ou None para manter o atual.",
+        description="Updated city/state/region, or None to keep the current one.",
     )
     communication_preferences: List[CommunicationPreference] = Field(
         default_factory=list,
         description=(
-            "Lista de preferências EXCLUSIVAMENTE de estilo de comunicação, formato de resposta "
-            "ou tom de voz a serem adicionadas ou atualizadas."
+            "List EXCLUSIVELY of communication style, response format "
+            "or tone of voice preferences to be added or updated."
         ),
     )

@@ -12,20 +12,20 @@ def accept_terms_and_conditions(run_context: RunContext) -> str:
     """
     Records the user's formal acceptance of the Pasto Legal Terms and Conditions in the database.
     """
-    log_debug("accept_terms_and_conditions: iniciando")
+    log_debug("accept_terms_and_conditions: starting")
     session_state = run_context.session_state or {}
     user_id = run_context.user_id or session_state.get("user_id")
-    
+
     if not user_id:
-        log_warning("accept_terms_and_conditions: user_id ausente no contexto")
+        log_warning("accept_terms_and_conditions: user_id missing from context")
         return "Error: User identifier not found in the execution context."
 
-    
+
     UserTermsAcceptance.metadata.create_all(bind=engine)
 
     db = SessionLocal()
     try:
-        log_debug(f"accept_terms_and_conditions: registrando aceite para user_id={user_id}")
+        log_debug(f"accept_terms_and_conditions: recording acceptance for user_id={user_id}")
         record = db.query(UserTermsAcceptance).filter(UserTermsAcceptance.user_id == user_id).first()
         now = datetime.datetime.utcnow()
         
@@ -41,11 +41,11 @@ def accept_terms_and_conditions(run_context: RunContext) -> str:
         session_state["terms_accepted"] = True
         session_state["terms_accepted_at"] = now.isoformat()
         
-        log_debug(f"accept_terms_and_conditions: aceite registrado para user_id={user_id}")
+        log_debug(f"accept_terms_and_conditions: acceptance recorded for user_id={user_id}")
         return "Formal acceptance successfully registered! The main flow has been unlocked. Politely inform the user."
     except Exception as e:
         db.rollback()
-        log_error(f"accept_terms_and_conditions: erro de persistência para user_id={user_id}: {e}")
+        log_error(f"accept_terms_and_conditions: persistence error for user_id={user_id}: {e}")
         return f"Critical persistence error while saving terms acceptance: {str(e)}"
     finally:
         db.close()

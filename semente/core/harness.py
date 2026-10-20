@@ -92,10 +92,10 @@ _DEFAULT_SATISFACTION = {
 # and move on to the next topic only when no better answer is possible.
 _REMEDIATION_INSTRUCTION = (
     "<feedback_instruction>\n"
-    "ATENÇÃO: o usuário avaliou mal a resposta anterior e NÃO mudou de assunto.\n"
-    "Gere uma resposta melhor para a última pergunta, corrigindo o problema apontado.\n"
-    "NÃO peça desculpas e NÃO comente a insatisfação — entregue apenas a nova resposta.\n"
-    "Se não houver como gerar uma resposta melhor, siga em frente com o próximo tópico.\n"
+    "ATTENTION: the user rated the previous answer poorly and did NOT change the topic.\n"
+    "Generate a better answer for the last question, fixing the reported problem.\n"
+    "Do NOT apologize and do NOT mention the dissatisfaction — deliver only the new answer.\n"
+    "If there is no way to generate a better answer, move on to the next topic.\n"
     "</feedback_instruction>"
 )
 
@@ -167,8 +167,8 @@ def _convert_geo_files(files: list[File]) -> tuple[list[File], list[str]]:
         except Exception as error:  # pragma: no cover - defensive
             log_error(f"unexpected geojson conversion failure for {filename}: {error}")
             errors.append(
-                "Ocorreu um erro inesperado ao processar o arquivo enviado. "
-                "Tente novamente com outro arquivo."
+                "An unexpected error occurred while processing the uploaded file. "
+                "Try again with a different file."
             )
             continue
 
@@ -382,9 +382,10 @@ class Harness:
 
             try:
                 turn = image_description_agent.run(AgentInput(text="", images=images))
-                # Redigida AQUI, e não no guardrail: a transcrição/descrição
-                # é o que fica gravado no histórico da run, que é persistido.
-                # Redigir só no estágio seguinte deixaria uma cópia crua no banco.
+                # Redacted HERE, not in the guardrail: the transcription/description
+                # is what gets persisted in the run history, which is stored.
+                # Redacting only in the next stage would leave a raw copy in the
+                # database.
                 description, _ = redigir_pii(turn.content or "")
                 log_debug(f"Image description: {description}")
                 if description:
@@ -397,7 +398,7 @@ class Harness:
 
             try:
                 turn = audio_transcription_agent.run(AgentInput(text="", audio=audio))
-                # Mesma razão da descrição da imagem: redige antes de persistir.
+                # Same reason as the image description: redact before persisting.
                 transcription, _ = redigir_pii(turn.content or "")
                 log_debug(f"Audio transcription: {transcription}")
                 if transcription:
@@ -421,8 +422,8 @@ class Harness:
                 errors = []
             for error in errors:
                 parts.append(
-                    f"[ARQUIVO GEOESPACIAL]Não foi possível processar o arquivo enviado: "
-                    f"{error}[/ARQUIVO GEOESPACIAL]"
+                    f"[GEOSPATIAL FILE]The uploaded file could not be processed: "
+                    f"{error}[/GEOSPATIAL FILE]"
                 )
 
         return "\n".join(parts), geo_files
@@ -442,11 +443,11 @@ class Harness:
         from semente.guardrails.pii_gate import redigir_pii
 
         text = user_text if isinstance(user_text, str) else str(user_text)
-        limpo, tipos = redigir_pii(text)
-        if tipos:
+        clean, types = redigir_pii(text)
+        if types:
             # Only the types, never the values.
-            log_info(f"guardrail PII: dados removidos ({', '.join(tipos)})")
-        return limpo
+            log_info(f"guardrail PII: data removed ({', '.join(types)})")
+        return clean
 
     # ------------------------------------------------------------------
     # Onboarding gate
@@ -490,30 +491,30 @@ class Harness:
         db_session = SessionLocal()
         try:
             if not terms_accepted:
-                aceite = db_session.query(UserTermsAcceptance).filter(
+                acceptance = db_session.query(UserTermsAcceptance).filter(
                     UserTermsAcceptance.user_id == user_id,
                     UserTermsAcceptance.accepted == True,  # noqa: E712
                 ).first()
 
-                if not aceite:
+                if not acceptance:
                     return True
 
                 state["terms_accepted"] = True
 
             if not is_persona_complete(persona):
-                perfil = db_session.query(UserProfile).filter(
+                profile = db_session.query(UserProfile).filter(
                     UserProfile.user_id == user_id
                 ).first()
 
-                if perfil is None:
+                if profile is None:
                     return True
 
                 # Fill only the fields still missing (or still holding the
                 # schema sentinel), preserving values the agent just wrote
                 # this session.
                 for field in ("name", "role"):
-                    if not is_persona_field_informed(persona.get(field)) and getattr(perfil, field):
-                        persona[field] = getattr(perfil, field)
+                    if not is_persona_field_informed(persona.get(field)) and getattr(profile, field):
+                        persona[field] = getattr(profile, field)
 
                 state["user_persona"] = persona
 
@@ -582,13 +583,13 @@ class Harness:
         for idx, msg in enumerate(recent_msgs):
             request_msg, response_msg = msg
             summary_input += (
-                f"[Iteração {idx}]\n"
-                f"Usuário: {request_msg}\n"
-                f"Assistente: {response_msg}\n\n"
+                f"[Iteration {idx}]\n"
+                f"User: {request_msg}\n"
+                f"Assistant: {response_msg}\n\n"
             )
 
         if user_text:
-            summary_input += f"[Última Iteração]\nUsuário: {user_text}\n"
+            summary_input += f"[Last Iteration]\nUser: {user_text}\n"
 
         try:
             turn = summary_agent.run(
@@ -980,15 +981,15 @@ class Harness:
 
         history_block = ""
         if history_msgs:
-            history_block = "<iterações>"
+            history_block = "<iterations>"
             for idx, msg in enumerate(history_msgs):
                 user_msg, assistant_msg = msg
                 history_block += (
-                    f"\n[Iteração {idx}]\n"
-                    f"Usuário: {user_msg}\n"
-                    f"Assistente: {assistant_msg}\n"
+                    f"\n[Iteration {idx}]\n"
+                    f"User: {user_msg}\n"
+                    f"Assistant: {assistant_msg}\n"
                 )
-            history_block += "</iterações>"
+            history_block += "</iterations>"
 
         state["history_context"] = history_block
 
@@ -1130,7 +1131,7 @@ class Harness:
         except Exception as exc:
             log_error(f"agent failed: {exc}")
             return StepOutput(
-                content="Desculpa, houve um erro durante a execução. Tente novamente mais tarde!"
+                content="Sorry, there was an error during execution. Please try again later!"
             )
 
         return StepOutput(

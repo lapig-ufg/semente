@@ -20,11 +20,11 @@ def test_e2e_negative_feedback():
     # The bad exchange (the one that generated the frustration) is the
     # last entry of the history.
     session.runs = [
-        {"user": "Qual o meu CPF 123.456.789-00 e a área da fazenda?",
-         "assistant": "A área da fazenda é de 150 hectares."}
+        {"user": "What is my CPF 123.456.789-00 and the area of the farm?",
+         "assistant": "The area of the farm is 150 hectares."}
     ]
     session.interaction_assessment = InteractionAssessment(
-        satisfaction=Effectiveness(level=1, level_message="usuário frustrado")
+        satisfaction=Effectiveness(level=1, level_message="frustrated user")
     )
 
     opened = harness._persist_feedback(session)
@@ -33,19 +33,19 @@ def test_e2e_negative_feedback():
     assert session.interaction_assessment.pending is not None
 
     # simulate the agent producing the better answer this turn
-    session.interaction_assessment.pending.new_response = "A área da fazenda é de 1.500 hectares."
+    session.interaction_assessment.pending.new_response = "The area of the farm is 1,500 hectares."
 
     db = SessionLocal()
     record_id = session.interaction_assessment.pending.record_id
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
     assert record is not None
-    assert record.rejected.startswith("A área da fazenda")
+    assert record.rejected.startswith("The area of the farm")
     assert record.chosen == ""
-    print("✅ Turn n: registro DPO aberto (prompt + rejected, chosen pendente).")
+    print("✅ Turn n: DPO record opened (prompt + rejected, chosen pending).")
 
     # ---------------- Turn n+1: positive evaluation ----------------
     session.interaction_assessment = InteractionAssessment(
-        satisfaction=Effectiveness(level=5, level_message="nova resposta correta"),
+        satisfaction=Effectiveness(level=5, level_message="correct new answer"),
         # _evaluate_satisfaction always carries the pending pair forward.
         pending=session.interaction_assessment.pending,
     )
@@ -57,19 +57,19 @@ def test_e2e_negative_feedback():
 
     # The turn ends (run appended) and the history finalizer runs.
     session.runs.append(
-        {"user": "Agora sim!", "assistant": "A área da fazenda é de 1.500 hectares."}
+        {"user": "Now it worked!", "assistant": "The area of the farm is 1,500 hectares."}
     )
     harness._finalize_pending_history(session)
 
     db.expire(record)
-    assert record.chosen == "A área da fazenda é de 1.500 hectares."
+    assert record.chosen == "The area of the farm is 1,500 hectares."
     assert record.approved is True
     assert session.interaction_assessment.pending is None
-    assert record.history and record.history[-1]["user"] == "Agora sim!"
-    print("✅ Turn n+1: par DPO completado com a nova resposta (approved=True).")
-    print("📜 Resposta escolhida (Sanitizada):")
+    assert record.history and record.history[-1]["user"] == "Now it worked!"
+    print("✅ Turn n+1: DPO pair completed with the new answer (approved=True).")
+    print("📜 Chosen answer (sanitized):")
     print(record.chosen)
-    print("📜 História do ciclo:")
+    print("📜 Cycle history:")
     print(record.history)
 
     db.close()
@@ -78,18 +78,18 @@ def test_e2e_negative_feedback():
 def test_negative_evaluation_leaves_record_open():
     harness = Harness.__new__(Harness)
     session = Session(user_id="test-local-db", session_id="test-local-db-3")
-    session.runs = [{"user": "pergunta", "assistant": "resposta ruim"}]
+    session.runs = [{"user": "question", "assistant": "bad answer"}]
     session.interaction_assessment = InteractionAssessment(
-        satisfaction=Effectiveness(level=2, level_message="ainda insatisfeito")
+        satisfaction=Effectiveness(level=2, level_message="still dissatisfied")
     )
     session.interaction_assessment.pending = PendingFeedback(
         record_id=0,  # placeholder: _persist_feedback only completes on positive
-        new_response="resposta melhor",
+        new_response="better answer",
     )
 
     assert harness._persist_feedback(session) is False
     assert session.interaction_assessment.pending.closed is True
-    print("✅ Avaliação negativa: pendência fechada (linha seria marcada approved=False).")
+    print("✅ Negative evaluation: pending closed (row would be marked approved=False).")
 
 
 if __name__ == "__main__":

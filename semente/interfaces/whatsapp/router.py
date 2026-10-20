@@ -56,9 +56,9 @@ def _get_valkey_client():
 _LONG_SLEEP = 8
 _SHORT_SLEEP = 4
 
-_EXECUTION_MESSAGE = "Ainda estamos processando sua última mensagem. Por favor, aguarde..."
-_ERROR_MESSAGE = "Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente mais tarde."
-_SESSION_RESET_MESSAGE = "Nova conversa iniciada!"
+_EXECUTION_MESSAGE = "We are still processing your last message. Please wait..."
+_ERROR_MESSAGE = "Sorry, an error occurred while processing your message. Please try again later."
+_SESSION_RESET_MESSAGE = "New conversation started!"
 
 # Metadata lines from ReasoningTools that aren't useful to end users
 _REASONING_SKIP_PREFIXES = ("Action:", "Next Action:", "Confidence:")
@@ -219,7 +219,7 @@ def attach_routes(
 
         return WhatsAppWebhookResponse(status="processing")
 
-    # TODO: Criar um buffer para mensagens pós valkey_execution_lock.
+    # TODO: Create a buffer for messages after the valkey_execution_lock.
     async def process_message(message: dict):
         # Extract early so error handler can notify the user
         phone_number = message.get("from")

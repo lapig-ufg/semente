@@ -94,18 +94,18 @@ class MessageContent:
     audio_id: Optional[str] = None
     doc_id: Optional[str] = None
     doc_filename: Optional[str] = None
-    # Tipos de dado pessoal removidos do texto, se houve algum.
+    # Types of personal data removed from the text, if any were found.
     pii_removida: list = field(default_factory=list)
 
     def __post_init__(self):
-        # Redige aqui, e não em cada ramo do extract_message_content: o texto
-        # cru nunca chega ao log, ao Valkey nem ao banco. Vale para os ramos
-        # de hoje e para qualquer um que venha depois.
+        # Redact here, not in each branch of extract_message_content: raw text
+        # never reaches the log, Valkey, or the database. Covers today's
+        # branches and any that come later.
         self.text, self.pii_removida = redigir_pii(self.text or "")
 
 
 def extract_message_content(message: dict) -> Optional[MessageContent]:
-    # Mascarado: este log roda antes da redação, com o payload cru da Meta.
+    # Masking: this log runs before redaction, with the raw Meta payload.
     log_info(mascarar_pii(str(message)))
     msg_type = message.get("type")
 
@@ -119,7 +119,7 @@ def extract_message_content(message: dict) -> Optional[MessageContent]:
         longitude = message['location']['longitude']
         log_info(f"Lat: {latitude} Long: {longitude}")
         return MessageContent(
-            text=f"Quero registrar minha propriedade nas coordenadas Lat: {latitude} Long: {longitude}.",
+            text=f"I want to register my property at coordinates Lat: {latitude} Long: {longitude}.",
         )
 
     if msg_type == "image":
