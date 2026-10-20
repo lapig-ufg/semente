@@ -10,64 +10,64 @@ import random
 import pytest
 
 from semente.guardrails.pii_gate import (
-    detecta_cpf, detecta_cnpj, detecta_cartao, detecta_email, detecta_rg,
-    check_pii, mascarar_pii, redigir_pii, remover_escopo_conhecido,
+    detect_cpf, detect_cnpj, detect_card, detect_email, detect_rg,
+    check_pii, mask_pii, redact_pii, remove_known_scope,
 )
 
 
 # --- CPF ---
 def test_cpf_valid_formatted():
-    assert detecta_cpf("my cpf is 006.819.915-50")
+    assert detect_cpf("my cpf is 006.819.915-50")
 
 def test_cpf_valid_raw():
-    assert detecta_cpf("00681991550")
+    assert detect_cpf("00681991550")
 
 def test_cpf_invalid_check_digit():
-    assert not detecta_cpf("111.444.777-00")
+    assert not detect_cpf("111.444.777-00")
 
 def test_cpf_not_confused_with_phone():
-    assert not detecta_cpf("my phone is 62999998888")
+    assert not detect_cpf("my phone is 62999998888")
 
 def test_cpf_repeated():
-    assert not detecta_cpf("111.111.111-11")
+    assert not detect_cpf("111.111.111-11")
 
 
 # --- CNPJ ---
 def test_cnpj_valid():
-    assert detecta_cnpj("CNPJ 27.486.358/0001-22")
+    assert detect_cnpj("CNPJ 27.486.358/0001-22")
 
 def test_cnpj_valid_raw():
-    assert detecta_cnpj("27486358000122")
+    assert detect_cnpj("27486358000122")
 
 def test_cnpj_invalid():
-    assert not detecta_cnpj("11.222.333/0001-00")
+    assert not detect_cnpj("11.222.333/0001-00")
 
 
 # --- Card ---
 def test_card_valid_luhn():
-    assert detecta_cartao("card 4570 7318 2800 8591")
+    assert detect_card("card 4570 7318 2800 8591")
 
 def test_card_invalid_luhn():
-    assert not detecta_cartao("4570 7318 2800 8592")
+    assert not detect_card("4570 7318 2800 8592")
 
 def test_card_too_short():
-    assert not detecta_cartao("the year is 2024")
+    assert not detect_card("the year is 2024")
 
 
 # --- Email ---
 def test_email_valid():
-    assert detecta_email("reach me at joao.silva@gmail.com")
+    assert detect_email("reach me at joao.silva@gmail.com")
 
 def test_email_without_at():
-    assert not detecta_email("loose at sign without email")
+    assert not detect_email("loose at sign without email")
 
 
 # --- RG (punctuated format) ---
 def test_rg_formatted():
-    assert detecta_rg("my rg is 12.345.678-9")
+    assert detect_rg("my rg is 12.345.678-9")
 
 def test_rg_raw_not_caught():
-    assert not detecta_rg("I have 123456789 head of cattle")
+    assert not detect_rg("I have 123456789 head of cattle")
 
 
 # --- Intent (catches a fake number when the document is mentioned) ---
@@ -95,7 +95,7 @@ def test_check_pii_clean():
 
 # --- Masking ---
 def test_masking_hides_pii():
-    masked = mascarar_pii("my cpf is 006.819.915-50")
+    masked = mask_pii("my cpf is 006.819.915-50")
     assert "006.819.915-50" not in masked and "[hidden]" in masked
 
 # =====================================================================
@@ -182,51 +182,51 @@ def test_car_not_blocked(car):
 # --- Boundary guard: a document is a whole token, not a fragment ---
 def test_cpf_with_sentence_final_period():
     """The trailing sentence period must not be mistaken for a decimal separator."""
-    assert detecta_cpf("my cpf is 71076897118.")
+    assert detect_cpf("my cpf is 71076897118.")
 
 
 def test_cpf_inside_larger_number_not_caught():
-    assert not detecta_cpf("9971076897118")
+    assert not detect_cpf("9971076897118")
 
 
 def test_cnpj_inside_larger_number_not_caught():
-    assert not detecta_cnpj("123456780001957")
-    assert not detecta_cnpj("9927486358000122")
+    assert not detect_cnpj("123456780001957")
+    assert not detect_cnpj("9927486358000122")
 
 
 def test_raw_card_without_brand_not_caught():
     """13-16 digits + Luhn is noise: 1 in 9 passes by chance."""
-    assert not detecta_cartao("50857591629029")
+    assert not detect_card("50857591629029")
 
 
 def test_card_with_real_brand_caught():
-    assert detecta_cartao("4111111111111111")
+    assert detect_card("4111111111111111")
 
 
 # --- Spaced format (the CPF used to be caught only by the intent layer) ---
 def test_cpf_spaced_caught_without_keyword():
-    assert detecta_cpf("710 768 971 18")
-    assert detecta_cpf("my document is 710 768 971 18")
+    assert detect_cpf("710 768 971 18")
+    assert detect_cpf("my document is 710 768 971 18")
 
 
 def test_cnpj_spaced_caught_without_keyword():
-    assert detecta_cnpj("27 486 358 0001 22")
+    assert detect_cnpj("27 486 358 0001 22")
 
 
 def test_spaced_invalid_not_caught():
     """One wrong digit turns it from a document into a bare number."""
-    assert not detecta_cpf("710 768 971 19")
+    assert not detect_cpf("710 768 971 19")
 
 
 # --- Layer 0 ---
 def test_layer_zero_does_not_swallow_document():
     """Removing known scope must not swallow real PII."""
-    assert check_pii(remover_escopo_conhecido("my cpf is 710.768.971-18")) == ["CPF"]
+    assert check_pii(remove_known_scope("my cpf is 710.768.971-18")) == ["CPF"]
 
 
 def test_layer_zero_preserves_text_without_car():
     text = "I want to see the biomass of my farm"
-    assert remover_escopo_conhecido(text) == text
+    assert remove_known_scope(text) == text
 
 
 def test_car_and_cpf_in_same_message():
@@ -265,53 +265,53 @@ def test_false_positive_in_car_codes():
 # --- Masking stays deliberately permissive ---
 def test_masking_still_aggressive():
     """In logs, over-masking is cheap; under-masking is a leak."""
-    assert "[hidden]" in mascarar_pii("27486358000122")
-    assert "[hidden]" in mascarar_pii("my cpf is 006.819.915-50")
+    assert "[hidden]" in mask_pii("27486358000122")
+    assert "[hidden]" in mask_pii("my cpf is 006.819.915-50")
 
 
-# --- Redaction (redigir_pii) ---
+# --- Redaction (redact_pii) ---
 def test_redaction_cpf_keeps_the_request():
     """The request made in the same message must survive."""
-    clean, types = redigir_pii("my cpf is 710.768.971-18, what is the system version?")
+    clean, types = redact_pii("my cpf is 710.768.971-18, what is the system version?")
     assert clean == "my cpf is [CPF_HIDDEN], what is the system version?"
     assert types == ["CPF"]
 
 
 def test_redaction_raw_cpf():
-    clean, types = redigir_pii("71076897118")
+    clean, types = redact_pii("71076897118")
     assert clean == "[CPF_HIDDEN]" and types == ["CPF"]
 
 
 def test_redaction_multiple_pieces_in_same_message():
-    clean, types = redigir_pii("cpf 006.819.915-50 and email joao@gmail.com")
+    clean, types = redact_pii("cpf 006.819.915-50 and email joao@gmail.com")
     assert clean == "cpf [CPF_HIDDEN] and email [EMAIL_HIDDEN]"
     assert types == ["CPF", "email"]
 
 
 def test_redaction_clean_text_returns_original():
     text = "I want to see the map of my farm"
-    assert redigir_pii(text) == (text, [])
+    assert redact_pii(text) == (text, [])
 
 
 def test_redaction_empty_text():
-    assert redigir_pii("") == ("", [])
+    assert redact_pii("") == ("", [])
 
 
 def test_redaction_invalid_cpf_keeps_text():
     """With no matching check digit, it is not a document — intent is check_pii's job."""
     text = "my cpf is 111.444.777-00"
-    assert redigir_pii(text) == (text, [])
+    assert redact_pii(text) == (text, [])
 
 
 def test_redaction_car_protected():
     """The CAR may by chance contain a sequence that validates — it is untouchable."""
     for car in CAR_FALSE_POSITIVE:
-        assert redigir_pii(car) == (car, [])
+        assert redact_pii(car) == (car, [])
 
 
 def test_redaction_car_and_cpf_in_same_message():
     text = "register GO-5212303-27057D4194F64CE3A498B90BFAC2E5F9 and my cpf is 710.768.971-18"
-    clean, types = redigir_pii(text)
+    clean, types = redact_pii(text)
     assert "GO-5212303-27057D4194F64CE3A498B90BFAC2E5F9" in clean
     assert "my cpf is [CPF_HIDDEN]" in clean
     assert types == ["CPF"]
@@ -320,16 +320,16 @@ def test_redaction_car_and_cpf_in_same_message():
 def test_redaction_location_pin_untouched():
     """Behavioral regression: a high-precision coordinate is not PII."""
     text = "Lat: -5.935149162520979 Long: -52.50857591629029"
-    assert redigir_pii(text) == (text, [])
+    assert redact_pii(text) == (text, [])
 
 
 def test_redaction_spaced_format():
-    clean, types = redigir_pii("my document is 710 768 971 18")
+    clean, types = redact_pii("my document is 710 768 971 18")
     assert clean == "my document is [CPF_HIDDEN]" and types == ["CPF"]
 
 
 def test_redaction_rg_and_card():
-    clean, types = redigir_pii("my rg is 12.345.678-9 and the card 4570 7318 2800 8591")
+    clean, types = redact_pii("my rg is 12.345.678-9 and the card 4570 7318 2800 8591")
     assert clean == "my rg is [RG_HIDDEN] and the card [CARD_HIDDEN]"
     assert types == ["RG", "card"]
 
@@ -337,21 +337,21 @@ def test_redaction_rg_and_card():
 def test_redaction_streamlit_demo_text_survives():
     """The Streamlit demo coordinate sentence is not PII and must not be altered."""
     text = """My coordinates are 2°46'32.94"S 48°31'41.74"W."""
-    assert redigir_pii(text) == (text, [])
+    assert redact_pii(text) == (text, [])
 
 
 @pytest.mark.parametrize("text", SHOULD_NOT_BLOCK)
 def test_should_not_redact_anything(text):
     """Nothing in the non-blocking corpus may be altered by redaction."""
-    assert redigir_pii(text) == (text, [])
+    assert redact_pii(text) == (text, [])
 
 
 @pytest.mark.parametrize("text,kind", SHOULD_BLOCK)
 def test_should_redact(text, kind):
     """Everything check_pii detects as real PII (valid number) is redacted."""
-    clean, types = redigir_pii(text)
+    clean, types = redact_pii(text)
     if text in ("my cpf is 322443",):  # intent without a valid number: covered only by check_pii
-        assert redigir_pii(text) == (text, [])
+        assert redact_pii(text) == (text, [])
         return
     assert kind in types, f"false negative in redaction of: {text}"
     assert "[hidden]" not in clean

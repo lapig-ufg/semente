@@ -8,7 +8,7 @@ from typing import List
 from semente import Image, Audio, File
 
 from semente.configs.config import config
-from semente.guardrails.pii_gate import redigir_pii
+from semente.guardrails.pii_gate import redact_pii
 from semente.interfaces.streamlit.debug_helpers import extract_workflow_debug_data, extract_session_state
 from semente.interfaces.streamlit.debug_panel import render_debug_panel
 from semente.core.harness import get_harness
@@ -229,7 +229,7 @@ if user_query:
     # Without it, the raw text enters the agent and gets recorded in the run's
     # `input` field, which is persisted — the guardrail scrubs it afterwards,
     # too late.
-    user_query, _pii_removida = redigir_pii(user_query)
+    user_query, _pii_removed = redact_pii(user_query)
 
     st.session_state.messages.append({"role": "user", "content": user_query})
     with st.chat_message("user"):

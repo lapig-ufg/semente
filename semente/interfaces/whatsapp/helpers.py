@@ -9,7 +9,7 @@ import httpx
 
 from semente.logging import log_error, log_info, log_warning
 
-from semente.guardrails.pii_gate import mascarar_pii, redigir_pii
+from semente.guardrails.pii_gate import mask_pii, redact_pii
 
 _BASE_URL = "https://graph.facebook.com"
 _API_VERSION = "v22.0"
@@ -95,23 +95,23 @@ class MessageContent:
     doc_id: Optional[str] = None
     doc_filename: Optional[str] = None
     # Types of personal data removed from the text, if any were found.
-    pii_removida: list = field(default_factory=list)
+    redacted_types: list = field(default_factory=list)
 
     def __post_init__(self):
         # Redact here, not in each branch of extract_message_content: raw text
         # never reaches the log, Valkey, or the database. Covers today's
         # branches and any that come later.
-        self.text, self.pii_removida = redigir_pii(self.text or "")
+        self.text, self.redacted_types = redact_pii(self.text or "")
 
 
 def extract_message_content(message: dict) -> Optional[MessageContent]:
     # Masking: this log runs before redaction, with the raw Meta payload.
-    log_info(mascarar_pii(str(message)))
+    log_info(mask_pii(str(message)))
     msg_type = message.get("type")
 
     if msg_type == "text":
         text = message["text"]["body"]
-        log_info(mascarar_pii(text))
+        log_info(mask_pii(text))
         return MessageContent(text=text)
     
     if msg_type == "location":

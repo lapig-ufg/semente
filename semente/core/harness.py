@@ -369,7 +369,7 @@ class Harness:
         the database. Typed text arrives already redacted (MessageContent
         __post_init__ in whatsapp/helpers; streamlit_webapp).
         """
-        from semente.guardrails.pii_gate import redigir_pii
+        from semente.guardrails.pii_gate import redact_pii
 
         parts: list[str] = []
 
@@ -386,7 +386,7 @@ class Harness:
                 # is what gets persisted in the run history, which is stored.
                 # Redacting only in the next stage would leave a raw copy in the
                 # database.
-                description, _ = redigir_pii(turn.content or "")
+                description, _ = redact_pii(turn.content or "")
                 log_debug(f"Image description: {description}")
                 if description:
                     parts.append(f"[IMAGEM]{description}[/IMAGEM]")
@@ -399,7 +399,7 @@ class Harness:
             try:
                 turn = audio_transcription_agent.run(AgentInput(text="", audio=audio))
                 # Same reason as the image description: redact before persisting.
-                transcription, _ = redigir_pii(turn.content or "")
+                transcription, _ = redact_pii(turn.content or "")
                 log_debug(f"Audio transcription: {transcription}")
                 if transcription:
                     parts.append(transcription)
@@ -440,10 +440,10 @@ class Harness:
         entry doors; this covers what only became text inside this turn
         (audio transcription, image description).
         """
-        from semente.guardrails.pii_gate import redigir_pii
+        from semente.guardrails.pii_gate import redact_pii
 
         text = user_text if isinstance(user_text, str) else str(user_text)
-        clean, types = redigir_pii(text)
+        clean, types = redact_pii(text)
         if types:
             # Only the types, never the values.
             log_info(f"guardrail PII: data removed ({', '.join(types)})")
