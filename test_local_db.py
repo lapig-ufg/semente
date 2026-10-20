@@ -39,8 +39,8 @@ def test_e2e_negative_feedback():
     record_id = session.interaction_assessment.pending.record_id
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
     assert record is not None
-    assert record.payload["rejected"].startswith("A área da fazenda")
-    assert record.payload["chosen"] == ""
+    assert record.rejected.startswith("A área da fazenda")
+    assert record.chosen == ""
     print("✅ Turn n: registro DPO aberto (prompt + rejected, chosen pendente).")
 
     # ---------------- Turn n+1: positive evaluation ----------------
@@ -62,13 +62,13 @@ def test_e2e_negative_feedback():
     harness._finalize_pending_history(session)
 
     db.expire(record)
-    assert record.payload["chosen"] == "A área da fazenda é de 1.500 hectares."
-    assert record.payload["approved"] is True
+    assert record.chosen == "A área da fazenda é de 1.500 hectares."
+    assert record.approved is True
     assert session.interaction_assessment.pending is None
     assert record.history and record.history[-1]["user"] == "Agora sim!"
     print("✅ Turn n+1: par DPO completado com a nova resposta (approved=True).")
-    print("📝 Payload final (Sanitizado):")
-    print(record.payload)
+    print("📜 Resposta escolhida (Sanitizada):")
+    print(record.chosen)
     print("📜 História do ciclo:")
     print(record.history)
 

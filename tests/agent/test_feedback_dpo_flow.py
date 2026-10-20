@@ -148,9 +148,10 @@ def test_frustration_registers_rejected_and_opens_pending(db, feedback_agents):
         NegativeFeedback.id == pending.record_id
     ).first()
     assert record is not None
-    assert record.payload["prompt"] == "Qual a área da fazenda?"
-    assert record.payload["rejected"] == "A área é 150 hectares."
-    assert record.payload["chosen"] == ""  # completed only on turn n+1
+    assert record.prompt == "Qual a área da fazenda?"
+    assert record.rejected == "A área é 150 hectares."
+    assert record.chosen == ""  # completed only on turn n+1
+    assert record.approved is None
 
 
 def test_topic_change_registers_but_skips_remediation(db, feedback_agents):
@@ -242,9 +243,9 @@ def test_positive_evaluation_completes_dpo_pair(db, feedback_agents):
     assert session.interaction_assessment.pending.closed is True
 
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
-    assert record.payload["chosen"] == "A área é 1.500 hectares."
-    assert record.payload["rejected"] == "A área é 150 hectares."
-    assert record.payload["approved"] is True
+    assert record.chosen == "A área é 1.500 hectares."
+    assert record.rejected == "A área é 150 hectares."
+    assert record.approved is True
 
 
 def test_history_written_when_cycle_completes(db, feedback_agents):
@@ -306,9 +307,9 @@ def test_failed_remediation_recorded_for_analysis(db, feedback_agents):
 
     assert session.interaction_assessment.pending.closed is True
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
-    assert record.payload["chosen"] == ""
-    assert record.payload["approved"] is False
-    assert record.payload["rejected_new"] == "A área é 999 hectares."
+    assert record.chosen == ""
+    assert record.approved is False
+    assert record.rejected_new == "A área é 999 hectares."
 
 
 def test_neutral_evaluation_leaves_row_untouched(db, feedback_agents):
@@ -327,8 +328,8 @@ def test_neutral_evaluation_leaves_row_untouched(db, feedback_agents):
 
     assert session.interaction_assessment.pending.closed is True
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
-    assert record.payload["chosen"] == ""
-    assert "approved" not in record.payload
+    assert record.chosen == ""
+    assert record.approved is None  # neutral claims nothing
 
 
 def test_negative_evaluation_marks_row_approved_false(db, feedback_agents):
@@ -348,9 +349,9 @@ def test_negative_evaluation_marks_row_approved_false(db, feedback_agents):
 
     assert session.interaction_assessment.pending.closed is True
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == record_id).first()
-    assert record.payload["chosen"] == ""
-    assert record.payload["approved"] is False
-    assert record.payload["rejected_new"] == "A área é 1.500 hectares."
+    assert record.chosen == ""
+    assert record.approved is False
+    assert record.rejected_new == "A área é 1.500 hectares."
 
 
 def test_new_frustration_after_cycle_closes(db, feedback_agents):
@@ -382,12 +383,12 @@ def test_new_frustration_after_cycle_closes(db, feedback_agents):
     assert pending.record_id != first_record_id
 
     record = db.query(NegativeFeedback).filter(NegativeFeedback.id == pending.record_id).first()
-    assert record.payload["rejected"] == "A área da fazenda continua 150 hectares."
+    assert record.rejected == "A área da fazenda continua 150 hectares."
 
 
-def test_positive_without_pending_still_saves_sft(db, feedback_agents):
+def test_positive_without_pending_still_saves_history(db, feedback_agents):
     """The classic SFT branch is untouched: positive satisfaction with no
-    pending pair persists the trajectory as PositiveFeedback."""
+    pending pair persists the clean-run history as PositiveFeedback."""
     feedback_agents["satisfaction"].level = 5
     harness = _harness()
 

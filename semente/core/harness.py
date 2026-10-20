@@ -27,7 +27,8 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
     _finalize_pending_history  closed DPO cycle -> ``history`` on the row
 
 The DPO feedback works in two turns. On frustration (turn n) the rejected
-half is registered right away (NegativeFeedback with ``chosen: null``) and
+half is registered right away (NegativeFeedback: ``prompt`` + ``rejected``,
+``chosen`` empty, ``approved`` unset) and
 ``assessment.pending`` carries the record id plus the replacement answer
 after the agent runs — and ``cycle_start``, the index where the cycle began.
 On the next turn, if the user evaluates the new answer positively, the
@@ -691,12 +692,13 @@ class Harness:
         The DPO pair is captured across two turns:
 
         - Turn n (level <= 2): insert a NegativeFeedback row right away with
-          ``payload = {prompt, rejected, chosen: null}``, where the pair comes
-          from the last history run (the exchange that generated the
-          frustration). ``assessment.pending`` carries the record id so
-          the row can be completed later; ``run()`` fills ``new_response``
-          after the agent runs. Also returned: True when a remediation cycle
-          is open (frustration and the user did not change topic).
+          the rejected half (``prompt`` + ``rejected``; ``chosen`` empty),
+          where the pair comes from the last history run (the exchange that
+          generated the frustration). ``assessment.pending`` carries the
+          record id so the row can be completed later; ``run()`` fills
+          ``new_response`` after the agent runs. Also returned: True when a
+          remediation cycle is open (frustration and the user did not change
+          topic).
         - Turn n + 1: if ``assessment.pending`` exists (and is not closed),
           this turn is the user's evaluation of the new answer. Positive
           (level >= 4) completes the stored row with ``chosen`` and
@@ -711,8 +713,9 @@ class Harness:
           turn.
 
         The SFT branch (positive satisfaction -> PositiveFeedback with the
-        recent runs trajectory) only sees clean, non-cycle turns: cycle
-        turns and onboarding are never recorded into ``recent_agent_runs``.
+        history of the recent clean runs) only sees clean, non-cycle turns:
+        cycle turns and onboarding are never recorded into
+        ``recent_agent_runs``.
         """
         import datetime
         from semente.database.models import NegativeFeedback, PositiveFeedback
@@ -737,12 +740,14 @@ class Harness:
         try:
             # A pending pair that is not closed makes this turn the
             # evaluation turn: consume it and never open a new cycle on
-            # the same turn. The row's payload gains an ``approved``
-            # marker: True (positive evaluation -> completed DPO pair)
-            # or False (failed remediation -> kept for manual analysis,
-            # not for training). The pending is marked closed (not
-            # dropped): the history finalizer still needs its
-            # record_id + cycle_start to write the cycle's history.
+            # the same turn. The row gains the evaluation outcome:
+            # ``approved: True`` with the new answer as ``chosen``
+            # (positive evaluation -> completed DPO pair), or
+            # ``approved: False`` plus ``rejected_new`` (failed
+            # remediation -> kept for manual analysis, not for training).
+            # The pending is marked closed (not dropped): the history
+            # finalizer still needs its record_id + cycle_start to write
+            # the cycle's history.
             pending = assessment.pending
             if pending is not None and pending.closed:
                 # Leftover from a failed finalization — not an eval turn.
@@ -751,11 +756,9 @@ class Harness:
             if pending:
                 if satisfaction_level >= 4 and pending.new_response:
                     record = db_session.get(NegativeFeedback, pending.record_id)
-                    if record is not None and isinstance(record.payload, dict):
-                        payload = dict(record.payload)
-                        payload["chosen"] = sanitize_json_pii(pending.new_response)
-                        payload["approved"] = True
-                        record.payload = payload
+                    if record is not None:
+                        record.chosen = sanitize_json_pii(pending.new_response)
+                        record.approved = True
                         db_session.commit()
                         log_debug(
                             "pending negative feedback completed with the "
@@ -765,11 +768,9 @@ class Harness:
                     # Failed remediation: useless for training (no chosen)
                     # but valuable for manual analysis of repeated issues.
                     record = db_session.get(NegativeFeedback, pending.record_id)
-                    if record is not None and isinstance(record.payload, dict):
-                        payload = dict(record.payload)
-                        payload["rejected_new"] = sanitize_json_pii(pending.new_response)
-                        payload["approved"] = False
-                        record.payload = payload
+                    if record is not None:
+                        record.rejected_new = sanitize_json_pii(pending.new_response)
+                        record.approved = False
                         db_session.commit()
                         log_debug(
                             "pending negative feedback kept as a failed "
@@ -778,10 +779,10 @@ class Harness:
                 pending.closed = True
 
             if satisfaction_level >= 4 and recent_runs:
-                sanitized_trajectory = sanitize_json_pii(recent_runs)
+                sanitized_history = sanitize_json_pii(recent_runs)
                 feedback_record = PositiveFeedback(
                     timestamp=datetime.datetime.utcnow().isoformat(),
-                    trajectory=sanitized_trajectory,
+                    history=sanitized_history,
                     grade=satisfaction_level,
                 )
                 db_session.add(feedback_record)
@@ -792,12 +793,11 @@ class Harness:
                 history = session.get_history(num_runs=1)
                 if history:
                     prompt, rejected = history[0]
-                    sanitized_payload = sanitize_json_pii(
-                        {"prompt": prompt, "rejected": rejected, "chosen": ""}
-                    )
                     feedback_record = NegativeFeedback(
                         timestamp=datetime.datetime.utcnow().isoformat(),
-                        payload=sanitized_payload,
+                        prompt=sanitize_json_pii(prompt),
+                        rejected=sanitize_json_pii(rejected),
+                        chosen="",
                     )
                     db_session.add(feedback_record)
                     db_session.commit()

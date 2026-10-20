@@ -1,6 +1,6 @@
 """Feedback models (negative, positive, and analysis feedback)."""
 
-from sqlalchemy import Column, Integer, Text, JSON
+from sqlalchemy import Boolean, Column, Integer, Text, JSON
 
 from semente.database.session import Base
 
@@ -10,8 +10,20 @@ class NegativeFeedback(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(Text)
-    payload = Column(JSON, comment=(
-        "Par DPO (prompt, rejected, chosen, approved)"
+    prompt = Column(Text, comment="Mensagem do usuário geradora da resposta rejeitada")
+    rejected = Column(Text, comment="Resposta avaliada como ruim (dado DPO)")
+    chosen = Column(Text, default="", comment=(
+        "Resposta corrigida, escrita quando a avaliação da remediação é "
+        "positiva (approved=True); fica vazia enquanto o par está aberto"
+    ))
+    approved = Column(Boolean, comment=(
+        "Resultado da avaliação da remediação: True (par DPO válido para "
+        "treino) ou False (remediação falhou, só análise); vazio enquanto "
+        "não avaliado"
+    ))
+    rejected_new = Column(Text, comment=(
+        "Resposta corrigida rejeitada pelo usuário (remediação falhou; "
+        "útil apenas para análise manual)"
     ))
     history = Column(JSON, comment=(
         "Últimas 3 rodadas do ciclo de frustração (tuples user/assistant), "
@@ -25,7 +37,10 @@ class PositiveFeedback(Base):
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(Text)
     grade = Column(Integer)
-    trajectory = Column(JSON, comment="Trajetória sanitizada para SFT (messages)")
+    history = Column(JSON, comment=(
+        "Rodadas limpas (tuples user/assistant) do momento satisfatório, "
+        "para o dataset SFT"
+    ))
 
 
 class AnalysisFeedback(Base):
