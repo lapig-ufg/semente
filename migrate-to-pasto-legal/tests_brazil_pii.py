@@ -1,18 +1,40 @@
-"""Unit tests for the PII guardrail (semente/guardrails/pii_gate.py).
+"""Unit tests for the Brazil-specific PII guardrail.
 
-They cover the deterministic detectors, format-based RG detection, the intent
-layer, the orchestrator, masking, and the false-positive regressions on
-geographic coordinates and CAR codes. Fully deterministic — no LLM/network.
+Migrated from ``tests/guardrails/test_pii_gate.py`` (which tested
+``semente/guardrails/pii_gate.py``). They cover the deterministic detectors,
+format-based RG detection, the pt-BR intent layer, the CAR known-scope
+protection, masking, and the false-positive regressions on geographic
+coordinates and CAR codes. Fully deterministic — no LLM/network.
+
+The module is loaded by file path because the folder name is not a valid
+Python package identifier.
 """
 
+import importlib.util
+import pathlib
 import random
 
 import pytest
 
-from semente.guardrails.pii_gate import (
-    detect_cpf, detect_cnpj, detect_card, detect_email, detect_rg,
-    check_pii, mask_pii, redact_pii, remove_known_scope,
+_MODULE_PATH = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / "migrate-to-pasto-legal"
+    / "guardrails"
+    / "brazil_pii.py"
 )
+_spec = importlib.util.spec_from_file_location("brazil_pii", _MODULE_PATH)
+brazil_pii = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(brazil_pii)
+
+from semente.guardrails import GuardrailChain, GuardrailContext, EmailGuardrail
+
+detect_cpf = brazil_pii.detect_cpf
+detect_cnpj = brazil_pii.detect_cnpj
+detect_rg = brazil_pii.detect_rg
+check_pii = brazil_pii.check_pii
+redact_pii = brazil_pii.redact_pii
+mask_pii = brazil_pii.mask_pii
+remove_known_scope = brazil_pii.remove_known_scope
 
 
 # --- CPF ---
@@ -43,25 +65,6 @@ def test_cnpj_invalid():
     assert not detect_cnpj("11.222.333/0001-00")
 
 
-# --- Card ---
-def test_card_valid_luhn():
-    assert detect_card("card 4570 7318 2800 8591")
-
-def test_card_invalid_luhn():
-    assert not detect_card("4570 7318 2800 8592")
-
-def test_card_too_short():
-    assert not detect_card("the year is 2024")
-
-
-# --- Email ---
-def test_email_valid():
-    assert detect_email("reach me at joao.silva@gmail.com")
-
-def test_email_without_at():
-    assert not detect_email("loose at sign without email")
-
-
 # --- RG (punctuated format) ---
 def test_rg_formatted():
     assert detect_rg("my rg is 12.345.678-9")
@@ -77,17 +80,14 @@ def test_intent_fake_cpf():
 def test_intent_number_first():
     assert "CPF" in check_pii("321312 and my cpf")
 
-def test_intent_card():
-    assert "card" in check_pii("my card is 1234")
-
 def test_intent_distant_number_not_caught():
     assert check_pii("my cpf is on file, I have 500 head") == []
 
 
 # --- Orchestrator ---
 def test_check_pii_multiple():
-    types = check_pii("cpf 006.819.915-50 and email joao@gmail.com")
-    assert "CPF" in types and "email" in types
+    types = check_pii("cpf 006.819.915-50")
+    assert "CPF" in types
 
 def test_check_pii_clean():
     assert check_pii("I want to see the map of my farm") == []
@@ -156,9 +156,6 @@ SHOULD_BLOCK = [
     ("27486358000122", "CNPJ"),
     ("27 486 358 0001 22", "CNPJ"),
     ("my rg is 12.345.678-9", "RG"),
-    ("card 4570 7318 2800 8591", "card"),
-    ("4111111111111111", "card"),
-    ("reach me at joao.silva@gmail.com", "email"),
     ("my cpf is 322443", "CPF"),
 ]
 
@@ -192,15 +189,6 @@ def test_cpf_inside_larger_number_not_caught():
 def test_cnpj_inside_larger_number_not_caught():
     assert not detect_cnpj("123456780001957")
     assert not detect_cnpj("9927486358000122")
-
-
-def test_raw_card_without_brand_not_caught():
-    """13-16 digits + Luhn is noise: 1 in 9 passes by chance."""
-    assert not detect_card("50857591629029")
-
-
-def test_card_with_real_brand_caught():
-    assert detect_card("4111111111111111")
 
 
 # --- Spaced format (the CPF used to be caught only by the intent layer) ---
@@ -282,12 +270,6 @@ def test_redaction_raw_cpf():
     assert clean == "[CPF_HIDDEN]" and types == ["CPF"]
 
 
-def test_redaction_multiple_pieces_in_same_message():
-    clean, types = redact_pii("cpf 006.819.915-50 and email joao@gmail.com")
-    assert clean == "cpf [CPF_HIDDEN] and email [EMAIL_HIDDEN]"
-    assert types == ["CPF", "email"]
-
-
 def test_redaction_clean_text_returns_original():
     text = "I want to see the map of my farm"
     assert redact_pii(text) == (text, [])
@@ -328,12 +310,6 @@ def test_redaction_spaced_format():
     assert clean == "my document is [CPF_HIDDEN]" and types == ["CPF"]
 
 
-def test_redaction_rg_and_card():
-    clean, types = redact_pii("my rg is 12.345.678-9 and the card 4570 7318 2800 8591")
-    assert clean == "my rg is [RG_HIDDEN] and the card [CARD_HIDDEN]"
-    assert types == ["RG", "card"]
-
-
 def test_redaction_streamlit_demo_text_survives():
     """The Streamlit demo coordinate sentence is not PII and must not be altered."""
     text = """My coordinates are 2°46'32.94"S 48°31'41.74"W."""
@@ -346,12 +322,32 @@ def test_should_not_redact_anything(text):
     assert redact_pii(text) == (text, [])
 
 
-@pytest.mark.parametrize("text,kind", SHOULD_BLOCK)
-def test_should_redact(text, kind):
-    """Everything check_pii detects as real PII (valid number) is redacted."""
-    clean, types = redact_pii(text)
-    if text in ("my cpf is 322443",):  # intent without a valid number: covered only by check_pii
-        assert redact_pii(text) == (text, [])
-        return
-    assert kind in types, f"false negative in redaction of: {text}"
-    assert "[hidden]" not in clean
+# =====================================================================
+# The new interface — the guardrail as the domain declares it
+# =====================================================================
+
+def test_guardrail_redacts_like_the_legacy_api():
+    """BrazilPiIGuardrail through a chain behaves like redact_pii."""
+    chain = GuardrailChain([brazil_pii.BrazilPiIGuardrail()])
+    result = chain.redact(GuardrailContext(text="my cpf is 710.768.971-18"))
+    assert result.text == "my cpf is [CPF_HIDDEN]"
+    assert result.removed == ["CPF"]
+    assert not result.blocked
+
+
+def test_guardrail_mask_matches_legacy_masking():
+    chain = GuardrailChain([brazil_pii.BrazilPiIGuardrail()])
+    assert "[hidden]" in chain.mask("my cpf is 006.819.915-50")
+
+
+def test_guardrail_composed_with_universal_builtins():
+    """The migrated Brazil guard runs in a chain with framework builtins."""
+    chain = GuardrailChain(
+        [brazil_pii.BrazilPiIGuardrail(), EmailGuardrail()]
+    )
+    result = chain.redact(
+        GuardrailContext(text="cpf 006.819.915-50 and email joao@gmail.com")
+    )
+    assert "[CPF_HIDDEN]" in result.text
+    assert "[EMAIL_HIDDEN]" in result.text
+    assert result.removed == ["CPF", "email"]

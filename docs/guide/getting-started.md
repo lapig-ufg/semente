@@ -96,8 +96,9 @@ export GOOGLE_API_KEY=your-gemini-key   # or let the first-run wizard ask
 semente launch streamlit
 ```
 
-That's it. The framework wires the onboarding, PII guardrail, feedback loop,
-summarization, and your `echo` tool into a working chat.
+That's it. The framework wires the onboarding, the guardrail chain, the
+feedback loop, summarization, and your `echo` tool into a working chat. Add
+input safety on your domain — see [Guardrails](/guide/guardrails).
 
 ## Project layout
 

@@ -1,6 +1,6 @@
 [project]
 name = "semente-agents"
-version = "0.3.0"
+version = "0.4.0"
 description = "Semente — a multi-agent AI chat framework for land use and agriculture. Pasto Legal was the first seed."
 readme = "README.md"
 requires-python = ">=3.12"

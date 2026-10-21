@@ -28,6 +28,7 @@ domain_spec = DomainSpec(
 | `skills` | `Skills \| None` | Optional skills package loaded with `semente.skills.load_skills` (SKILL.md packages) — engine-neutral, not an engine feature. |
 | `instructions` | `Callable \| None` | Domain-specific dynamic instructions. When `None`, a generic builder (persona + context blocks + `instructions_default`) is used. |
 | `agent_config` | `str` | Key into `prompts/agents.yml` selecting the agent's metadata/instructions. Defaults to `single_agent`. |
+| `guardrails` | `list` | Optional pluggable input guardrails — redact sensitive spans or block the turn. See [Guardrails](guardrails.md). |
 
 ## Dynamic tools and instructions
 

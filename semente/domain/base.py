@@ -24,6 +24,9 @@ class DomainSpec:
             list or a callable ``(run_context) -> list`` for dynamic selection.
         knowledge: Optional Agno ``Knowledge`` instance (vector KB).
         skills: Optional Agno ``Skills`` instance.
+        guardrails: Optional input guardrails (``semente.guardrails``
+            objects/classes) run in list order over the user input at every
+            stage (channels, media, pipeline, persistence).
         agent_config: Key into ``prompts/agents.yml`` selecting the agent's
             instructions/metadata. Defaults to ``single_agent``.
         instructions: Optional callable ``(run_context) -> str`` for domain-specific
@@ -35,5 +38,6 @@ class DomainSpec:
     tools: list[Any] | Callable = field(default_factory=list)
     knowledge: Any = None
     skills: Any = None
+    guardrails: list = field(default_factory=list)
     agent_config: str = "single_agent"
     instructions: Optional[Callable] = None

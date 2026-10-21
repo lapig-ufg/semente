@@ -51,7 +51,7 @@ def test_init_manifest_content(tmp_path):
     assert manifest.domain_module == "domain"
     assert manifest.channels == ["streamlit"]
     assert manifest.features["tts"] is True
-    assert manifest.features["pii_guardrail"] is True
+    assert manifest.features["guardrails"] is True
     assert manifest.models["primary"]["provider"] == "ollama"
     assert manifest.models["primary"]["id"]  # the ollama default id
 

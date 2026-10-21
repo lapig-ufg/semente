@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from pydantic import BaseModel, Field
+from semente.logging import log_warning
 
 class FeedbackConfig(BaseModel):
     enable: bool = Field(default=True)
@@ -36,6 +37,15 @@ class Manifest:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         features_data = data.get("features", {})
+        # Legacy alias: the old hard-wired PII stage was features.pii_guardrail
+        # and became the pluggable features.guardrails. Normalized here so the
+        # rest of the code (and to_dict) sees a single key.
+        if "pii_guardrail" in features_data:
+            log_warning("features.pii_guardrail is deprecated; rename it to features.guardrails")
+            if "guardrails" not in features_data:
+                features_data["guardrails"] = features_data.pop("pii_guardrail")
+            else:
+                features_data = {k: v for k, v in features_data.items() if k != "pii_guardrail"}
         feedback_val = features_data.get("feedback", True)
         
         if isinstance(feedback_val, bool):

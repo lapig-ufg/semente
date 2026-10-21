@@ -46,7 +46,7 @@ Edits `semente.yaml` in place. Resolution: `SEMENTE_MANIFEST` env var, then
 `./semente.yaml`. Without a manifest it exits with an actionable hint.
 
 ```bash
-semente config enable tts             # features: tts, summarization, feedback_workflow, pii_guardrail
+semente config enable tts             # features: tts, summarization, feedback_workflow, guardrails
 semente config disable feedback_workflow
 semente config set language pt-BR
 semente config set engine bare        # engines: agno, adk, bare

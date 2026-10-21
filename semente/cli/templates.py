@@ -20,7 +20,7 @@ features:
   tts: true
   feedback_workflow: true
   summarization: true
-  pii_guardrail: true
+  guardrails: true
 models:
   primary:
     provider: {provider}

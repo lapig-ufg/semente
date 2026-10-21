@@ -1,22 +1,36 @@
-"""PII (personal data) detection at the ingestion layer.
+"""Brazil-specific PII guards — migrated OUT of Semente, into Pasto Legal.
 
-Brings together deterministic detectors (regex + check-digit validation)
-and an intent layer. Instead of blocking the whole message, the sensitive
-data is replaced with a marker — the rest of the user's request goes through.
+Semente is a domain-neutral framework: CPF/CNPJ/RG validation, CAR
+identification, and the Portuguese intent layer are Brazil/LGPD specifics,
+not framework material. They live here, adapted to the new pluggable
+input-guardrail interface (:class:`semente.guardrails.RegexGuardrail`).
 
-External interface:
-    detect_cpf(text)        -- True if the text contains a valid CPF.
-    detect_cnpj(text)       -- True if the text contains a valid CNPJ.
-    detect_card(text)       -- True if the text contains a valid card number.
-    detect_email(text)      -- True if the text contains an e-mail address.
-    detect_rg(text)         -- True if the text contains an RG in the punctuated format.
-    check_pii(text)         -- list of the PII types found (empty if clean).
-    redact_pii(text)        -- replaces personal data with markers.
-    mask_pii(text)          -- replaces PII with [hidden], for safe logs.
+Usage in Pasto Legal (after upgrading Semente)::
+
+    # paste this file into the domain (e.g. domain/guardrails/brazil_pii.py), then:
+    from domain.guardrails.brazil_pii import BrazilPiIGuardrail
+
+    domain_spec = DomainSpec(
+        name="Pasto Legal",
+        tools=[...],
+        guardrails=[BrazilPiIGuardrail()],   # optional: + EmailGuardrail(), + CardGuardrail(),
+    )
+
+The original module-level detector API is kept (``detect_cpf``,
+``check_pii``, ``redact_pii`` …) for compatibility with code that called it
+directly.
 """
+
+from __future__ import annotations
 
 import re
 from typing import Callable, Dict, List, Tuple
+
+from semente.guardrails import (
+    GuardrailContext,
+    GuardrailResult,
+    RegexGuardrail,
+)
 
 # =====================================================================
 # Layer 0 — Exclusion of known scope
@@ -33,11 +47,12 @@ from typing import Callable, Dict, List, Tuple
 # Hardening the regex does not solve this class of problem — it only
 # reduces the frequency. Removing the stretch before the scan, the
 # detector never gets to see it.
+#
+# This layer is Brazil/Pasto-Legal specific (CAR = Rural Environmental
+# Registry). Extend _KNOWN_SCOPE with your domain's own long identifiers.
 
 # CAR (Rural Environmental Registry): state (UF) code + municipality code + identifier.
 # E.g.: GO-5212303-27057D4194F64CE3A498B90BFAC2E5F9
-# Domain-flavored, but engine-safe: domains may extend _KNOWN_SCOPE
-# with their own long identifiers.
 _CAR_RE = re.compile(r"\b[A-Z]{2}-\d{7}-[A-F0-9]{32}\b", re.IGNORECASE)
 _KNOWN_SCOPE = [
     _CAR_RE,
@@ -54,6 +69,7 @@ def remove_known_scope(text: str) -> str:
     for rx in _KNOWN_SCOPE:
         text = rx.sub(" ", text)
     return text
+
 
 _NB_L = r"(?<!\d)(?<!\d[.,])"
 _NB_R = r"(?!\d)(?![.,]\d)"
@@ -145,55 +161,6 @@ def detect_cnpj(text: str) -> bool:
             return True
     return False
 
-# --- Credit card ---
-# Two forms, always complete: visual grouping (4-4-4-1..4, with space or
-# dash) OR a real brand prefix (4x Visa, 5[1-5]x Mastercard, 3[47]x
-# Amex, 6(011|5xx) Discover). A raw 13-16 digit number + Luhn is noise —
-# no longer detected (1 in 9 sequences passes by chance).
-_CARTAO_RE = re.compile(
-    _NB_L
-    + r"(?:"
-    r"\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{1,4}"
-    r"|4\d{12}(?:\d{3})?"
-    r"|5[1-5]\d{14}"
-    r"|3[47]\d{13}"
-    r"|6(?:011|5\d{2})\d{12}"
-    r")"
-    + _NB_R
-)
-
-
-def _luhn(digits: str) -> bool:
-    """Validates a card number using the Luhn algorithm (receives digits only)."""
-    total = 0
-    for i, ch in enumerate(reversed(digits)):
-        n = int(ch)
-        if i % 2 == 1:          # doubles alternating digits, right to left
-            n *= 2
-            if n > 9:
-                n -= 9
-        total += n
-    return total % 10 == 0
-
-
-def detect_card(text: str) -> bool:
-    """Returns True if the text contains a valid card number (Luhn)."""
-    for candidate in _CARTAO_RE.findall(text):
-        digits = re.sub(r"\D", "", candidate)
-        if 13 <= len(digits) <= 16 and _luhn(digits):
-            return True
-    return False
-
-# --- E-mail ---
-# Standard format: user@domain.extension
-_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-
-
-def detect_email(text: str) -> bool:
-    """Returns True if the text contains an e-mail address."""
-    return bool(_EMAIL_RE.search(text))
-
-
 # --- RG (punctuated format) ---
 # RG has no national pattern, so we only cover the clearly written format
 # (12.345.678-9). A raw number is NOT included, to avoid needlessly blocking
@@ -221,8 +188,6 @@ _INTENT_RE = {
 _DETECTORS: Dict[str, Callable[[str], bool]] = {
     "CPF": detect_cpf,
     "CNPJ": detect_cnpj,
-    "card": detect_card,
-    "email": detect_email,
     "RG": detect_rg,
 }
 
@@ -248,9 +213,7 @@ def check_pii(text: str) -> List[str]:
 _MARKERS = {
     "CPF": "[CPF_HIDDEN]",
     "CNPJ": "[CNPJ_HIDDEN]",
-    "card": "[CARD_HIDDEN]",
     "RG": "[RG_HIDDEN]",
-    "email": "[EMAIL_HIDDEN]",
 }
 
 
@@ -274,22 +237,18 @@ def redact_pii(text: str) -> Tuple[str, List[str]]:
     for kind, rx in (
         ("CPF", _CPF_RE),
         ("CNPJ", _CNPJ_RE),
-        ("card", _CARTAO_RE),
         ("RG", _RG_RE),
-        ("email", _EMAIL_RE),
     ):
         for mt in rx.finditer(text):
             start, end = mt.span()
             if _is_protected(start, end):
                 continue
             digits = re.sub(r"\D", "", mt.group())
-            # CPF, CNPJ and card only count if the check digit matches.
-            # RG and email have no check digit: the format itself is the evidence.
+            # CPF and CNPJ only count if the check digit matches.
+            # RG has no check digit: the format itself is the evidence.
             if kind == "CPF" and not _valid_cpf(digits):
                 continue
             if kind == "CNPJ" and not _valid_cnpj(digits):
-                continue
-            if kind == "card" and not (13 <= len(digits) <= 16 and _luhn(digits)):
                 continue
             findings.append((start, end, kind))
 
@@ -312,7 +271,7 @@ def redact_pii(text: str) -> Tuple[str, List[str]]:
 
 # --- Masking (for safe logs) ---
 
-_MASKING_RES = [_CPF_RE, _CNPJ_RE, _CARTAO_RE, _EMAIL_RE, _RG_RE] + list(_INTENT_RE.values())
+_MASKING_RES = [_CPF_RE, _CNPJ_RE, _RG_RE] + list(_INTENT_RE.values())
 
 
 def mask_pii(text: str) -> str:
@@ -321,11 +280,9 @@ def mask_pii(text: str) -> str:
         text = rx.sub("[hidden]", text)
     return text
 
+
 def sanitize_json_pii(data):
-    """
-    Recursively sanitizes string values within JSON-like structures (dicts, lists)
-    using the redact_pii function, preserving the original data structure.
-    """
+    """Recursively sanitizes string values within JSON-like structures."""
     if isinstance(data, dict):
         return {key: sanitize_json_pii(value) for key, value in data.items()}
     elif isinstance(data, list):
@@ -334,3 +291,47 @@ def sanitize_json_pii(data):
         sanitized_text, _ = redact_pii(data)
         return sanitized_text
     return data
+
+
+# =====================================================================
+# The pluggable guardrail — the new way Pasto Legal consumes all of it.
+# =====================================================================
+#
+# The legacy functions above are kept for direct callers; the guardrail
+# is what the domain must declare so the framework routes the whole
+# input pipeline (channels, media, persistence) through it.
+
+
+class BrazilPiIGuardrail(RegexGuardrail):
+    """Brazilian personal-data redaction as a Semente input guardrail.
+
+    Redacts valid CPF/CNPJ (check-digit validated), punctuated RG, and the
+    intent layer ("my cpf is 322443" catches the declaration even with an
+    invalid number). CAR-shaped spans are protected from false positives.
+
+    Note: e-mail and credit-card redaction are now universal and shipped
+    with the framework — compose them from Semente::
+
+        guardrails=[BrazilPiIGuardrail(), EmailGuardrail(), CardGuardrail()]
+    """
+
+    name = "brazil-pii"
+    marker = "[PII_HIDDEN]"
+    mask_marker = "[hidden]"
+
+    def redact(self, context: GuardrailContext) -> GuardrailResult:
+        clean, types = redact_pii(context.text or "")
+        return GuardrailResult(text=clean, removed=types)
+
+    def mask(self, text: str) -> str:
+        return mask_pii(text)
+
+
+__all__ = [
+    # the guardrail (new interface)
+    "BrazilPiIGuardrail",
+    # legacy module-level API (kept for direct callers)
+    "detect_cpf", "detect_cnpj", "detect_rg",
+    "check_pii", "redact_pii", "mask_pii",
+    "remove_known_scope", "sanitize_json_pii",
+]

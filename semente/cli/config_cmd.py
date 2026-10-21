@@ -12,7 +12,7 @@ from pathlib import Path
 
 from semente.manifest import Manifest
 
-KNOWN_FEATURES = ["tts", "summarization", "feedback_workflow", "pii_guardrail"]
+KNOWN_FEATURES = ["tts", "summarization", "feedback_workflow", "guardrails"]
 KNOWN_CHANNELS = ["streamlit", "whatsapp"]
 KNOWN_ENGINES = ["agno", "adk", "bare"]
 KNOWN_PROVIDERS = ["google", "ollama"]

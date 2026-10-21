@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from semente.manifest import Manifest
-from semente.guardrails.pii_gate import sanitize_json_pii
+from semente.guardrails import CardGuardrail, EmailGuardrail, GuardrailChain
 from semente.schemas.fine_tuning import SFTDatasetRow, DPODatasetRow
 
 
@@ -22,28 +22,27 @@ def test_manifest_feedback_config(tmp_path):
 
 def test_json_pii_sanitizer():
     raw_data = {
-        "user_query": "my email is teste@teste.com and the cpf 123.456.789-09",
+        "user_query": "my email is teste@teste.com and card 4111 1111 1111 1111",
         "nested_data": [
             {"id": 1, "text": "fake cpf 000.000.000-00"},
-            {"id": 2, "text": "card 4111 1111 1111 1111"}
+            {"id": 2, "text": "card 4570 7318 2800 8591"}
         ],
         "is_active": True,
         "count": 42
     }
-    
-    sanitized = sanitize_json_pii(raw_data)
-    
+
+    sanitized = GuardrailChain([EmailGuardrail(), CardGuardrail()]).sanitize_json(raw_data)
+
     assert "teste@teste.com" not in sanitized["user_query"]
     assert "[EMAIL_HIDDEN]" in sanitized["user_query"]
-    assert "123.456.789-09" not in sanitized["user_query"]
-    assert "[CPF_HIDDEN]" in sanitized["user_query"]
-    
-    # Validates that the fake CPF (no real check digit) is not changed, preserving the gate behavior
+
+    # Validates that a bare number is not changed — the universal guards cover
+    # e-mail and Luhn-valid cards only (documents are domain guardrails).
     assert sanitized["nested_data"][0]["text"] == "fake cpf 000.000.000-00"
-    
-    assert "4111 1111 1111 1111" not in sanitized["nested_data"][1]["text"]
+
+    assert "4111 1111 1111 1111" not in sanitized["user_query"]
     assert "[CARD_HIDDEN]" in sanitized["nested_data"][1]["text"]
-    
+
     # Validates that booleans and integers were preserved without corrupting the JSON
     assert sanitized["is_active"] is True
     assert sanitized["count"] == 42

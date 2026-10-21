@@ -2,29 +2,29 @@ import re
 from datetime import datetime
 from semente import tool
 from semente.context import Context as RunContext
+from semente.guardrails import mask_text
 from semente.logging import log_debug, log_error
 from semente.configs.prompts import get_tool_description
 
 from semente.database.session import SessionLocal, engine
 from semente.database.models import AnalysisFeedback
 
+# Latitude/longitude pairs are generic (not country-specific) and too long /
+# too precise to trust to a generic guard's regex list — masked locally.
+_COORDINATES_RE = re.compile(r"(-?\d{1,3}\.\d{4,}\s*,\s*-?\d{1,3}\.\d{4,})")
+
+
 def _mask_pii(text: str) -> str:
-    """Deterministic fallback: masks sensitive data using regex."""
+    """Log-safe masking: the active guardrail chain + lat/long pairs.
+
+    Country-specific spans (CPF/CNPJ/CAR in the Pasto Legal deployment) are
+    covered by the guardrails the app declares — see
+    ``migrate-to-pasto-legal/``.
+    """
     if not text:
         return ""
-    
-    patterns = {
-        'CPF': re.compile(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b"),
-        'CNPJ': re.compile(r"\b\d{2}\.?\d{3}\.?\d{3}/\d{4}-?\d{2}\b"),
-        'CAR': re.compile(r"\b[A-Z]{2}-\d{7}-[A-F0-9.]+\b", re.IGNORECASE),
-        'COORDINATES': re.compile(r"(-?\d{1,3}\.\d{4,}\s*,\s*-?\d{1,3}\.\d{4,})")
-    }
-    
-    masked_text = str(text)
-    for label, pattern in patterns.items():
-        masked_text = pattern.sub(f"[{label}_HIDDEN]", masked_text)
-        
-    return masked_text
+    masked_text = mask_text(str(text))
+    return _COORDINATES_RE.sub("[COORDINATES_HIDDEN]", masked_text)
 
 def _get_masked_history(run_context: RunContext) -> list[dict]:
     """ Last 3 rounds (user/assistant tuples), with PII masked """

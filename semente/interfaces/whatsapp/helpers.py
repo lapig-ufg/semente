@@ -9,7 +9,12 @@ import httpx
 
 from semente.logging import log_error, log_info, log_warning
 
-from semente.guardrails.pii_gate import mask_pii, redact_pii
+from semente.guardrails import (
+    GuardrailContext,
+    active_chain,
+    mask_text,
+    redact_text,
+)
 
 _BASE_URL = "https://graph.facebook.com"
 _API_VERSION = "v22.0"
@@ -100,18 +105,25 @@ class MessageContent:
     def __post_init__(self):
         # Redact here, not in each branch of extract_message_content: raw text
         # never reaches the log, Valkey, or the database. Covers today's
-        # branches and any that come later.
-        self.text, self.redacted_types = redact_pii(self.text or "")
+        # branches and any that come later. The guards come from the active
+        # guardrail chain — the same chain the pipeline will use next.
+        chain = active_chain()
+        if chain is None or not chain.enabled:
+            return
+        result = chain.redact(
+            GuardrailContext(text=self.text or "", source="channel")
+        )
+        self.text, self.redacted_types = result.text, result.removed
 
 
 def extract_message_content(message: dict) -> Optional[MessageContent]:
     # Masking: this log runs before redaction, with the raw Meta payload.
-    log_info(mask_pii(str(message)))
+    log_info(mask_text(str(message)))
     msg_type = message.get("type")
 
     if msg_type == "text":
         text = message["text"]["body"]
-        log_info(mask_pii(text))
+        log_info(mask_text(text))
         return MessageContent(text=text)
     
     if msg_type == "location":

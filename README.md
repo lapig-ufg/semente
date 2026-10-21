@@ -132,7 +132,7 @@ features:                    # booleans default to true
   tts: true                  # TTS tool on the welcoming agent
   feedback_workflow: true    # satisfaction/persona feedback loop
   summarization: true        # rolling conversation summary
-  pii_guardrail: true        # PII/LGPD redaction step
+  guardrails: true           # pluggable input guardrails (see Guardrails doc)
   feedback: { enable: true, window_size: 5 }  # DPO/SFT capture (see Feedback & Fine-Tuning)
 models:                      # optional override of env-var model config
   primary: { provider: google, id: gemini-3.5-flash-lite }
@@ -150,6 +150,7 @@ The `engine` field (or `SEMENTE_ENGINE` env var) swaps the agent engine — see
 |---|---|
 | [Getting Started](docs/guide/getting-started.md) | Install + first app |
 | [The Domain](docs/guide/domain.md) | `DomainSpec` reference |
+| [Guardrails](docs/guide/guardrails.md) | Pluggable input safety (redact/block) |
 | [Domain API](docs/guide/domain-api.md) | The engine-free import surface |
 | [Manifest Reference](docs/guide/manifest.md) | Every `semente.yaml` option |
 | [CLI Reference](docs/guide/cli.md) | `init`, `config`, `status`, `launch` |

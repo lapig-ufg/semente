@@ -8,7 +8,8 @@ registry, no step-name lookups).
 Pipeline (feature toggles from the manifest ``features`` in parentheses):
 
     _input_preprocessing   media -> text, geo files -> GeoJSON (always)
-    _redact_pii            PII markers on the consolidated text (pii_guardrail)
+    _run_input_guardrails  pluggable guardrail chain: redaction or a
+                           blocked turn with a reply (guardrails)
     _needs_onboarding      terms + profile gate (always)
     ├─ True:  _run_welcoming_agent
     └─ False: _summarize_conversation (summarization)
@@ -56,6 +57,7 @@ from typing import Any, Optional
 from semente.backends.base import AgentInput
 from semente.configs.prompts import set_prompts_dir
 from semente.core.types import Session, SessionStore, StepOutput
+from semente.guardrails.base import GuardrailChain, GuardrailContext, GuardrailResult
 from semente.logging import log_debug, log_error, log_info
 from semente.manifest import Manifest
 from semente.schemas.input_manager import InputManager
@@ -200,6 +202,9 @@ class Harness:
         welcoming_agent: The onboarding agent (terms + persona stages).
         manifest: The parsed ``semente.yaml`` — name and feature toggles.
         store: Optional :class:`SessionStore` for cross-run persistence.
+        guardrails: The :class:`GuardrailChain` composed from the domain's
+            ``DomainSpec.guardrails`` — one chain re-used by the pipeline, the
+            channels (door redaction/masking), and the persistence sanitization.
     """
 
     def __init__(
@@ -208,12 +213,47 @@ class Harness:
         welcoming_agent: Any,
         manifest: Manifest,
         store: Optional[SessionStore] = None,
+        guardrails: Optional["GuardrailChain"] = None,
     ):
         self.agent = agent
         self.welcoming_agent = welcoming_agent
         self.name = manifest.name
         self.features = manifest.features or {}
         self.store = store
+        self.guardrails = guardrails or GuardrailChain([])
+
+    # ------------------------------------------------------------------
+    # Public entry points
+    # ------------------------------------------------------------------
+
+    @property
+    def _chain(self) -> Optional[GuardrailChain]:
+        """The active guardrail chain (feature toggle + non-empty list)."""
+        if not self.guardrails.enabled:
+            return None
+        if not self.features.get("guardrails", True):
+            return None
+        return self.guardrails
+
+    def redact(self, text: str) -> tuple[str, list[str]]:
+        """Door redaction for the channels: ``(text, removed types)``.
+
+        The channel is the only place raw text touches logs, cache, or the
+        persistence layer *before* the pipeline — so it redacts here, through
+        the same chain the pipeline will use.
+        """
+        chain = self._chain
+        if chain is None:
+            return text or "", []
+        result = chain.redact(GuardrailContext(text=text or "", source="channel"))
+        return result.text, result.removed
+
+    def mask(self, text: str) -> str:
+        """Log masking through the active chain (identity when off)."""
+        chain = self._chain
+        if chain is None:
+            return text or ""
+        return chain.mask(text or "")
 
     # ------------------------------------------------------------------
     # Public entry points
@@ -251,10 +291,13 @@ class Harness:
 
         user_text, geo_files = self._input_preprocessing(input, images, audio, files)
 
-        if self.features.get("pii_guardrail", True):
-            user_text = self._redact_pii(user_text)
+        guardrail_block: Optional[GuardrailResult] = None
+        if self.features.get("guardrails", True):
+            user_text, guardrail_block = self._run_input_guardrails(user_text, session)
 
-        if self._needs_onboarding(session.session_state, user_id):
+        if guardrail_block is not None:
+            final = StepOutput(content=guardrail_block.response or "")
+        elif self._needs_onboarding(session.session_state, user_id):
             final = self._run_welcoming_agent(session, user_text, images, audio)
         else:
             needs_remediation = False
@@ -363,12 +406,13 @@ class Harness:
             next stages and the converted GeoJSON files for the agent.
 
         The transcription and the description are redacted HERE, and not in
-        the PII guardrail: the redacted text is what gets persisted in the
-        run history, so redacting one stage later would leave a raw copy in
-        the database. Typed text arrives already redacted (MessageContent
-        __post_init__ in whatsapp/helpers; streamlit_webapp).
+        the pipeline guardrail stage: the redacted text is what gets persisted
+        in the run history, so redacting one stage later would leave a raw
+        copy in the database. Typed text arrives already redacted at the
+        channel doors (MessageContent __post_init__ in whatsapp/helpers;
+        streamlit_webapp).
         """
-        from semente.guardrails.pii_gate import redact_pii
+        chain = self._chain
 
         parts: list[str] = []
 
@@ -381,11 +425,15 @@ class Harness:
 
             try:
                 turn = image_description_agent.run(AgentInput(text="", images=images))
-                # Redacted HERE, not in the guardrail: the transcription/description
-                # is what gets persisted in the run history, which is stored.
-                # Redacting only in the next stage would leave a raw copy in the
-                # database.
-                description, _ = redact_pii(turn.content or "")
+                # Redacted HERE, not in the guardrail stage: the
+                # transcription/description is what gets persisted in the run
+                # history, which is stored. Redacting only in the next stage
+                # would leave a raw copy in the database.
+                description = (
+                    chain.redact_text(turn.content or "")
+                    if chain is not None
+                    else (turn.content or "")
+                )
                 log_debug(f"Image description: {description}")
                 if description:
                     parts.append(f"[IMAGEM]{description}[/IMAGEM]")
@@ -398,7 +446,11 @@ class Harness:
             try:
                 turn = audio_transcription_agent.run(AgentInput(text="", audio=audio))
                 # Same reason as the image description: redact before persisting.
-                transcription, _ = redact_pii(turn.content or "")
+                transcription = (
+                    chain.redact_text(turn.content or "")
+                    if chain is not None
+                    else (turn.content or "")
+                )
                 log_debug(f"Audio transcription: {transcription}")
                 if transcription:
                     parts.append(transcription)
@@ -428,25 +480,46 @@ class Harness:
         return "\n".join(parts), geo_files
 
     # ------------------------------------------------------------------
-    # PII guardrail
+    # Guardrail chain
     # ------------------------------------------------------------------
 
-    def _redact_pii(self, user_text: str) -> str:
-        """Redact personal data from the consolidated text.
+    def _run_input_guardrails(
+        self, user_text: str, session: Session
+    ) -> tuple[str, Optional[GuardrailResult]]:
+        """Run the pluggable guardrail chain on the consolidated text.
 
         The user keeps the requests they made in the same message, and the
-        datum never reaches the agent. Typed text is already redacted at the
-        entry doors; this covers what only became text inside this turn
-        (audio transcription, image description).
+        datum never reaches the agent. Returns ``(text, blocked_result)``:
+        when a guard blocks, ``text`` is the guarded text (kept for
+        persistence) and ``blocked_result.response`` is the user-facing reply
+        — the agent never runs that turn. Typed text is also redacted at the
+        channel doors; this stage additionally covers what only became text
+        inside this turn (audio transcription, image description).
         """
-        from semente.guardrails.pii_gate import redact_pii
+        if not self._chain:
+            return user_text, None
 
-        text = user_text if isinstance(user_text, str) else str(user_text)
-        clean, types = redact_pii(text)
-        if types:
+        result = self._chain.redact(
+            GuardrailContext(
+                text=str(user_text),
+                session_state=session.session_state,
+                user_id=session.user_id,
+                source="pipeline",
+            )
+        )
+        if result.blocked:
+            log_info(f"guardrails: turn blocked by {', '.join(result.removed) or 'a guard'}")
+            return result.text, result
+        if result.removed:
             # Only the types, never the values.
-            log_info(f"guardrail PII: data removed ({', '.join(types)})")
-        return clean
+            log_info(f"guardrails: data removed ({', '.join(result.removed)})")
+        return result.text, None
+
+    def _sanitize(self, data):
+        """Sanitize persisted JSON-like data through the active chain."""
+        if self._chain is None:
+            return data
+        return self._chain.sanitize_json(data)
 
     # ------------------------------------------------------------------
     # Onboarding gate
@@ -720,7 +793,6 @@ class Harness:
         import datetime
         from semente.database.models import NegativeFeedback, PositiveFeedback
         from semente.database.session import SessionLocal, engine
-        from semente.guardrails.pii_gate import sanitize_json_pii
 
         # The legacy feedback tools used to create the feedback tables via
         # create_all; after their removal the harness owns table creation.
@@ -757,7 +829,7 @@ class Harness:
                 if satisfaction_level >= 4 and pending.new_response:
                     record = db_session.get(NegativeFeedback, pending.record_id)
                     if record is not None:
-                        record.chosen = sanitize_json_pii(pending.new_response)
+                        record.chosen = self._sanitize(pending.new_response)
                         record.approved = True
                         db_session.commit()
                         log_debug(
@@ -769,7 +841,7 @@ class Harness:
                     # but valuable for manual analysis of repeated issues.
                     record = db_session.get(NegativeFeedback, pending.record_id)
                     if record is not None:
-                        record.rejected_new = sanitize_json_pii(pending.new_response)
+                        record.rejected_new = self._sanitize(pending.new_response)
                         record.approved = False
                         db_session.commit()
                         log_debug(
@@ -779,7 +851,7 @@ class Harness:
                 pending.closed = True
 
             if satisfaction_level >= 4 and recent_runs:
-                sanitized_history = sanitize_json_pii(recent_runs)
+                sanitized_history = self._sanitize(recent_runs)
                 feedback_record = PositiveFeedback(
                     timestamp=datetime.datetime.utcnow().isoformat(),
                     history=sanitized_history,
@@ -795,8 +867,8 @@ class Harness:
                     prompt, rejected = history[0]
                     feedback_record = NegativeFeedback(
                         timestamp=datetime.datetime.utcnow().isoformat(),
-                        prompt=sanitize_json_pii(prompt),
-                        rejected=sanitize_json_pii(rejected),
+                        prompt=self._sanitize(prompt),
+                        rejected=self._sanitize(rejected),
                         chosen="",
                     )
                     db_session.add(feedback_record)
@@ -846,7 +918,6 @@ class Harness:
 
         from semente.database.models import NegativeFeedback
         from semente.database.session import SessionLocal, engine
-        from semente.guardrails.pii_gate import sanitize_json_pii
 
         NegativeFeedback.metadata.create_all(bind=engine)
 
@@ -860,7 +931,7 @@ class Harness:
             if history:
                 record = db_session.get(NegativeFeedback, pending.record_id)
                 if record is not None:
-                    record.history = sanitize_json_pii(history)
+                    record.history = self._sanitize(history)
                     db_session.commit()
                     log_debug("frustration cycle history written (max 3 runs)")
             assessment.pending = None
@@ -1300,13 +1371,17 @@ def get_harness(manifest_path: str | None = None) -> Harness:
     from semente.agents.build_agent import build_agent
     from semente.agents.welcoming_agent import build_welcoming_agent
     from semente.database.session_store import store
+    from semente.guardrails import GuardrailChain, set_active_chain
 
     agent = build_agent(domain_spec, manifest)
     welcoming_agent = build_welcoming_agent(tts_enabled=manifest.features.get("tts", True))
+    guardrails = GuardrailChain(domain_spec.guardrails)
+    set_active_chain(guardrails)
     _harness_cache = Harness(
         agent=agent,
         welcoming_agent=welcoming_agent,
         manifest=manifest,
         store=store,
+        guardrails=guardrails,
     )
     return _harness_cache

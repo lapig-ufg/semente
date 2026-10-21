@@ -63,7 +63,7 @@ the Echo assistant replies with `Echo: <your message>`.
 2. The webapp read `SEMENTE_MANIFEST` → `semente.yaml`.
 3. Semente imported the `domain` package (your `domain_spec`), built the single
    agent with the `echo` tool, and assembled the Harness pipeline:
-   `Input → PII guardrail → Onboarding → Echo agent → Output`.
+   `Input → Guardrail chain → Onboarding → Echo agent → Output`.
 4. The chat UI talks to that agent.
 
 ## 6. Deploy to production (WhatsApp)

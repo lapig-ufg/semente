@@ -26,8 +26,8 @@ channel (Streamlit, WhatsApp) calls the same `get_harness().run(...)`.
                       └──────────────┬──────────────┘
                                      ▼
                       ┌─────────────────────────────┐
-                      │       PII guardrail         │
-                      └──────────────┬──────────────┘
+                      │  guardrail chain (pluggable)│  redaction, or a
+                      └──────────────┬──────────────┘  blocked turn
                                      ▼
                       ┌─────────────────────────────┐
               ┌── no  │       onboarding gate       │
@@ -60,8 +60,14 @@ Stages in order:
    inline); geo upload files (`.zip/.kmz/.kml/.geojson`, optional `geo` extra)
    are converted to a single GeoJSON `File` via
    `services/geospatial/geojson_io.py`.
-2. **PII guardrail** (feature `pii_guardrail`) — LGPD/PII redaction of the
-   user text before anything else sees it.
+2. **Guardrail chain** (feature `guardrails`, pluggable) — the app's
+   `DomainSpec.guardrails` run in list order over the input: each guard
+   redacts sensitive spans (universal `EmailGuardrail`/`CardGuardrail` ship
+   as opt-in builtins) or **blocks the turn** with a user-facing reply
+   (agent never runs). Media-derived text (stage 1) and DPO/SFT persistence
+   are sanitized through the same chain; the channel doors (WhatsApp
+   `MessageContent`, Streamlit) redact through it too. An app declaring no
+   guardrails redacts nothing — privacy is declaration-driven.
 3. **Onboarding gate** — DB-backed check of terms acceptance and persona
    completeness. When needed, the **welcoming agent** takes over the turn and
    runs the staged onboarding flow (terms → persona), one stage per turn.
@@ -96,7 +102,7 @@ any exception from the primary triggers one retry with the fallback model.
 | `semente/configs/` | Env config factory, prompts/i18n loader, first-run wizard, logging |
 | `semente/domain/` | The customization seam: `DomainSpec`, demo domain |
 | `semente/hooks/` | Tool middleware (hooks) shipped with the framework |
-| `semente/guardrails/` | PII/LGPD redaction (`pii_gate.py`) used by the guardrail stage and feedback persistence |
+| `semente/guardrails/` | The **pluggable input-guardrail interface**: contract + chain (`base.py`), universal builtins (`builtin.py`); country-specific detectors ride the domain |
 | `semente/tools/` | Native media/tool types, `@tool` decorator, `Calculator`, framework-owned tools (onboarding, persona, feedback, TTS shim, version) |
 | `semente/database/` | SQLAlchemy session/records + models (users, feedback, sessions) |
 | `semente/schemas/` | Pydantic state schemas (persona, interaction assessment, fine-tuning rows) |
@@ -141,6 +147,7 @@ the `SEMENTE_ENGINE` env var → `agno` default. See
 | You want to customize | How |
 |---|---|
 | Tools, knowledge, skills, persona, instructions | `DomainSpec` — see [The Domain](/guide/domain) |
+| Input safety (redaction/blocking) | `DomainSpec.guardrails` — see [Guardrails](/guide/guardrails) |
 | Agent instructions, tool description texts, language | `prompts/` YAML files — see [Prompts & i18n](/guide/prompts) |
 | App-level options | `semente.yaml` — see [Manifest Reference](/guide/manifest) |
 | Per-tool validation | `@tool(tool_hooks=[...])` middleware — see `semente/hooks/tool_hooks.py` |
