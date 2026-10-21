@@ -19,9 +19,8 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
               _run_single_agent      (always; sees summary + history; gets a
                                        "generate a better answer" instruction
                                        appended when the cycle is open)
-              _generate_apology      (part of the feedback loop: apology +
-                                       evaluation request around the new
-                                       answer)
+              _generate_apology      (part of the feedback loop: apology,
+                                      new answer and evaluation request)
     _finalize_output       audio transcripts -> synthesized voice (tts)
     _persist_session       state + history back to the store
     _finalize_pending_history  closed DPO cycle -> ``history`` on the row
@@ -1149,8 +1148,8 @@ class Harness:
         Runs the remediation agent on the plain new answer. The agent's
         output has three parts separated by ``[PAUSE]``: the apology, the
         answer (echoed unchanged), and the evaluation call-to-action. The
-        final message keeps the fixed order: FIRST the apology with the
-        evaluation request, THEN the new answer.
+        final message keeps the fixed order: FIRST the apology, THEN the
+        new answer, THEN the evaluation request at the end.
 
         On failure the main answer is still delivered unchanged.
         """
@@ -1168,18 +1167,22 @@ class Harness:
             raw = (turn.content or "").split("[PAUSE]")
             apology = raw[0].strip()
             evaluation = raw[2].strip() if len(raw) > 2 else ""
-            first = "\n\n".join(p for p in (apology, evaluation) if p)
+            final = "\n\n".join(p for p in (apology, base, evaluation) if p)
         except Exception as exc:
             log_error(f"_generate_apology: remediation agent failed - {exc}")
             return routed
 
-        if not first:
+        if not final or final == base:
             return routed
 
-        routed.content = f"{first}\n\n{base}"
+        routed.content = final
 
         if routed.audio:
-            routed.audio = [Audio(transcript=p) for p in (first, base)]
+            routed.audio = [
+                Audio(transcript=p)
+                for p in (apology, base, evaluation)
+                if p.strip()
+            ]
 
         return routed
 
@@ -1194,7 +1197,7 @@ class Harness:
         When the response carries audio, each item's transcript becomes the
         content and the speech is regenerated per item (the raw engine audio
         is not echoed back). Audio items are kept in order, so a remediated
-        turn arrives as [apology + evaluation request, new answer].
+        turn arrives as [apology, new answer, evaluation request].
         """
         if response.audio:
             from semente.services.audio.tts import generate_speech

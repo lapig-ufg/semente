@@ -186,8 +186,8 @@ def test_remediation_instruction_injection():
     assert "<input>\noi\n</input>" in remediated
 
 
-def test_generate_apology_orders_apology_first(feedback_agents):
-    """Final message: FIRST apology + evaluation request, THEN the new answer."""
+def test_generate_apology_orders_parts(feedback_agents):
+    """Final message: FIRST apology, THEN the new answer, THEN the request."""
     feedback_agents["remediation"].apology = "Sorry! The previous answer was wrong."
     feedback_agents["remediation"].evaluation = "Is this new answer better?"
     harness = _harness()
@@ -195,16 +195,18 @@ def test_generate_apology_orders_apology_first(feedback_agents):
 
     final = harness._generate_apology(routed)
 
-    assert final.content.startswith("Sorry! The previous answer was wrong.")
-    assert "Is this new answer better?" in final.content
-    assert final.content.endswith("The corrected answer.")
+    parts = final.content.split("\n\n")
+    assert parts[0].startswith("Sorry! The previous answer was wrong.")
+    assert parts[1] == "The corrected answer."
+    assert parts[2] == "Is this new answer better?"
 
-    # Audio channel: two items in the same order.
+    # Audio channel: one item per part, in the same order.
     audio_routed = StepOutput(content="The corrected answer.", audio=[object()])
     audio_final = harness._generate_apology(audio_routed)
-    assert len(audio_final.audio) == 2
+    assert len(audio_final.audio) == 3
     assert audio_final.audio[0].transcript.startswith("Sorry!")
     assert audio_final.audio[1].transcript == "The corrected answer."
+    assert audio_final.audio[2].transcript == "Is this new answer better?"
 
 
 def test_generate_apology_failure_keeps_answer(feedback_agents):
