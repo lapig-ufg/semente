@@ -7,14 +7,15 @@ your `domain` module.
 ## `DomainSpec`
 
 ```python
+from semente import load_skills
 from semente.domain import DomainSpec
 
 domain_spec = DomainSpec(
-    name="Pasto Legal",
-    tools=get_tools,              # list[Any] | Callable[[RunContext], list]
-    knowledge=pasto_legal_kb,     # Agno Knowledge | None
-    skills=skills,                 # Agno Skills | None
-    instructions=get_instructions, # Callable[[RunContext], str] | None
+    name="My App",
+    tools=get_tools,              # list | Callable[[Context], list]
+    knowledge=kb,                 # engine-neutral Knowledge | None
+    skills=load_skills("domain/skills"),  # Engine-neutral Skills | None
+    instructions=get_instructions, # Callable[[Context], str] | None
     agent_config="single_agent",   # key into prompts/agents.yml
 )
 ```
@@ -22,19 +23,20 @@ domain_spec = DomainSpec(
 | Field | Type | Description |
 |---|---|---|
 | `name` | `str` | Human-readable app name. |
-| `tools` | `list` or `Callable` | Agno tools handed to the single agent. A callable `(run_context) -> list` enables **dynamic tool selection** (e.g. different tools per registration state). |
-| `knowledge` | `Knowledge \| None` | Optional vector KB; enables `search_knowledge_base` for Q&A. |
-| `skills` | `Skills \| None` | Optional Agno skills (markdown instructions loaded as skills). |
+| `tools` | `list` or `Callable` | Tools handed to the single agent. A callable `(run_context) -> list` enables **dynamic tool selection** (e.g. different tools per registration state). |
+| `knowledge` | `Knowledge \| None` | Optional vector KB; enables knowledge search for Q&A. Built engine-neutrally with `semente.knowledge.build_knowledge` / `build_search_tool`. |
+| `skills` | `Skills \| None` | Optional skills package loaded with `semente.skills.load_skills` (SKILL.md packages) — engine-neutral, not an engine feature. |
 | `instructions` | `Callable \| None` | Domain-specific dynamic instructions. When `None`, a generic builder (persona + context blocks + `instructions_default`) is used. |
 | `agent_config` | `str` | Key into `prompts/agents.yml` selecting the agent's metadata/instructions. Defaults to `single_agent`. |
 
 ## Dynamic tools and instructions
 
-The two callables are where domain logic lives. They receive the Agno
-`RunContext` and read/write `session_state`.
+The two callables are where domain logic lives. They receive the
+`semente.context.Context` (a structural `Protocol` satisfied by the engine's
+run context — no wrapping, no conversion) and read/write `session_state`.
 
 ```python
-from agno.run import RunContext
+from semente.context import Context as RunContext
 
 def get_tools(run_context: RunContext):
     state = run_context.session_state
@@ -66,7 +68,7 @@ from semente.agents.build_agent import context_blocks, persona_text
 The minimal possible domain — one tool, nothing else:
 
 ```python
-from agno.tools import tool
+from semente import tool
 from semente.domain import DomainSpec
 
 @tool(description="Echo the given message back to the user.")
@@ -76,4 +78,5 @@ def echo(message: str) -> str:
 domain_spec = DomainSpec(name="Echo Domain", tools=[echo])
 ```
 
-See `examples/echo_domain/` in the repository.
+See `examples/minimal-chat/` in the repository — it also ships localized
+prompt overrides (`domain/prompts/`).

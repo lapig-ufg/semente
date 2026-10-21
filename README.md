@@ -18,7 +18,7 @@ knowledge base, skills, and prompts.
 
 ## Quickstart — deploy the Toy App
 
-The **Toy App** (`examples/echo_domain/`) is the minimal Semente app: one `echo`
+The **Toy App** (`examples/minimal-chat/`) is the minimal Semente app: one `echo`
 tool, no knowledge base. Use it to verify the framework boots, then copy it as
 the starting point for your own app.
 
@@ -40,7 +40,7 @@ uv pip install -e .
 ### 3. Configure
 
 ```bash
-cd examples/echo_domain
+cd examples/minimal-chat
 cp .env.example .env
 # edit .env → set GOOGLE_API_KEY=your-gemini-api-key
 ```
@@ -84,12 +84,12 @@ Requires `WHATSAPP_*` and `VALKEY_*` env vars (see `.env.example` and the
 User (WhatsApp / Streamlit)
         │
         ▼
-   Semente workflow
-   ├── Input step (media → text)
+   Semente workflow (the Harness)
+   ├── Input step (media → text, geo → GeoJSON)
    ├── PII guardrail
-   ├── Onboarding check (terms)
-   ├── Parallel: summarization + feedback loop + your agent
-   ├── Remediation merge
+   ├── Onboarding check (terms + persona)
+   ├── Summarization, feedback loop, then your agent
+   ├── Remediation (apology instead of a frustrated answer)
    └── Output step (TTS)
         │
         ▼
@@ -101,7 +101,7 @@ You write two things:
 **`domain/__init__.py`** — your domain:
 
 ```python
-from agno.tools import tool
+from semente import tool
 from semente.domain import DomainSpec
 
 @tool(description="Echo the given message back to the user.")
@@ -128,11 +128,12 @@ domain_module: domain        # import path exposing `domain_spec`
 prompts_dir: domain/prompts  # optional; explicit prompts dir
 engine: agno                 # agno (default) | adk | bare
 channels: [streamlit]        # streamlit and/or whatsapp
-features:                    # all default to true
+features:                    # booleans default to true
   tts: true                  # TTS tool on the welcoming agent
   feedback_workflow: true    # satisfaction/persona feedback loop
   summarization: true        # rolling conversation summary
-  pii_guardrail: true        # PII/LGPD blocking step
+  pii_guardrail: true        # PII/LGPD redaction step
+  feedback: { enable: true, window_size: 5 }  # DPO/SFT capture (see Feedback & Fine-Tuning)
 models:                      # optional override of env-var model config
   primary: { provider: google, id: gemini-3.5-flash-lite }
   fallback: { provider: ollama, id: gemma4:31b-cloud }
@@ -149,10 +150,14 @@ The `engine` field (or `SEMENTE_ENGINE` env var) swaps the agent engine — see
 |---|---|
 | [Getting Started](docs/guide/getting-started.md) | Install + first app |
 | [The Domain](docs/guide/domain.md) | `DomainSpec` reference |
+| [Domain API](docs/guide/domain-api.md) | The engine-free import surface |
 | [Manifest Reference](docs/guide/manifest.md) | Every `semente.yaml` option |
+| [CLI Reference](docs/guide/cli.md) | `init`, `config`, `status`, `launch` |
+| [Feedback & Fine-Tuning](docs/guide/feedback.md) | DPO/SFT capture loop |
 | [Prompts & i18n](docs/guide/prompts.md) | YAML prompts + localization |
 | [Channels](docs/guide/channels.md) | WhatsApp + Streamlit |
 | [Engines](docs/guide/engines.md) | agno / adk / bare backends |
+| [Architecture](docs/architecture/README.md) | Harness pipeline + package map |
 | [Deploy the Toy App](docs/deployment/toy-app.md) | Full deployment walkthrough |
 | [Pasto Legal](docs/showcase/pasto-legal.md) | The first seed, as a showcase |
 

@@ -10,11 +10,12 @@ domain_module: domain        # import path exposing `domain_spec`
 prompts_dir: domain/prompts  # optional; explicit prompts dir (overrides language)
 engine: agno                 # agno (default) | adk | bare
 channels: [streamlit]        # streamlit and/or whatsapp
-features:                    # all default to true
+features:                    # booleans default to true
   tts: true                  # attach TTS tool to the welcoming agent
   feedback_workflow: true    # satisfaction/persona feedback loop
   summarization: true        # rolling conversation summary
   pii_guardrail: true        # PII/LGPD redaction stage
+  feedback: { enable: true, window_size: 5 }  # or a plain boolean — see Feedback & Fine-Tuning
 models:                      # optional override of env-var model config
   primary: { provider: google, id: gemini-3.5-flash-lite }
   fallback: { provider: ollama, id: gemma4:31b-cloud }
@@ -33,14 +34,27 @@ models:                      # optional override of env-var model config
 | `features` | `dict` | all `true` | Feature toggles (see below). |
 | `models` | `dict` | — | Overrides the `.env` model config. |
 
+## Engine resolution
+
+The manifest `engine` field is the first resolver. When absent, Semente falls
+back to the `SEMENTE_ENGINE` environment variable, then the `agno` default:
+
+```bash
+export SEMENTE_ENGINE=adk    # applies when the manifest has no engine field
+```
+
 ## Feature toggles
 
-| Toggle | When `false` |
+| Toggle | When off |
 |---|---|
 | `tts` | The welcoming agent is built without the TTS tool. |
-| `feedback_workflow` | The satisfaction/persona feedback loop is omitted from the run. |
+| `feedback_workflow` | The whole feedback loop — satisfaction agent, DPO/SFT persistence, persona updates, and remediation — is omitted from the run. |
+| `feedback` | Only the SFT trajectory capture (the `recent_agent_runs` window) stops; satisfaction/behavior still run. Boolean or `{enable, window_size}` — see [Feedback & Fine-Tuning](feedback.md). |
 | `summarization` | The rolling conversation summary stage is omitted. |
 | `pii_guardrail` | The PII redaction stage is omitted. |
+
+Absent keys default to enabled. Turn the whole subsystem off with
+`feedback_workflow: false` (it also saves an LLM call per turn).
 
 ## Model resolution
 
@@ -69,9 +83,11 @@ Semente reads configuration from a `.env` file in the working directory
 
 | Variable | Purpose |
 |---|---|
-| `APP_ENV` | `development`, `staging`, or `production` (default `development`) |
+| `APP_ENV` | `development` (default), `stagging`, or `production` |
 | `DATABASE_TYPE` | `sqlite` (dev) or `postgres` (prod) |
 | `SEMENTE_MANIFEST` | Path to the manifest (default `semente.yaml`) |
+| `SEMENTE_ENGINE` | Engine when the manifest has no `engine` field (`agno`, `adk`, `bare`) |
+| `SEMENTE_DEMO` | Set by `semente launch streamlit --demo`; boots the built-in demo domain |
 | `SEMENTE_PROMPTS_DIR` | Prompts directory (overridden by manifest `prompts_dir`) |
 | `TTS_MODEL` | TTS model id (default `gemini-3.1-flash-tts-preview`) |
 | `POSTGRES_*` | PostgreSQL connection (prod) |

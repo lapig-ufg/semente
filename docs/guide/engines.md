@@ -142,8 +142,9 @@ agent = MyAgent(instructions="...", tools=[...],
 Knowledge *retrieval* is engine-neutral (`build_search_tool` returns a plain
 function every backend adapts). The *storage* stack — embedder, chunking,
 PgVector/ChromaDb — remains agno classes, used as a vector-DB library rather
-than the agent engine. Full de-agno of storage is deferred until a non-agno
-deployment needs it (see `AGNOSTIC_PENDING.md`).
+than the agent engine; the knowledge factory in `semente/knowledge/` keeps
+that behind an engine-neutral API (markdown ingestion, content-hash sync).
+Full de-agno of storage is deferred until a non-agno deployment needs it.
 
 ## Writing a backend
 

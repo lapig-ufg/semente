@@ -95,5 +95,9 @@ module imports the engine directly:
 ./scripts/check_domain_purity.sh   # ✓ domain is engine-free
 ```
 
-See `ENGINE_ABSTRACTION.md` for the full abstraction roadmap (Level 1 is
-implemented; Level 2 — native types + adapters — is planned).
+Level 1 of the abstraction is complete: `tools`, context, media, knowledge,
+and skills are all engine-neutral (native types or plain functions every
+backend adapts). What differs between engines today is internal to each
+backend — see [Engines](engines.md) for the capability matrix and
+`semente/backends/bare/DECISIONS.md` for the design record behind the
+framework-free `bare` backend.

@@ -1,7 +1,7 @@
 # Deploy the Toy App
 
 The **Toy App** is the minimal Semente application — the *Echo domain* in
-`examples/echo_domain/`. It has one tool (`echo`), no knowledge base, and no
+`examples/minimal-chat/`. It has one tool (`echo`), no knowledge base, and no
 skills. It exists to prove the framework boots and to serve as the starting
 point for your own app.
 
@@ -33,7 +33,7 @@ This installs the `semente` package and the `semente` CLI.
 ## 3. Configure the environment
 
 ```bash
-cd examples/echo_domain
+cd examples/minimal-chat
 cp .env.example .env
 ```
 
@@ -139,5 +139,6 @@ Set the WhatsApp webhook URL to the ngrok HTTPS URL and verify with
 ## Next steps
 
 - Replace the `echo` tool with your own tools — see [The Domain](/guide/domain).
-- Add a knowledge base for Q&A — see [Prompts & i18n](/guide/prompts).
+- Add a knowledge base for Q&A — see [The Domain](/guide/domain#domainspec).
+- Configure the app with the CLI — see [CLI Reference](/guide/cli).
 - See a real domain in [Pasto Legal](/showcase/pasto-legal).

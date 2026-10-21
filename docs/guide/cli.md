@@ -52,13 +52,17 @@ semente config set language pt-BR
 semente config set engine bare        # engines: agno, adk, bare
 semente config set models.primary.id gemini-2.0-flash
 semente config set models.fallback.provider ollama
-seemente config channel add whatsapp  # channels: streamlit, whatsapp
+semente config channel add whatsapp   # channels: streamlit, whatsapp
 semente config channel remove streamlit
 ```
 
 Valid keys for `set`: `name`, `language`, `domain_module`, `prompts_dir`,
 `engine`, `models.primary.provider`, `models.primary.id`,
 `models.fallback.provider`, `models.fallback.id`.
+
+> `features.feedback` (the fine-tuning capture loop — see
+> [Feedback & Fine-Tuning](feedback.md)) is not yet in the CLI's known
+> features; edit `semente.yaml` directly to configure it.
 
 ## `semente status`
 

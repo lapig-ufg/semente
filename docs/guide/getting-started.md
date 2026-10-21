@@ -1,9 +1,9 @@
 # Getting Started
 
-Semente is a Python framework (3.12+) built on [Agno](https://github.com/agno-agi/agno).
 A Semente app is a **domain** (your tools + knowledge + prompts) plus a
 **manifest** (`semente.yaml`). The framework assembles the multi-agent
-pipeline (the `Harness`) and channels around them.
+pipeline (the `Harness`) and channels around them. Semente is engine-free by
+construction — the domain never imports the agent framework.
 
 ## Install
 
@@ -68,7 +68,7 @@ Skip this section with `semente init` — it scaffolds both files (plus
 ### 1. `domain/__init__.py` — your domain
 
 ```python
-from agno.tools import tool
+from semente import tool
 from semente.domain import DomainSpec
 
 @tool(description="Echo the given message back to the user.")
@@ -105,9 +105,7 @@ summarization, and your `echo` tool into a working chat.
 my-app/
 ├── domain/
 │   ├── __init__.py      # exposes `domain_spec`
-│   ├── tools.py         # your Agno tools
-│   ├── knowledge.py     # optional vector KB
-│   └── prompts/         # optional domain prompts (see Prompts & i18n)
+│   └── prompts/         # agents.yml, tools.yml, hooks.yml
 ├── semente.yaml         # manifest
 ├── .env                 # secrets (API keys, DB, WhatsApp)
 └── main.py              # optional FastAPI entry (WhatsApp)

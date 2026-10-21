@@ -26,6 +26,8 @@ export default defineConfig({
             { text: 'The Domain', link: '/guide/domain' },
             { text: 'Domain API', link: '/guide/domain-api' },
             { text: 'Manifest Reference', link: '/guide/manifest' },
+            { text: 'CLI Reference', link: '/guide/cli' },
+            { text: 'Feedback & Fine-Tuning', link: '/guide/feedback' },
             { text: 'Prompts & i18n', link: '/guide/prompts' },
             { text: 'Channels', link: '/guide/channels' },
             { text: 'Engines', link: '/guide/engines' },

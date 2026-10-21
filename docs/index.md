@@ -22,7 +22,7 @@ features:
     details: Supply a DomainSpec (tools + knowledge + skills) and a semente.yaml manifest. The framework assembles the agent, and channels.
   - icon: 🧠
     title: Multi-agent pipeline
-    details: Onboarding, intent routing, feedback/persona loop, summarization, and PII guardrails — all domain-neutral and config-driven.
+    details: Staged onboarding, feedback/persona loop with DPO capture, summarization, and PII guardrails — all domain-neutral and config-driven.
   - icon: 💬
     title: WhatsApp & Streamlit
     details: Ship to farmers' phones over WhatsApp, or debug in a Streamlit UI. Channels are pluggable.
@@ -54,9 +54,9 @@ User (WhatsApp / Streamlit)
    Harness (single-object pipeline)
     ├── Input pre-processing (media → text, geo → GeoJSON)
     ├── PII guardrail
-    ├── Onboarding check (terms)
-    ├── Summarization + feedback loop + your agent
-    ├── Remediation merge
+    ├── Onboarding gate (terms + persona)
+    ├── Summarization, feedback loop, then your agent
+    ├── Remediation (apology instead of a frustrated answer)
     └── Output finalization (TTS)
         │
         ▼

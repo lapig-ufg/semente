@@ -49,7 +49,9 @@ formats them in with `{placeholders}`.
 
 ## `tools.yml`
 
-Tool descriptions passed to the Agno `@tool(description=...)` decorator:
+Tool descriptions passed to the Semente `@tool(description=...)` decorator
+(referenced from the domain with
+`from semente.configs.prompts import get_tool_description`):
 
 ```yaml
 analysis_tools:
