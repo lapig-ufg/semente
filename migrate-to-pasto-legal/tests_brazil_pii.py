@@ -7,7 +7,10 @@ protection, masking, and the false-positive regressions on geographic
 coordinates and CAR codes. Fully deterministic — no LLM/network.
 
 The module is loaded by file path because the folder name is not a valid
-Python package identifier.
+Python package identifier. When copying this file into Pasto Legal's repo,
+update _MODULE_PATH to point at the copied module, e.g.:
+
+    pathlib.Path(__file__).resolve().parents[1] / "domain/guardrails/brazil_pii.py"
 """
 
 import importlib.util
