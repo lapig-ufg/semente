@@ -21,6 +21,12 @@ The guards are **opt-in** now: a guard runs only when the app declares it in
 
 ## How to implement it in Pasto Legal
 
+You can copy this folder as-is into Pasto Legal's repo root — it works in
+place (the test suite locates the module by file path, so the relative
+layout above is all the tests need). The steps below assume that, so the
+paths read `migrate-to-pasto-legal/guardrails/brazil_pii.py` until the file
+is in place.
+
 ### 1. Upgrade Semente
 
 Use a Semente release containing the guardrail interface (v0.4+):
@@ -95,12 +101,16 @@ features:
 
 `tests_brazil_pii.py` in this folder is the original
 `tests/guardrails/test_pii_gate.py` suite, updated to the new interface —
-fully deterministic (no LLM/network). To bring it into Pasto Legal:
+fully deterministic (no LLM/network). It runs **as copied**:
 
-1. Copy it to Pasto Legal's test suite (e.g. `tests/test_brazil_pii.py`).
-2. Edit the two module-loading lines at the top to point at the *copied*
-   module (the loader uses a file path — the folder name here is not a valid
-   Python package identifier):
+```bash
+python -m pytest migrate-to-pasto-legal/tests_brazil_pii.py
+```
+
+To bring it into Pasto Legal's proper test suite (e.g.
+`tests/test_brazil_pii.py`), update the two module-loading lines at the top
+to point at the copied module (the loader uses a file path — this folder's
+name is not a valid Python package identifier):
 
 ```python
 _MODULE_PATH = pathlib.Path(__file__).resolve().parents[1] / "domain/guardrails/brazil_pii.py"
@@ -134,7 +144,7 @@ print(c.redact(GuardrailContext(text='my cpf is 710.768.971-18')))
 # expect: GuardrailResult(text='my cpf is [CPF_HIDDEN]', removed=['CPF'], ...)
 ```
 
-Then run the ported suite and the app:
+Then run the ported suite in its permanent home and check the app:
 
 ```bash
 python -m pytest tests/test_brazil_pii.py
