@@ -1,7 +1,6 @@
 import os
 import uuid
 import json
-import logging
 import tempfile
 import streamlit as st
 
@@ -12,8 +11,6 @@ from semente.configs.config import config
 from semente.interfaces.streamlit.debug_helpers import extract_workflow_debug_data, extract_session_state
 from semente.interfaces.streamlit.debug_panel import render_debug_panel
 from semente.core.harness import get_harness
-
-_logger = logging.getLogger("semente")
 
 st.set_page_config(page_title="Semente", page_icon="🌱")
 
@@ -227,22 +224,11 @@ def process_uploaded_files(uploaded_files) -> List[str]:
     return file_paths
 
 if user_query:
-    # Same redaction the WhatsApp flow applies in MessageContent.__post_init__.
-    # Without it, the raw text enters the agent and gets recorded in the run's
-    # `input` field, which is persisted — the guardrail scrubs it afterwards,
-    # too late. Uses the app's guardrail chain (from DomainSpec.guardrails);
-    # get_harness() composes and publishes the chain (cached — free after the
-    # first call), which is why the door reads it from the harness and not
-    # from the module-level active chain.
-    _harness = get_harness()
-    redacted_text, _door_removed = _harness.redact(user_query)
-    if _door_removed:  # types only — values never reach the log or the chat display
-        _logger.info(
-            "guardrails[channel:streamlit]: removed (%s)", ", ".join(_door_removed)
-        )
-    else:
-        _logger.debug("guardrails[channel:streamlit]: clean")
-    user_query = redacted_text
+    # The dev UI intentionally echoes the FULL raw input — Streamlit exists to
+    # debug the pipeline, and the user's own display is not a leak surface.
+    # All real protection lives inside Harness.run() (input/media/persistence
+    # guardrails run before any agent or persistence). Add your own redaction
+    # here if you ever deploy this webapp to end users.
 
     st.session_state.messages.append({"role": "user", "content": user_query})
     with st.chat_message("user"):

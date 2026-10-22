@@ -30,7 +30,7 @@ The chain is composed once by the harness (`get_harness`) and reused at:
 | Stage | What the chain does |
 |---|---|
 | Pipeline (`source="pipeline"`) | Redacts the consolidated turn text (including media transcriptions merged later by `_input_preprocessing` — those run first, `source="media"`, so nothing raw is persisted) |
-| Channel doors (`source="channel"`) | WhatsApp `MessageContent` and the Streamlit webapp redact/tone down logs before the text reaches cache, database, or the chat display |
+| Channel doors (`source="channel"`) | The WhatsApp `MessageContent` redacts/masks **before** raw text can reach the router's own logs, the Valkey debounce cache, or the database. The Streamlit webapp intentionally displays the **full raw input** — it is the development UI, the user's own echo is not a leak surface, and `run()` protects everything downstream |
 | Persistence | DPO/SFT feedback rows are sanitized field-by-field (`sanitize_json`) |
 | Logs | Every guard can provide a `mask()` — log lines keep the shape, drop the values |
 
