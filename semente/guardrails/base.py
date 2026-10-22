@@ -29,6 +29,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Protocol, runtime_checkable
 
+from semente.logging import log_debug, log_info
+
 
 @dataclass
 class GuardrailContext:
@@ -164,6 +166,7 @@ class GuardrailChain:
 
     def redact(self, context: GuardrailContext) -> GuardrailResult:
         if not self.enabled:
+            log_debug(f"guardrails[{context.source}]: no guards — text untouched")
             return GuardrailResult(text=context.text)
         text, removed, blocked_result = context.text, [], None
         for guard in self.guardrails:
@@ -177,8 +180,20 @@ class GuardrailChain:
             )
             text = result.text
             removed.extend(result.removed)
+            # Types only — the logs must never carry the values.
             if result.blocked and blocked_result is None:
                 blocked_result = result
+                log_info(
+                    f"guardrail '{guard.name}': BLOCKED the turn "
+                    f"[source={context.source}]"
+                )
+            elif result.removed:
+                log_info(
+                    f"guardrail '{guard.name}': redacted "
+                    f"({', '.join(result.removed)})"
+                )
+            else:
+                log_debug(f"guardrail '{guard.name}': clean")
         if blocked_result is not None:
             return GuardrailResult(
                 text=text,

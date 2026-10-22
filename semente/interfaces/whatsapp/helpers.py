@@ -109,10 +109,16 @@ class MessageContent:
         # guardrail chain — the same chain the pipeline will use next.
         chain = active_chain()
         if chain is None or not chain.enabled:
+            log_debug("guardrails[channel:whatsapp]: no active chain — text untouched")
             return
         result = chain.redact(
             GuardrailContext(text=self.text or "", source="channel")
         )
+        if result.removed:
+            # Types only — values never reach the log.
+            log_info(f"guardrail[channel:whatsapp]: removed ({', '.join(result.removed)})")
+        else:
+            log_debug("guardrails[channel:whatsapp]: clean")
         self.text, self.redacted_types = result.text, result.removed
 
 

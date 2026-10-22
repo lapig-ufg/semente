@@ -4,11 +4,15 @@ chain composition, blocking, masking, and JSON sanitization. Fully
 deterministic — no LLM/network.
 """
 
+import logging
 import re
 
 import pytest
 
 from semente import DomainSpec
+from semente.core.harness import Harness
+from semente.core.types import Session
+from semente.manifest import Manifest
 from semente.guardrails import (
     CardGuardrail,
     EmailGuardrail,
@@ -227,3 +231,102 @@ def test_domain_spec_guardrails_field():
     spec = DomainSpec(name="app", guardrails=[EmailGuardrail])
     assert spec.guardrails == [EmailGuardrail]
     assert DomainSpec(name="app").guardrails == []
+
+
+# --- Observability: the guardrail lifecycle in the logs ---
+
+def test_chain_logs_clean_and_redacted(caplog):
+    chain = GuardrailChain([EmailGuardrail()])
+    with caplog.at_level(logging.DEBUG, logger="semente"):
+        clean = chain.redact(GuardrailContext(text="hello"))
+        hit = chain.redact(GuardrailContext(text="email a@b.com"))
+    assert clean.text == "hello"
+    assert "guardrail 'email': clean" in caplog.text
+    assert hit.text == "email [EMAIL_HIDDEN]"
+    assert "guardrail 'email': redacted (email)" in caplog.text
+
+
+def test_chain_logs_block(caplog):
+    with caplog.at_level(logging.DEBUG, logger="semente"):
+        GuardrailChain([BlockEverything()]).redact(
+            GuardrailContext(text="x", source="pipeline")
+        )
+    assert "guardrail 'blocker': BLOCKED the turn [source=pipeline]" in caplog.text
+
+
+def test_chain_logs_no_guards(caplog):
+    with caplog.at_level(logging.DEBUG, logger="semente"):
+        GuardrailChain([]).redact(GuardrailContext(text="x"))
+    assert "no guards" in caplog.text
+
+
+def test_pipeline_summary_log(caplog):
+    """One INFO summary per turn at the pipeline stage."""
+    harness = Harness(
+        agent=None,
+        welcoming_agent=None,
+        manifest=Manifest(name="logs"),
+        guardrails=GuardrailChain([EmailGuardrail()]),
+    )
+    session = Session(user_id="u1", session_id="s1")
+
+    with caplog.at_level(logging.DEBUG, logger="semente"):
+        text, blocked = harness._run_input_guardrails("write to a@b.com", session)
+    assert text == "write to [EMAIL_HIDDEN]" and blocked is None
+    assert "guardrails[pipeline]: removed (email)" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="semente"):
+        text, blocked = harness._run_input_guardrails("nothing wrong here", session)
+    assert "guardrails[pipeline]: 1 guard(s) ran — clean" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="semente"):
+        text, blocked = harness._run_input_guardrails("send me this", session)
+    assert text and blocked is None and "clean" in caplog.text
+
+
+def test_pipeline_blocked_log(caplog):
+    """A blocked guard short-circuits: refusal reply out, agent never runs."""
+    harness = Harness(
+        agent=None,
+        welcoming_agent=None,
+        manifest=Manifest(name="logs"),
+        guardrails=GuardrailChain([EmailGuardrail(), BlockEverything()]),
+    )
+    session = Session(user_id="u1", session_id="s1")
+    with caplog.at_level(logging.DEBUG, logger="semente"):
+        text, blocked = harness._run_input_guardrails("send me this", session)
+    assert blocked is not None and blocked.blocked
+    assert "BLOCKED" in caplog.text
+    assert "agent skipped" in caplog.text
+    # The refusal reply is what would reach the user.
+    assert blocked.response == "I cannot process this request."
+
+
+def test_feature_toggle_silences_the_chain(caplog):
+    harness = Harness(
+        agent=None,
+        welcoming_agent=None,
+        manifest=Manifest(name="logs", features={"guardrails": False}),
+        guardrails=GuardrailChain([EmailGuardrail()]),
+    )
+    session = Session(user_id="u1", session_id="s1")
+    with caplog.at_level(logging.DEBUG, logger="semente"):
+        text, blocked = harness._run_input_guardrails("email a@b.com", session)
+    assert text == "email a@b.com" and blocked is None
+    assert "feature off" in caplog.text
+
+
+def test_media_stage_log(caplog):
+    harness = Harness(
+        agent=None,
+        welcoming_agent=None,
+        manifest=Manifest(name="logs"),
+        guardrails=GuardrailChain([EmailGuardrail()]),
+    )
+    with caplog.at_level(logging.DEBUG, logger="semente"):
+        clean = harness._run_media_guardrails("no pii text", "audio")
+        redacted = harness._run_media_guardrails("mail a@b.com", "audio")
+    assert clean == "no pii text" and redacted == "mail [EMAIL_HIDDEN]"
+    assert "guardrails[media:audio]: removed (email)" in caplog.text

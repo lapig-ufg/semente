@@ -128,6 +128,23 @@ country-specific detectors with this interface.
 
 ## Debugging
 
-The guardrail chain is visible in the Streamlit debug panel's session state,
-and every removal is logged with **types only**
-(`guardrails: data removed (CPF, email)`), never values.
+Every stage logs its outcome — **types only, never values** — so you can
+follow the guardrail lifecycle in the terminal (INFO is on in every
+environment; per-guard detail needs `APP_ENV=development`, where
+`DEBUG_MODE=True`):
+
+```
+guardrail 'email': clean                                   (debug, per guard)
+guardrail 'phone': redacted (phone)                        (info, per guard hit)
+guardrail 'credentials': BLOCKED the turn [source=pipeline] (info)
+guardrails[channel:whatsapp]: removed (phone, email)        (info, channel door)
+guardrails[media:audio]: removed (email)                    (info, media-derived text)
+guardrails[pipeline]: 3 guard(s) ran — clean                (info, once per turn)
+guardrails[pipeline]: removed (phone)                       (info)
+guardrails[pipeline]: BLOCKED by (credentials) — agent skipped, refusal reply sent
+guardrails[persistence]: sensitive spans redacted before persistence  (debug)
+```
+
+Stage tags say where it ran: `channel` (whatsapp/streamlit door), `media`,
+`pipeline`, `persistence`. The chain in the Streamlit debug panel's session
+state also carries the removed types of the turn.

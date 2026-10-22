@@ -412,8 +412,6 @@ class Harness:
         channel doors (MessageContent __post_init__ in whatsapp/helpers;
         streamlit_webapp).
         """
-        chain = self._chain
-
         parts: list[str] = []
 
         texto = _input_as_string(input)
@@ -429,11 +427,7 @@ class Harness:
                 # transcription/description is what gets persisted in the run
                 # history, which is stored. Redacting only in the next stage
                 # would leave a raw copy in the database.
-                description = (
-                    chain.redact_text(turn.content or "")
-                    if chain is not None
-                    else (turn.content or "")
-                )
+                description = self._run_media_guardrails(turn.content or "", "image")
                 log_debug(f"Image description: {description}")
                 if description:
                     parts.append(f"[IMAGEM]{description}[/IMAGEM]")
@@ -446,11 +440,7 @@ class Harness:
             try:
                 turn = audio_transcription_agent.run(AgentInput(text="", audio=audio))
                 # Same reason as the image description: redact before persisting.
-                transcription = (
-                    chain.redact_text(turn.content or "")
-                    if chain is not None
-                    else (turn.content or "")
-                )
+                transcription = self._run_media_guardrails(turn.content or "", "audio")
                 log_debug(f"Audio transcription: {transcription}")
                 if transcription:
                     parts.append(transcription)
@@ -495,10 +485,19 @@ class Harness:
         — the agent never runs that turn. Typed text is also redacted at the
         channel doors; this stage additionally covers what only became text
         inside this turn (audio transcription, image description).
+
+        Logging: one ``INFO`` summary per turn — the turn outcome at a glance
+        (guardrail count, clean/redacted/blocked); per-guard detail goes to
+        ``DEBUG`` (visible with ``APP_ENV=development``).
         """
         if not self._chain:
+            log_debug("guardrails[pipeline]: feature off or no guards declared")
             return user_text, None
 
+        log_debug(
+            f"guardrails[pipeline]: running {len(self._chain.guardrails)} guard(s) "
+            f"on {len(user_text)} char(s)"
+        )
         result = self._chain.redact(
             GuardrailContext(
                 text=str(user_text),
@@ -508,18 +507,51 @@ class Harness:
             )
         )
         if result.blocked:
-            log_info(f"guardrails: turn blocked by {', '.join(result.removed) or 'a guard'}")
+            log_info(
+                f"guardrails[pipeline]: BLOCKED by ({', '.join(result.removed) or 'unknown'}) "
+                "— agent skipped, refusal reply sent"
+            )
             return result.text, result
         if result.removed:
             # Only the types, never the values.
-            log_info(f"guardrails: data removed ({', '.join(result.removed)})")
+            log_info(f"guardrails[pipeline]: removed ({', '.join(result.removed)})")
+        else:
+            log_info(f"guardrails[pipeline]: {len(self._chain.guardrails)} guard(s) ran — clean")
         return result.text, None
+
+    def _run_media_guardrails(self, text: str, label: str) -> str:
+        """Guardrail redaction on media-derived text (transcription/description).
+
+        Blocking cannot happen here by design: the media text joins other
+        input parts and a whole-turn refusal is decided at the pipeline
+        stage — here a ``blocked`` guard is logged and its (redacted) text is
+        still used, so the raw value is never persisted.
+        """
+        chain = self._chain
+        if chain is None:
+            return text
+        result = chain.redact(GuardrailContext(text=text, source="media"))
+        if result.blocked:
+            log_info(
+                "guardrails[media]: a guard reported a block for media-derived "
+                f"text (label={label}) — media cannot block the turn; keeping "
+                "the redacted text"
+            )
+        elif result.removed:
+            log_info(f"guardrails[media:{label}]: removed ({', '.join(result.removed)})")
+        return result.text
 
     def _sanitize(self, data):
         """Sanitize persisted JSON-like data through the active chain."""
         if self._chain is None:
             return data
-        return self._chain.sanitize_json(data)
+        after = self._chain.sanitize_json(data)
+        try:
+            if json.dumps(data, default=str) != json.dumps(after, default=str):
+                log_debug("guardrails[persistence]: sensitive spans redacted before persistence")
+        except TypeError:
+            pass
+        return after
 
     # ------------------------------------------------------------------
     # Onboarding gate
