@@ -374,7 +374,21 @@ vite.config.ts.timestamp-*
 .claude/
 .aider*
 .cursor/
+.cursorrules
 .codex/
+.gemini/
+.copilot/
+.windsurf/
+.codeium/
+.continue/
+.serena/
+.roo/
+.kilocode/
+.trae/
+.junie/
+.qwen/
+.specstory/
+.plano/
 
 # Run Folders
 logs/
