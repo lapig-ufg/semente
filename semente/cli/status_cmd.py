@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from semente.cli.config_cmd import KNOWN_FEATURES
+from semente.cli.feature_cmd import KNOWN_FEATURES, _feature_status
 from semente.configs.wizard import effective_env, get_missing, required_keys
 from semente.manifest import Manifest
 
@@ -96,8 +96,11 @@ def cmd_status() -> int:
     features.add_column(style="bold cyan")
     features.add_column()
     for feature in KNOWN_FEATURES:
-        value = manifest.features.get(feature, True)  # default: enabled
-        features.add_row(feature, "[green]enabled[/green]" if value else "[red]disabled[/red]")
+        status = _feature_status(manifest, feature)
+        label = {"default": "[yellow]default (on)[/yellow]",
+                 "enabled": "[green]enabled[/green]",
+                 "disabled": "[red]disabled[/red]"}[status]
+        features.add_row(feature, label)
     console.print(features)
 
     # --- Models --------------------------------------------------------------

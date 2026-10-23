@@ -2,7 +2,8 @@
 
 Usage:
     semente init [dir]       # scaffold a new app (semente.yaml, domain/, ...)
-    semente config ...       # edit the manifest: features, models, channels
+    semente feature ...      # list, add, enable, disable manifest features
+    semente config ...       # edit the manifest: keys, channels
     semente status           # app overview: manifest, env health, doctor checks
     semente launch <iface>   # run an interface (streamlit [--demo])
 """
@@ -15,14 +16,12 @@ import sys
 from semente.cli.config_cmd import (
     KNOWN_CHANNELS,
     KNOWN_ENGINES,
-    KNOWN_FEATURES,
     KNOWN_PROVIDERS,
     cmd_config_channel_add,
     cmd_config_channel_remove,
-    cmd_config_disable,
-    cmd_config_enable,
     cmd_config_set,
 )
+from semente.cli.feature_cmd import cmd_feature_add, cmd_feature_disable, cmd_feature_enable, cmd_feature_ls
 from semente.cli.init_cmd import cmd_init
 from semente.cli.launcher import LAUNCHABLE_INTERFACES, CHANNEL_INTERFACES, cmd_launch
 from semente.cli.status_cmd import cmd_status
@@ -40,7 +39,7 @@ def run_streamlit(demo: bool = False) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="semente",
-        description="Semente app toolkit — init, config, status, launch",
+        description="Semente app toolkit — init, feature, config, status, launch",
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -55,15 +54,21 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--force", action="store_true", help="Overwrite existing files")
     init.add_argument("--non-interactive", action="store_true", help="Never prompt (use defaults)")
 
+    # --- feature ---------------------------------------------------------------
+    feature = sub.add_parser("feature", help="Manage manifest features (semente.yaml features)")
+    feature_sub = feature.add_subparsers(dest="feature_command")
+
+    feature_sub.add_parser("ls", help="List all Semente features and their status")
+    feature_add = feature_sub.add_parser("add", help="Add a feature: scaffold an example (when one exists) and enable it")
+    feature_add.add_argument("feature", metavar="name")
+    feature_enable = feature_sub.add_parser("enable", help="Enable a feature in the manifest")
+    feature_enable.add_argument("feature", metavar="name")
+    feature_disable = feature_sub.add_parser("disable", help="Disable a feature in the manifest (code is left alone)")
+    feature_disable.add_argument("feature", metavar="name")
+
     # --- config ---------------------------------------------------------------
     config = sub.add_parser("config", help="Edit the manifest (semente.yaml)")
     config_sub = config.add_subparsers(dest="config_command")
-
-    enable = config_sub.add_parser("enable", help="Enable a feature")
-    enable.add_argument("feature", choices=KNOWN_FEATURES)
-
-    disable = config_sub.add_parser("disable", help="Disable a feature")
-    disable.add_argument("feature", choices=KNOWN_FEATURES)
 
     set_parser = config_sub.add_parser("set", help="Set a manifest key")
     set_parser.add_argument("key", help=f"Dotted key (e.g. name, language, engine, models.primary.id)")
@@ -104,12 +109,20 @@ def main() -> None:
                 non_interactive=args.non_interactive,
             )
         )
+    elif args.command == "feature":
+        if args.feature_command == "ls":
+            cmd_feature_ls()
+        elif args.feature_command == "add":
+            cmd_feature_add(args.feature)
+        elif args.feature_command == "enable":
+            cmd_feature_enable(args.feature)
+        elif args.feature_command == "disable":
+            cmd_feature_disable(args.feature)
+        else:
+            parser.print_help()
+            sys.exit(1)
     elif args.command == "config":
-        if args.config_command == "enable":
-            cmd_config_enable(args.feature)
-        elif args.config_command == "disable":
-            cmd_config_disable(args.feature)
-        elif args.config_command == "set":
+        if args.config_command == "set":
             cmd_config_set(args.key, args.value)
         elif args.config_command == "channel" and args.channel_command == "add":
             cmd_config_channel_add(args.name)

@@ -1,8 +1,8 @@
 """``semente config`` — edit the app manifest (semente.yaml) from the terminal.
 
-Enables/disables features, sets scalar/model keys, and manages the channel
-list. The manifest is the single source of truth; everything is validated
-before writing (``Manifest.save`` keeps a stable key order).
+Sets scalar/model keys and manages the channel list. The manifest is the
+single source of truth; everything is validated before writing
+(``Manifest.save`` keeps a stable key order).
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from pathlib import Path
 
 from semente.manifest import Manifest
 
-KNOWN_FEATURES = ["tts", "summarization", "feedback_workflow", "guardrails"]
 KNOWN_CHANNELS = ["streamlit", "whatsapp"]
 KNOWN_ENGINES = ["agno", "adk", "bare"]
 KNOWN_PROVIDERS = ["google", "ollama"]
@@ -68,24 +67,6 @@ def _set_nested(manifest: Manifest, key: str, value: str) -> str:
 
     valid = ", ".join(_SIMPLE_KEYS + list(_MODEL_KEYS))
     sys.exit(f"Unknown key '{key}' (valid: {valid})")
-
-
-def cmd_config_enable(feature: str) -> None:
-    manifest, path = _load_or_exit()
-    if feature not in KNOWN_FEATURES:
-        sys.exit(f"Unknown feature '{feature}' (available: {', '.join(KNOWN_FEATURES)})")
-    manifest.features = {**manifest.features, feature: True}
-    manifest.save(path)
-    print(f"Feature '{feature}' enabled.")
-
-
-def cmd_config_disable(feature: str) -> None:
-    manifest, path = _load_or_exit()
-    if feature not in KNOWN_FEATURES:
-        sys.exit(f"Unknown feature '{feature}' (available: {', '.join(KNOWN_FEATURES)})")
-    manifest.features = {**manifest.features, feature: False}
-    manifest.save(path)
-    print(f"Feature '{feature}' disabled.")
 
 
 def cmd_config_set(key: str, value: str) -> None:

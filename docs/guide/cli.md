@@ -6,6 +6,7 @@ inspect, and run. All commands work from the app directory (where
 
 ```bash
 semente init          # scaffold a new app
+semente feature       # manage features (list, add, enable, disable)
 semente config        # edit the manifest
 semente status        # app overview + doctor checks
 semente launch        # run an interface
@@ -38,16 +39,48 @@ Options:
 | `--non-interactive` | Never prompt (use defaults) |
 
 Existing files are never overwritten without `--force`. If `semente.yaml`
-already exists, init refuses and points to `semente config`.
+already exists, init refuses and points to `semente feature` / `semente config`.
+
+## `semente feature`
+
+Manages the manifest's `features` block. Resolution: `SEMENTE_MANIFEST` env
+var, then `./semente.yaml`. Without a manifest it exits with an actionable
+hint.
+
+```bash
+semente feature ls                    # every feature + status (enabled/disabled/default)
+semente feature add guardrails        # scaffold an example + enable
+semente feature add tts               # framework-internal: just enable
+semente feature enable tts
+semente feature disable tts           # only the manifest toggles — code is left alone
+```
+
+Supported features:
+
+| Feature | Meaning |
+|---|---|
+| `tts` | TTS tool on the welcoming agent (audio replies) |
+| `feedback_workflow` | Satisfaction/persona loop, remediation cycles |
+| `summarization` | Rolling conversation summary (every 6 turns) |
+| `guardrails` | Pluggable input guardrails declared in `DomainSpec` |
+| `feedback` | DPO/SFT trajectory capture (`enable` + `window_size`) |
+
+`add` writes an app-side example when one exists — today only `guardrails`
+(re-checking your `domain/` for a `guardrails_example.py` it creates,
+never overwriting an existing file) — and enables the feature. For
+framework-internal features `add` behaves like `enable`: the framework owns
+their behavior; there is no app code to scaffold.
+
+> `disable` never deletes your code. It flips the manifest key; re-run
+> `semente feature enable <name>` to turn it back on.
 
 ## `semente config`
 
-Edits `semente.yaml` in place. Resolution: `SEMENTE_MANIFEST` env var, then
-`./semente.yaml`. Without a manifest it exits with an actionable hint.
+Edits `semente.yaml` in place (keys and channels). Resolution:
+`SEMENTE_MANIFEST` env var, then `./semente.yaml`. Without a manifest it
+exits with an actionable hint.
 
 ```bash
-semente config enable tts             # features: tts, summarization, feedback_workflow, guardrails
-semente config disable feedback_workflow
 semente config set language pt-BR
 semente config set engine bare        # engines: agno, adk, bare
 semente config set models.primary.id gemini-2.0-flash
@@ -59,10 +92,6 @@ semente config channel remove streamlit
 Valid keys for `set`: `name`, `language`, `domain_module`, `prompts_dir`,
 `engine`, `models.primary.provider`, `models.primary.id`,
 `models.fallback.provider`, `models.fallback.id`.
-
-> `features.feedback` (the fine-tuning capture loop — see
-> [Feedback & Fine-Tuning](feedback.md)) is not yet in the CLI's known
-> features; edit `semente.yaml` directly to configure it.
 
 ## `semente status`
 

@@ -1,4 +1,4 @@
-"""semente config: features, models, channels, validation, errors."""
+"""semente config: keys, channels, validation, errors. (Feature tests: test_cli_feature.py)"""
 
 import pytest
 
@@ -17,22 +17,6 @@ def app_dir(tmp_path, monkeypatch):
 
 def _manifest(app_dir):
     return Manifest.load(app_dir / "semente.yaml")
-
-
-def test_enable_disable_roundtrip(app_dir, capsys):
-    config_cmd.cmd_config_disable("tts")
-    assert _manifest(app_dir).features["tts"] is False
-    assert "disabled" in capsys.readouterr().out
-
-    config_cmd.cmd_config_enable("tts")
-    assert _manifest(app_dir).features["tts"] is True
-    assert "enabled" in capsys.readouterr().out
-
-
-def test_enable_unknown_feature_exits(app_dir):
-    with pytest.raises(SystemExit) as exc:
-        config_cmd.cmd_config_enable("weather")
-    assert "tts" in str(exc.value.code)  # the message lists valid features
 
 
 def test_set_simple_key(app_dir):
@@ -94,7 +78,7 @@ def test_missing_manifest_exits(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SEMENTE_MANIFEST", raising=False)
     with pytest.raises(SystemExit) as exc:
-        config_cmd.cmd_config_enable("tts")
+        config_cmd.cmd_config_set("language", "es")
     assert "semente init" in str(exc.value.code)
 
 
