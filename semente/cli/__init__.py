@@ -1,11 +1,12 @@
 """Semente CLI — create, configure, inspect, and run Semente apps.
 
 Usage:
-    semente init [dir]       # scaffold a new app (semente.yaml, domain/, ...)
-    semente feature ...      # list, add, enable, disable manifest features
-    semente config ...       # edit the manifest: keys, channels
-    semente status           # app overview: manifest, env health, doctor checks
-    semente launch <iface>   # run an interface (streamlit [--demo])
+    semente init [dir]                # scaffold a new app (semente.yaml, domain/, ...)
+    semente feature ls|actives|add    # list/add features; <name> --enable | --disable
+    semente channel ls|actives        # list channels; <name> --enable | --disable
+    semente provider ...              # primary/fallback models and API keys
+    semente status                    # app overview: manifest, env health, doctor checks
+    semente launch <iface>            # run an interface (streamlit [--demo])
 """
 
 from __future__ import annotations
@@ -13,17 +14,17 @@ from __future__ import annotations
 import argparse
 import sys
 
-from semente.cli.config_cmd import (
-    KNOWN_CHANNELS,
-    KNOWN_ENGINES,
-    KNOWN_PROVIDERS,
-    cmd_config_channel_add,
-    cmd_config_channel_remove,
-    cmd_config_set,
-)
-from semente.cli.feature_cmd import cmd_feature_add, cmd_feature_disable, cmd_feature_enable, cmd_feature_ls
+from semente.cli.channel_cmd import cmd_channel_actives, cmd_channel_ls, cmd_channel_toggle
+from semente.cli.feature_cmd import cmd_feature_actives, cmd_feature_add, cmd_feature_ls, cmd_feature_toggle
 from semente.cli.init_cmd import cmd_init
 from semente.cli.launcher import LAUNCHABLE_INTERFACES, CHANNEL_INTERFACES, cmd_launch
+from semente.cli.provider_cmd import (
+    KNOWN_PROVIDERS,
+    cmd_provider_fallback,
+    cmd_provider_key,
+    cmd_provider_ls,
+    cmd_provider_primary,
+)
 from semente.cli.status_cmd import cmd_status
 
 __all__ = ["main", "run_streamlit", "cmd_init", "cmd_status", "cmd_launch"]
@@ -50,19 +51,18 @@ def _print_group_help(parser: argparse.ArgumentParser, command: str) -> None:
     action.choices[command].print_help()
 
 
-def run_streamlit(demo: bool = False) -> None:
-    """Back-compat re-export (tests import this)."""
-    from semente.cli.launcher import run_streamlit as _run
-
-    _run(demo=demo)
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = HelpOnErrorParser(
         prog="semente",
-        description="Semente app toolkit — init, feature, config, status, launch",
+        description="Semente app toolkit — init, feature, channel, provider, status, launch",
     )
     sub = parser.add_subparsers(dest="command")
+
+    # Shared --enable/--disable flag style (feature and channel groups).
+    def _toggle_flags(group: argparse.ArgumentParser) -> None:
+        toggles = group.add_mutually_exclusive_group()
+        toggles.add_argument("--enable", action="store_true", help="Enable it in the manifest")
+        toggles.add_argument("--disable", action="store_true", help="Disable it in the manifest (code is left alone)")
 
     # --- init ---------------------------------------------------------------
     init = sub.add_parser("init", help="Scaffold a new Semente app")
@@ -76,39 +76,55 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--non-interactive", action="store_true", help="Never prompt (use defaults)")
 
     # --- feature ---------------------------------------------------------------
+    # No subparsers here: the first positional is either a reserved command
+    # (ls/actives/add) or a feature name to toggle with --enable/--disable —
+    # a free positional cannot coexist with an argparse subparsers action.
     feature = sub.add_parser(
         "feature",
         help="Manage manifest features (semente.yaml features)",
         description="List, add, enable, and disable the manifest's features (tts, summarization, interaction-assessment, guardrails).",
     )
-    feature_sub = feature.add_subparsers(dest="feature_command")
-
-    feature_sub.add_parser("ls", help="List all Semente features and their status")
-    feature_add = feature_sub.add_parser("add", help="Add a feature: scaffold an example (when one exists) and enable it")
-    feature_add.add_argument("feature", metavar="name")
-    feature_enable = feature_sub.add_parser("enable", help="Enable a feature in the manifest")
-    feature_enable.add_argument("feature", metavar="name")
-    feature_disable = feature_sub.add_parser("disable", help="Disable a feature in the manifest (code is left alone)")
-    feature_disable.add_argument("feature", metavar="name")
-
-    # --- config ---------------------------------------------------------------
-    config = sub.add_parser(
-        "config",
-        help="Edit the manifest (semente.yaml)",
-        description="Edit manifest keys and channels in place. Feature toggles live under 'semente feature'.",
+    feature.add_argument(
+        "command_or_name", nargs="?", metavar="{ls,actives,add,name}",
+        help="A feature name; or 'ls'/'actives', or 'add' (+ a feature name)",
     )
-    config_sub = config.add_subparsers(dest="config_command")
+    feature.add_argument("add_name", nargs="?", help=argparse.SUPPRESS)
+    _toggle_flags(feature)
 
-    set_parser = config_sub.add_parser("set", help="Set a manifest key")
-    set_parser.add_argument("key", help=f"Dotted key (e.g. name, language, engine, models.primary.id)")
-    set_parser.add_argument("value")
+    # --- channel ---------------------------------------------------------------
+    channel = sub.add_parser(
+        "channel",
+        help="Manage manifest channels (semente.yaml channels)",
+        description="List and enable/disable the channels the app runs on (streamlit, whatsapp).",
+    )
+    channel.add_argument(
+        "command_or_name", nargs="?", metavar="{ls,actives,name}",
+        help="A channel name; or 'ls'/'actives'",
+    )
+    _toggle_flags(channel)
 
-    channel = config_sub.add_parser("channel", help="Manage channels")
-    channel_sub = channel.add_subparsers(dest="channel_command")
-    channel_add = channel_sub.add_parser("add", help="Enable a channel")
-    channel_add.add_argument("name", choices=KNOWN_CHANNELS)
-    channel_remove = channel_sub.add_parser("remove", help="Disable a channel")
-    channel_remove.add_argument("name", choices=KNOWN_CHANNELS)
+    # --- provider ---------------------------------------------------------------
+    provider = sub.add_parser(
+        "provider",
+        help="Manage model providers, fallback, and API keys",
+        description="Set the primary/fallback model (provider + model id) in the manifest and the API keys in .env.",
+    )
+    provider_sub = provider.add_subparsers(dest="provider_command")
+    provider_sub.add_parser("ls", help="Show the effective model configuration and missing keys")
+
+    provider_primary = provider_sub.add_parser("primary", help="Set the primary model provider (and model id)")
+    provider_primary.add_argument("provider")
+    provider_primary.add_argument("--model", metavar="id", help="Model id (e.g. gemini-2.0-flash)")
+
+    provider_fallback = provider_sub.add_parser(
+        "fallback", help="Set the fallback model (or --disable to remove it)"
+    )
+    provider_fallback.add_argument("provider", nargs="?")
+    provider_fallback.add_argument("--model", metavar="id", help="Model id (e.g. gemma4:31b-cloud)")
+    provider_fallback.add_argument("--disable", action="store_true", help="Remove the fallback from the manifest")
+
+    provider_key = provider_sub.add_parser("key", help="Set a provider's API keys (written to .env, hidden input)")
+    provider_key.add_argument("provider")
 
     # --- status ---------------------------------------------------------------
     sub.add_parser("status", help="Show the app status (manifest, env, doctor)")
@@ -139,26 +155,49 @@ def main() -> None:
             )
         )
     elif args.command == "feature":
-        if args.feature_command == "ls":
+        if args.command_or_name == "ls":
             cmd_feature_ls()
-        elif args.feature_command == "add":
-            cmd_feature_add(args.feature)
-        elif args.feature_command == "enable":
-            cmd_feature_enable(args.feature)
-        elif args.feature_command == "disable":
-            cmd_feature_disable(args.feature)
+        elif args.command_or_name == "actives":
+            cmd_feature_actives()
+        elif args.command_or_name == "add":
+            if not args.add_name:
+                print("error: 'semente feature add' requires a feature name.", file=sys.stderr)
+                sys.exit(1)
+            cmd_feature_add(args.add_name)
+        elif args.command_or_name:
+            enable = True if args.enable else False if args.disable else None
+            cmd_feature_toggle(args.command_or_name, enable)
+        elif args.enable or args.disable:
+            print("error: --enable/--disable requires a feature name.", file=sys.stderr)
+            sys.exit(1)
         else:
             _print_group_help(parser, "feature")
             sys.exit(1)
-    elif args.command == "config":
-        if args.config_command == "set":
-            cmd_config_set(args.key, args.value)
-        elif args.config_command == "channel" and args.channel_command == "add":
-            cmd_config_channel_add(args.name)
-        elif args.config_command == "channel" and args.channel_command == "remove":
-            cmd_config_channel_remove(args.name)
+    elif args.command == "channel":
+        if args.command_or_name == "ls":
+            cmd_channel_ls()
+        elif args.command_or_name == "actives":
+            cmd_channel_actives()
+        elif args.command_or_name:
+            enable = True if args.enable else False if args.disable else None
+            cmd_channel_toggle(args.command_or_name, enable)
+        elif args.enable or args.disable:
+            print("error: --enable/--disable requires a channel name.", file=sys.stderr)
+            sys.exit(1)
         else:
-            _print_group_help(parser, "config")
+            _print_group_help(parser, "channel")
+            sys.exit(1)
+    elif args.command == "provider":
+        if args.provider_command == "ls":
+            cmd_provider_ls()
+        elif args.provider_command == "primary":
+            cmd_provider_primary(args.provider, model=args.model)
+        elif args.provider_command == "fallback":
+            cmd_provider_fallback(args.provider, model=args.model, disable=args.disable)
+        elif args.provider_command == "key":
+            cmd_provider_key(args.provider)
+        else:
+            _print_group_help(parser, "provider")
             sys.exit(1)
     elif args.command == "status":
         sys.exit(cmd_status())

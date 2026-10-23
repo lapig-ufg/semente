@@ -56,7 +56,7 @@ def cmd_init(
 
     manifest_path = project_dir / "semente.yaml"
     if manifest_path.exists() and not force:
-        print(f"'{manifest_path}' already exists — use 'semente config' to edit it, or --force to overwrite.")
+        print(f"'{manifest_path}' already exists — edit it with 'semente feature'/'semente channel'/'semente provider', or use --force to overwrite.")
         return 1
 
     created: list[str] = []

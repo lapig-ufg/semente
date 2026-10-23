@@ -118,13 +118,20 @@ def test_parser_wiring():
     assert args.force and args.non_interactive is False
 
     args = parser.parse_args(["feature", "add", "guardrails"])
-    assert args.feature_command == "add" and args.feature == "guardrails"
+    assert args.command_or_name == "add" and args.add_name == "guardrails"
 
     args = parser.parse_args(["feature", "ls"])
-    assert args.feature_command == "ls"
+    assert args.command_or_name == "ls"
 
-    args = parser.parse_args(["config", "channel", "add", "whatsapp"])
-    assert args.channel_command == "add" and args.name == "whatsapp"
+    args = parser.parse_args(["channel", "whatsapp", "--enable"])
+    assert args.command_or_name == "whatsapp" and args.enable and not args.disable
+
+    args = parser.parse_args(["provider", "primary", "google", "--model", "gemini-2.0-flash"])
+    assert args.provider_command == "primary" and args.provider == "google"
+    assert args.model == "gemini-2.0-flash"
+
+    args = parser.parse_args(["provider", "fallback", "--disable"])
+    assert args.provider_command == "fallback" and args.disable and args.provider is None
 
     args = parser.parse_args(["status"])
     assert args.command == "status"
@@ -148,7 +155,7 @@ def test_bad_argument_prints_command_help():
 
 
 def test_missing_required_arg_prints_help():
-    """`semente feature add` without a name prints the add-command help."""
+    """`semente launch` with an unknown interface prints the launch help."""
     import io
 
     from contextlib import redirect_stderr
@@ -157,10 +164,11 @@ def test_missing_required_arg_prints_help():
     stderr = io.StringIO()
     with redirect_stderr(stderr):
         with pytest.raises(SystemExit) as exc:
-            parser.parse_args(["feature", "add"])
+            parser.parse_args(["launch", "instagram"])
     assert exc.value.code == 2
     out = stderr.getvalue()
-    assert "usage: semente feature add" in out
+    assert "usage: semente launch" in out  # the failing command's help
+    assert "--demo" in out
 
 
 def _run_main(argv, capsys, monkeypatch):
@@ -180,13 +188,35 @@ def test_feature_without_subcommand_shows_feature_help(capsys, monkeypatch):
     assert "Scaffold a new Semente app" not in out  # not the top-level help
 
 
-def test_config_without_subcommand_shows_config_help(capsys, monkeypatch):
-    """`semente config` alone: the config group's help."""
-    code = _run_main(["semente", "config"], capsys, monkeypatch)
+def test_channel_without_subcommand_shows_channel_help(capsys, monkeypatch):
+    """`semente channel` alone: the channel group's help."""
+    code = _run_main(["semente", "channel"], capsys, monkeypatch)
     out = capsys.readouterr().out
     assert code == 1
-    assert "Edit manifest keys and channels in place" in out
-    assert "usage: semente config" in out
+    assert "List and enable/disable the channels" in out
+    assert "usage: semente channel" in out
+
+
+def test_provider_without_subcommand_shows_provider_help(capsys, monkeypatch):
+    """`semente provider` alone: the provider group's help."""
+    code = _run_main(["semente", "provider"], capsys, monkeypatch)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "Set the primary/fallback model" in out
+    assert "usage: semente provider" in out
+
+
+def test_toggle_without_name_exits_hinting(capsys, monkeypatch):
+    """`--enable/--disable` without a name exits with a pointing error."""
+    _run_main(["semente", "feature", "--enable"], capsys, monkeypatch)
+    assert "requires a feature name" in capsys.readouterr().err
+
+
+def test_add_without_name_exits_hinting(capsys, monkeypatch):
+    """`semente feature add` without a feature name exits pointing at usage."""
+    code = _run_main(["semente", "feature", "add"], capsys, monkeypatch)
+    assert "requires a feature name" in capsys.readouterr().err
+    assert code != 0
 
 
 def test_parser_rejects_legacy_streamlit():

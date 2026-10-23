@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from rich.console import Console
 from rich.table import Table
 
-from semente.cli.config_cmd import _load_or_exit
+from semente.cli.common import load_manifest_or_exit, toggle_hint
 from semente.manifest import FeedbackConfig, Manifest
 
 console = Console()
@@ -106,7 +106,7 @@ def _feature_status(manifest: Manifest, name: str) -> str:
 
 
 def cmd_feature_ls() -> None:
-    manifest, path = _load_or_exit()
+    manifest, path = load_manifest_or_exit()
     table = Table(show_header=True, box=None, title="Features", title_justify="left")
     table.add_column(style="bold cyan")
     table.add_column()
@@ -119,29 +119,39 @@ def cmd_feature_ls() -> None:
         hint = "scaffoldable" if feature.scaffold else "framework-internal"
         table.add_row(feature.name, label, hint + " — " + feature.description)
     console.print(table)
-    console.print(f"Manifest: {path} — toggle with 'semente feature enable/disable <name>'.")
+    console.print(f"Manifest: {path} — toggle with 'semente feature <name> --enable/--disable'.")
 
 
-def cmd_feature_enable(feature: str) -> None:
-    _validate(feature)
-    manifest, path = _load_or_exit()
-    _feature_set(manifest, feature, True)
+def cmd_feature_actives() -> None:
+    """One line per currently active feature (enabled or default-on)."""
+    manifest, path = load_manifest_or_exit()
+    active = [f.name for f in FEATURES.values() if _feature_status(manifest, f.name) != "disabled"]
+    console.print("[bold]Active features[/bold]: " + (", ".join(active) or "(none)"))
+    console.print(f"Manifest: {path}")
+
+
+def cmd_feature_toggle(name: str, enable: bool | None) -> None:
+    """--enable/--disable toggles the manifest; without a flag shows the status."""
+    feature_def = _validate(name)
+    manifest, path = load_manifest_or_exit()
+
+    if enable is None:
+        status = _feature_status(manifest, name)
+        label = {"default": "default (on)", "enabled": "enabled", "disabled": "disabled"}[status]
+        print(f"Feature '{name}' is {label}.")
+        print(toggle_hint("feature", name))
+        return
+
+    _feature_set(manifest, name, enable)
     manifest.save(path)
-    print(f"Feature '{feature}' enabled. (Manifest: {path})")
-
-
-def cmd_feature_disable(feature: str) -> None:
-    _validate(feature)
-    manifest, path = _load_or_exit()
-    _feature_set(manifest, feature, False)
-    manifest.save(path)
-    print(f"Feature '{feature}' disabled. Existing code is left in place — only the manifest toggles it. (Manifest: {path})")
+    verb = "enabled" if enable else "disabled"
+    print(f"Feature '{name}' {verb}. (Manifest: {path})")
 
 
 def cmd_feature_add(feature: str) -> None:
     """Enable the feature, scaffolding an example when one exists."""
     feature_def = _validate(feature)
-    manifest, path = _load_or_exit()
+    manifest, path = load_manifest_or_exit()
 
     if feature_def.scaffold:
         _scaffold_guardrails_example(path, manifest.name)

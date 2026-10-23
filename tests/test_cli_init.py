@@ -86,7 +86,7 @@ def test_init_refuses_existing_manifest(tmp_path, capsys):
     assert _scaffold(tmp_path) == 0
     code = _scaffold(tmp_path)
     assert code == 1
-    assert "semente config" in capsys.readouterr().out
+    assert "semente feature" in capsys.readouterr().out
 
 
 def test_init_keeps_existing_files(tmp_path):

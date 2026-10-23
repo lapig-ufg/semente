@@ -153,7 +153,7 @@ The `engine` field (or `SEMENTE_ENGINE` env var) swaps the agent engine — see
 | [Guardrails](docs/guide/guardrails.md) | Pluggable input safety (redact/block) |
 | [Domain API](docs/guide/domain-api.md) | The engine-free import surface |
 | [Manifest Reference](docs/guide/manifest.md) | Every `semente.yaml` option |
-| [CLI Reference](docs/guide/cli.md) | `init`, `config`, `status`, `launch` |
+| [CLI Reference](docs/guide/cli.md) | `init`, `feature`, `channel`, `provider`, `status`, `launch` |
 | [Feedback & Fine-Tuning](docs/guide/feedback.md) | DPO/SFT capture loop |
 | [Prompts & i18n](docs/guide/prompts.md) | YAML prompts + localization |
 | [Channels](docs/guide/channels.md) | WhatsApp + Streamlit |
