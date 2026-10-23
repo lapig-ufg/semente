@@ -13,7 +13,7 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
     _needs_onboarding      terms + profile gate (always)
     ├─ True:  _run_welcoming_agent
     └─ False: _summarize_conversation (summarization)
-              _process_feedback      (feedback_workflow; returns whether a
+              _process_feedback      (interaction_assessment; returns whether a
                                        remediation cycle is open: frustration
                                        detected and the user did not change
                                        the topic)
@@ -303,7 +303,7 @@ class Harness:
             needs_remediation = False
             if self.features.get("summarization", True):
                 self._summarize_conversation(session, user_text, session.session_state)
-            if self.features.get("feedback_workflow", True):
+            if self._interaction_assessment_enabled():
                 needs_remediation = self._process_feedback(session, user_text, session.session_state)
             agent_input = self._build_agent_input(
                 session, user_text, session.session_state, needs_remediation
@@ -719,6 +719,15 @@ class Harness:
         # tags).
         state["conversation_summary"] = summary_state.summary or ""
         
+    def _interaction_assessment_enabled(self) -> bool:
+        """The interaction_assessment gate: bool or {enable, window_size}."""
+        value = self.features.get("interaction_assessment", True)
+        if hasattr(value, "enable"):
+            return value.enable
+        if isinstance(value, dict):
+            return value.get("enable", True)
+        return bool(value)
+
     def _process_feedback(
         self, session: Session, user_text: str, state: dict
     ) -> bool:
@@ -1182,7 +1191,7 @@ class Harness:
                 )
             )
 
-            feedback_config = self.features.get("feedback", {})
+            feedback_config = self.features.get("interaction_assessment", {})
             is_enabled = False
             window_size = 5
 

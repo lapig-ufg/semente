@@ -46,14 +46,37 @@ class Manifest:
                 features_data["guardrails"] = features_data.pop("pii_guardrail")
             else:
                 features_data = {k: v for k, v in features_data.items() if k != "pii_guardrail"}
-        feedback_val = features_data.get("feedback", True)
-        
-        if isinstance(feedback_val, bool):
-            features_data["feedback"] = FeedbackConfig(enable=feedback_val, window_size=5)
-        elif isinstance(feedback_val, dict):
-            features_data["feedback"] = FeedbackConfig.model_validate(feedback_val)
-            
-        data["features"] = features_data
+        # Legacy pair (normalized here, like the pii_guardrail alias above):
+        # `feedback_workflow` (the per-turn loop gate) and `feedback` (its
+        # DPO/SFT capture, enable + window_size) were one feature;
+        # `interaction_assessment` subsumes both. An explicit new key wins
+        # entirely; with only legacy keys, the `feedback` dict decides the
+        # structure/window and any `false` gate disables the feature.
+        ia_val = features_data.pop("interaction_assessment", None)
+        feedback_val = features_data.pop("feedback", None)
+        if feedback_val is not None:
+            log_warning("features.feedback is deprecated; rename it to features.interaction_assessment")
+        legacy_loop = features_data.pop("feedback_workflow", None)
+        if legacy_loop is not None:
+            log_warning("features.feedback_workflow is deprecated; rename it to features.interaction_assessment")
+
+        sources = [ia_val] if ia_val is not None else [v for v in (feedback_val, legacy_loop) if v is not None]
+        gates: list[bool] = []
+        window_size: int | None = None
+        for value in sources:
+            if isinstance(value, dict):
+                gates.append(bool(value.get("enable", True)))
+                if value.get("window_size") is not None:
+                    window_size = value["window_size"]
+            elif isinstance(value, FeedbackConfig):
+                gates.append(value.enable)
+                window_size = value.window_size
+            else:  # bool
+                gates.append(bool(value))
+        features_data["interaction_assessment"] = FeedbackConfig(
+            enable=all(gates),
+            window_size=window_size if window_size is not None else 5,
+        )
         return cls(
             name=data.get("name", "semente-app"),
             language=data.get("language", "en"),
@@ -79,8 +102,10 @@ class Manifest:
         data["channels"] = list(self.channels)
         if self.features:
             data["features"] = dict(self.features)
-            if "feedback" in data["features"] and isinstance(data["features"]["feedback"], FeedbackConfig):
-                data["features"]["feedback"] = data["features"]["feedback"].model_dump()
+            if "interaction_assessment" in data["features"] and isinstance(
+                data["features"]["interaction_assessment"], FeedbackConfig
+            ):
+                data["features"]["interaction_assessment"] = data["features"]["interaction_assessment"].model_dump()
         if self.models:
             data["models"] = {k: dict(v) for k, v in self.models.items()}
         return data

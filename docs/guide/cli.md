@@ -60,10 +60,9 @@ Supported features:
 | Feature | Meaning |
 |---|---|
 | `tts` | TTS tool on the welcoming agent (audio replies) |
-| `feedback_workflow` | Satisfaction/persona loop, remediation cycles |
 | `summarization` | Rolling conversation summary (every 6 turns) |
+| `interaction_assessment` | Satisfaction/persona loop, remediation cycles, DPO/SFT capture (`{enable, window_size}`) |
 | `guardrails` | Pluggable input guardrails declared in `DomainSpec` |
-| `feedback` | DPO/SFT trajectory capture (`enable` + `window_size`) |
 
 `add` writes an app-side example when one exists — today only `guardrails`
 (re-checking your `domain/` for a `guardrails_example.py` it creates,

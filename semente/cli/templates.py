@@ -18,7 +18,7 @@ prompts_dir: domain/prompts
 channels: [streamlit]
 features:
   tts: true
-  feedback_workflow: true
+  interaction_assessment: {{enable: true, window_size: 5}}
   summarization: true
   guardrails: true
 models:

@@ -1,37 +1,41 @@
 # Feedback & Fine-Tuning
 
-The `feedback` feature turns ordinary conversations into training data. It
-runs on every turn (when enabled), evaluates user satisfaction, persists
-results to the database, and captures DPO and SFT trajectories — all
-domain-neutral and driven by the harness, not by your tools.
+The `interaction_assessment` feature turns ordinary conversations into
+training data. It runs on every turn (when enabled), evaluates user
+satisfaction, persists results to the database, and captures DPO and SFT
+trajectories — all domain-neutral and driven by the harness, not by your
+tools.
 
-There are **two** toggles, one for the behavior, one for the data capture:
+One toggle covers both the behavior and the data capture:
 
 ```yaml
 # semente.yaml
 features:
-  feedback_workflow: true          # the whole loop below (default true)
-  feedback:
-    enable: true                   # SFT trajectory capture (default true)
-    window_size: 5                 # rolling trajectory window (default 5, min 1)
+  interaction_assessment:
+    enable: true                   # the whole loop below (default true)
+    window_size: 5                 # rolling SFT trajectory window (default 5, min 1)
 ```
 
-`feedback` also accepts a plain boolean (`feedback: false`), which expands to
-`{enable: <bool>, window_size: 5}`. Note: the CLI does not yet list either in
-`semente config enable/disable` — edit the manifest directly.
+It also accepts a plain boolean (`interaction_assessment: false`), which
+expands to `{enable: <bool>, window_size: 5}`.
+
+> **Legacy keys:** the old `feedback_workflow` and `feedback` toggles still
+> load (merged into `interaction_assessment`, with deprecation warnings) —
+> rename them in your manifest. With only legacy keys, `feedback: false`
+> disables the feature like before.
 
 ## The satisfaction agent
 
-When `feedback_workflow` is on, every non-onboarding turn the **satisfaction
-evaluation agent** reads the last exchange plus the current message and
-returns a structured `Effectiveness`
+When `interaction_assessment` is on, every non-onboarding turn the
+**satisfaction evaluation agent** reads the last exchange plus the current
+message and returns a structured `Effectiveness`
 (`semente/schemas/interaction_assessment.py`):
 
 - `level` — satisfaction 1–5 (≤ 2 unsatisfied, ≥ 4 satisfied)
 - `changed_topic` — whether the user moved off the failed answer
 
-This is an extra LLM call per turn; set `feedback_workflow: false` to skip
-it entirely. Disabling it also disables the following persistence steps.
+This is an extra LLM call per turn; set `interaction_assessment: false` to
+skip it entirely. Disabling it also disables the following persistence steps.
 
 ## The DPO two-phase loop
 
@@ -53,7 +57,7 @@ Rules:
 
 ## The SFT branch
 
-When `feedback.enable` is on (and `feedback_workflow` gates the turn at all),
+When `interaction_assessment.enable` is on,
 clean agent runs append their trajectory to
 `session_state["recent_agent_runs"]`. Onboarding and remediation-cycle turns
 are **never** recorded — only clean, working exchanges, capped at the
@@ -84,12 +88,12 @@ class DPODatasetRow(BaseModel):
 ## Where this runs in the pipeline
 
 ```
-├── _summarize_conversation        # every 6 turns (feedback_workflow off still runs this)
-├── _process_feedback              # gated by feedback_workflow
+├── _summarize_conversation        # every 6 turns (interaction_assessment off still runs this)
+├── _process_feedback              # gated by interaction_assessment
 │   ├── _evaluate_satisfaction     # structured Effectiveness
 │   ├── _persist_feedback          # DPO two-phase / SFT windows
 │   └── _manage_persona            # persona agent (PersonaUpdate)
-├── _run_single_agent              # records trajectory only when feedback.enable
+├── _run_single_agent              # records trajectory only when interaction_assessment.enable
 │   └── _generate_apology          # overrides the output when a cycle is open
 ```
 

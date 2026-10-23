@@ -130,10 +130,10 @@ engine: agno                 # agno (default) | adk | bare
 channels: [streamlit]        # streamlit and/or whatsapp
 features:                    # booleans default to true
   tts: true                  # TTS tool on the welcoming agent
-  feedback_workflow: true    # satisfaction/persona feedback loop
+  interaction_assessment: true  # satisfaction/persona loop + remediation; or
+                             # {enable: true, window_size: 5} (DPO/SFT capture)
   summarization: true        # rolling conversation summary
   guardrails: true           # pluggable input guardrails (see Guardrails doc)
-  feedback: { enable: true, window_size: 5 }  # DPO/SFT capture (see Feedback & Fine-Tuning)
 models:                      # optional override of env-var model config
   primary: { provider: google, id: gemini-3.5-flash-lite }
   fallback: { provider: ollama, id: gemma4:31b-cloud }

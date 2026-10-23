@@ -42,7 +42,7 @@ channel (Streamlit, WhatsApp) calls the same `get_harness().run(...)`.
               ▼                      ▼
  ┌─────────────────────────────────────────────────────┐
  │  summarization (every 6 turns)                      │
- │  → feedback loop (satisfaction → persistence →      │
+ │  → interaction assessment (satisfaction → persistence → │
  │    persona)                                         │
  │  → remediation cycle open? yes: retry + apology     │
  │                            no:  main agent + tools  │
@@ -73,13 +73,14 @@ Stages in order:
    runs the staged onboarding flow (terms → persona), one stage per turn.
 4. **Summarization** (feature `summarization`) — a rolling summary refreshed
    every 6 turns (`SUMMARY_THRESHOLD`).
-5. **Feedback loop** (feature `feedback_workflow`) — a satisfaction agent
-   evaluates the turn (`Effectiveness`: level 1–5 + `changed_topic`),
-   persistence routes to the DPO/SFT branches, and a persona agent
-   conditionally updates the user profile. A frustration *without* a topic
-   change opens a **remediation cycle**, which overrides the main agent's
-   output with an apology and injects a retry instruction. The separate
-   `feedback` feature only gates SFT trajectory capture — see
+5. **Interaction assessment** (feature `interaction_assessment`) — the
+   per-turn loop: a satisfaction agent evaluates the turn
+   (`Effectiveness`: level 1–5 + `changed_topic`), persistence routes
+   to the DPO/SFT branches (the `window_size` nested option gates the SFT
+   trajectory window), and a persona agent conditionally updates the user
+   profile. A frustration *without* a topic change opens a **remediation
+   cycle**, which overrides the main agent's output with an apology and
+   injects a retry instruction — see
    [Feedback & Fine-Tuning](/guide/feedback).
 6. **Finalize output** — TTS synthesis (feature `tts`, Gemini TTS via
    `services/audio/tts.py`), then persistence: session state, run history, and

@@ -12,10 +12,9 @@ engine: agno                 # agno (default) | adk | bare
 channels: [streamlit]        # streamlit and/or whatsapp
 features:                    # booleans default to true
   tts: true                  # attach TTS tool to the welcoming agent
-  feedback_workflow: true    # satisfaction/persona feedback loop
+  interaction_assessment: true  # satisfaction/persona loop + DPO/SFT capture, or {enable: true, window_size: 5}
   summarization: true        # rolling conversation summary
   guardrails: true           # pluggable input guardrails (DomainSpec.guardrails)
-  feedback: { enable: true, window_size: 5 }  # or a plain boolean — see Feedback & Fine-Tuning
 models:                      # optional override of env-var model config
   primary: { provider: google, id: gemini-3.5-flash-lite }
   fallback: { provider: ollama, id: gemma4:31b-cloud }
@@ -48,14 +47,18 @@ export SEMENTE_ENGINE=adk    # applies when the manifest has no engine field
 | Toggle | When off |
 |---|---|
 | `tts` | The welcoming agent is built without the TTS tool. |
-| `feedback_workflow` | The whole feedback loop — satisfaction agent, DPO/SFT persistence, persona updates, and remediation — is omitted from the run. |
-| `feedback` | Only the SFT trajectory capture (the `recent_agent_runs` window) stops; satisfaction/behavior still run. Boolean or `{enable, window_size}` — see [Feedback & Fine-Tuning](feedback.md). |
+| `interaction_assessment` | The whole loop — satisfaction agent, DPO/SFT persistence and capture, persona updates, and remediation — is omitted from the run. Boolean or `{enable, window_size}` — see [Feedback & Fine-Tuning](feedback.md). |
 | `summarization` | The rolling conversation summary stage is omitted. |
 | `guardrails` | The app's guardrail chain (`DomainSpec.guardrails`) is skipped everywhere — see [Guardrails](guardrails.md). |
 
 Absent keys default to enabled. Turn the whole subsystem off with
-`feedback_workflow: false` (it also saves an LLM call per turn).
+`interaction_assessment: false` (it also saves an LLM call per turn).
 
+> **Legacy aliases:** the old `features.feedback_workflow` and
+> `features.feedback` keys still load (merged into
+> `interaction_assessment`, with deprecation warnings) — rename them in
+> your manifest.
+>
 > **Legacy alias:** the old `features.pii_guardrail` key still loads
 > (normalized to `guardrails`, with a deprecation warning) — rename it in
 > your manifest.

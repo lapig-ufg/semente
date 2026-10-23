@@ -26,10 +26,9 @@ def test_catalog_is_the_single_source():
     assert KNOWN_FEATURES == list(FEATURES)
     assert [f.name for f in FEATURES.values()] == [
         "tts",
-        "feedback_workflow",
         "summarization",
+        "interaction_assessment",
         "guardrails",
-        "feedback",
     ]
     assert {f.name for f in FEATURES.values() if f.scaffold} == {"guardrails"}
 
@@ -51,12 +50,12 @@ def test_disable_leaves_code_alone(app_dir, capsys):
     assert sorted(p.name for p in app_dir.rglob("*")) == before
 
 
-def test_enable_feedback_preserves_window_size(app_dir):
+def test_enable_interaction_assessment_preserves_window_size(app_dir):
     manifest, path = feature_cmd._load_or_exit()
-    manifest.features = {"feedback": FeedbackConfig(enable=False, window_size=9)}
+    manifest.features = {"interaction_assessment": FeedbackConfig(enable=False, window_size=9)}
     manifest.save(path)
-    feature_cmd.cmd_feature_enable("feedback")
-    saved = _manifest(app_dir).features["feedback"]
+    feature_cmd.cmd_feature_enable("interaction_assessment")
+    saved = _manifest(app_dir).features["interaction_assessment"]
     assert isinstance(saved, FeedbackConfig)
     assert saved.enable is True
     assert saved.window_size == 9
@@ -120,11 +119,11 @@ def test_missing_manifest_exits(tmp_path, monkeypatch):
     assert "semente init" in str(exc.value.code)
 
 
-def test_status_respects_feedback_config():
-    manifest = Manifest(name="x", features={"feedback": FeedbackConfig(enable=False)})
-    assert _feature_status(manifest, "feedback") == "disabled"
-    manifest.features["feedback"] = FeedbackConfig(enable=True, window_size=3)
-    assert _feature_status(manifest, "feedback") == "enabled"
+def test_status_respects_interaction_assessment_config():
+    manifest = Manifest(name="x", features={"interaction_assessment": FeedbackConfig(enable=False)})
+    assert _feature_status(manifest, "interaction_assessment") == "disabled"
+    manifest.features["interaction_assessment"] = FeedbackConfig(enable=True, window_size=3)
+    assert _feature_status(manifest, "interaction_assessment") == "enabled"
     assert _feature_status(manifest, "tts") == "default"
 
 
