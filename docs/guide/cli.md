@@ -4,6 +4,11 @@ The `semente` command manages the full app lifecycle — create, configure,
 inspect, and run. All commands work from the app directory (where
 `semente.yaml` lives).
 
+Help behavior: running a command group without its subcommand (`semente
+feature`, `semente config`) prints that group's help; any invalid argument or
+missing value prints the help of the command where the error happened —
+equivalent to typing `-h` there.
+
 ```bash
 semente init          # scaffold a new app
 semente feature       # manage features (list, add, enable, disable)

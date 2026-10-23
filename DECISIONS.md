@@ -32,3 +32,8 @@
    `feedback`, and the snake_case `interaction_assessment` intermediate)
    still load, normalized to the kebab-case key. Python identifiers and
    schema/property names stay snake_case (`schemas/interaction_assessment.py`).
+5. **Help on errors.** Running a group command without its subcommand
+   (`semente feature`, `semente config`) prints that group's help + exit 1 —
+   not the top-level help. Bad arguments/missing values print the help of the
+   command where the error happened, like `-h` (custom `HelpOnErrorParser`
+   overriding `argparse`'s `error()`; exit code stays 2).

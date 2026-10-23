@@ -29,6 +29,27 @@ from semente.cli.status_cmd import cmd_status
 __all__ = ["main", "run_streamlit", "cmd_init", "cmd_status", "cmd_launch"]
 
 
+class HelpOnErrorParser(argparse.ArgumentParser):
+    """argparse parser that prints the command's own help (like ``-h``) on errors.
+
+    Used for the whole CLI: ``add_subparsers`` passes its own class down to
+    every (nested) subparser, so a bad argument or missing value prints the
+    help of the command where the error happened.
+    """
+
+    def error(self, message: str) -> None:
+        self.print_help(sys.stderr)
+        self.exit(2, f"{self.prog}: error: {message}\n")
+
+
+def _print_group_help(parser: argparse.ArgumentParser, command: str) -> None:
+    """Print the help of a command group (e.g. ``semente feature`` alone)."""
+    from argparse import _SubParsersAction
+
+    action = next(a for a in parser._actions if isinstance(a, _SubParsersAction))
+    action.choices[command].print_help()
+
+
 def run_streamlit(demo: bool = False) -> None:
     """Back-compat re-export (tests import this)."""
     from semente.cli.launcher import run_streamlit as _run
@@ -37,7 +58,7 @@ def run_streamlit(demo: bool = False) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = HelpOnErrorParser(
         prog="semente",
         description="Semente app toolkit — init, feature, config, status, launch",
     )
@@ -55,7 +76,11 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--non-interactive", action="store_true", help="Never prompt (use defaults)")
 
     # --- feature ---------------------------------------------------------------
-    feature = sub.add_parser("feature", help="Manage manifest features (semente.yaml features)")
+    feature = sub.add_parser(
+        "feature",
+        help="Manage manifest features (semente.yaml features)",
+        description="List, add, enable, and disable the manifest's features (tts, summarization, interaction-assessment, guardrails).",
+    )
     feature_sub = feature.add_subparsers(dest="feature_command")
 
     feature_sub.add_parser("ls", help="List all Semente features and their status")
@@ -67,7 +92,11 @@ def build_parser() -> argparse.ArgumentParser:
     feature_disable.add_argument("feature", metavar="name")
 
     # --- config ---------------------------------------------------------------
-    config = sub.add_parser("config", help="Edit the manifest (semente.yaml)")
+    config = sub.add_parser(
+        "config",
+        help="Edit the manifest (semente.yaml)",
+        description="Edit manifest keys and channels in place. Feature toggles live under 'semente feature'.",
+    )
     config_sub = config.add_subparsers(dest="config_command")
 
     set_parser = config_sub.add_parser("set", help="Set a manifest key")
@@ -119,7 +148,7 @@ def main() -> None:
         elif args.feature_command == "disable":
             cmd_feature_disable(args.feature)
         else:
-            parser.print_help()
+            _print_group_help(parser, "feature")
             sys.exit(1)
     elif args.command == "config":
         if args.config_command == "set":
@@ -129,7 +158,7 @@ def main() -> None:
         elif args.config_command == "channel" and args.channel_command == "remove":
             cmd_config_channel_remove(args.name)
         else:
-            parser.print_help()
+            _print_group_help(parser, "config")
             sys.exit(1)
     elif args.command == "status":
         sys.exit(cmd_status())

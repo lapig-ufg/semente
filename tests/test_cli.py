@@ -130,6 +130,65 @@ def test_parser_wiring():
     assert args.command == "status"
 
 
+def test_bad_argument_prints_command_help():
+    """A wrong argument shows the command's help (like `-h`), not bare usage."""
+    import io
+
+    from contextlib import redirect_stderr
+
+    parser = cli.build_parser()
+    stderr = io.StringIO()
+    with redirect_stderr(stderr):
+        with pytest.raises(SystemExit) as exc:
+            parser.parse_args(["launch", "instagram"])
+    assert exc.value.code == 2
+    out = stderr.getvalue()
+    assert "usage: semente launch" in out  # the failing command's help
+    assert "--demo" in out
+
+
+def test_missing_required_arg_prints_help():
+    """`semente feature add` without a name prints the add-command help."""
+    import io
+
+    from contextlib import redirect_stderr
+
+    parser = cli.build_parser()
+    stderr = io.StringIO()
+    with redirect_stderr(stderr):
+        with pytest.raises(SystemExit) as exc:
+            parser.parse_args(["feature", "add"])
+    assert exc.value.code == 2
+    out = stderr.getvalue()
+    assert "usage: semente feature add" in out
+
+
+def _run_main(argv, capsys, monkeypatch):
+    monkeypatch.setattr("sys.argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    return exc.value.code
+
+
+def test_feature_without_subcommand_shows_feature_help(capsys, monkeypatch):
+    """`semente feature` alone: the feature group's help, not the top-level one."""
+    code = _run_main(["semente", "feature"], capsys, monkeypatch)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "List, add, enable, and disable the manifest's features" in out
+    assert "usage: semente feature" in out
+    assert "Scaffold a new Semente app" not in out  # not the top-level help
+
+
+def test_config_without_subcommand_shows_config_help(capsys, monkeypatch):
+    """`semente config` alone: the config group's help."""
+    code = _run_main(["semente", "config"], capsys, monkeypatch)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "Edit manifest keys and channels in place" in out
+    assert "usage: semente config" in out
+
+
 def test_parser_rejects_legacy_streamlit():
     """The old 'semente streamlit' command is gone."""
     parser = cli.build_parser()
