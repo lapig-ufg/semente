@@ -8,7 +8,7 @@ from semente.manifest import FeedbackConfig, Manifest
 def test_save_load_roundtrip(tmp_path):
     """What save() writes, load() reads back unchanged.
 
-    ``load()`` injects the default ``interaction_assessment`` feature as a
+    ``load()`` injects the default ``interaction-assessment`` feature as a
     ``FeedbackConfig`` (with ``enable``/``window_size``) — the roundtrip is
     stable once compared through ``to_dict``.
     """
@@ -32,33 +32,35 @@ def test_save_load_roundtrip(tmp_path):
     assert loaded.features["tts"] is True
     assert loaded.features["summarization"] is False
 
-    assert loaded.features["interaction_assessment"] == FeedbackConfig(enable=True, window_size=5)
+    assert loaded.features["interaction-assessment"] == FeedbackConfig(enable=True, window_size=5)
     assert loaded.models == {"primary": {"provider": "google", "id": "m"}}
 
 
 def test_load_keeps_explicit_interaction_assessment(tmp_path):
-    """An explicit nested interaction_assessment survives the roundtrip."""
+    """An explicit nested interaction-assessment key survives the roundtrip."""
     path = tmp_path / "semente.yaml"
     manifest = Manifest(
         name="ia",
-        features={"interaction_assessment": {"enable": True, "window_size": 10}},
+        features={"interaction-assessment": {"enable": True, "window_size": 10}},
     )
     manifest.save(path)
     loaded = Manifest.load(path)
-    assert loaded.features["interaction_assessment"] == FeedbackConfig(enable=True, window_size=10)
+    assert loaded.features["interaction-assessment"] == FeedbackConfig(enable=True, window_size=10)
 
 
 def test_load_normalizes_legacy_feedback_keys(tmp_path):
-    """Legacy `feedback_workflow` and `feedback` merge into interaction_assessment.
+    """Legacy keys merge into `interaction-assessment` (kebab-case convention).
 
-    Precedence: explicit `interaction_assessment` > `feedback` (dict) >
-    `feedback_workflow` (bool). Either legacy disabled gate disables the
-    feature; only `feedback` carries `window_size`.
+    Legacy keys: `feedback_workflow`, `feedback`, and the branch-intermediate
+    `interaction_assessment` snake_case spelling. Precedence: explicit
+    kebab-case key > `feedback` (dict) > `feedback_workflow` (bool). Any
+    legacy disabled gate disables the feature; only `feedback`/explicit keys
+    carry `window_size`.
     """
     # feedback: bool -> config default window_size
     path = tmp_path / "a.yaml"
     path.write_text("name: a\nfeatures:\n  feedback: false\n", encoding="utf-8")
-    assert Manifest.load(path).features["interaction_assessment"] == FeedbackConfig(enable=False)
+    assert Manifest.load(path).features["interaction-assessment"] == FeedbackConfig(enable=False)
 
     # feedback: dict carries the window_size; feedback_workflow: true is subsumed
     path = tmp_path / "b.yaml"
@@ -68,7 +70,7 @@ def test_load_normalizes_legacy_feedback_keys(tmp_path):
         "  feedback:\n    enable: true\n    window_size: 10\n",
         encoding="utf-8",
     )
-    assert Manifest.load(path).features["interaction_assessment"] == FeedbackConfig(enable=True, window_size=10)
+    assert Manifest.load(path).features["interaction-assessment"] == FeedbackConfig(enable=True, window_size=10)
 
     # either legacy disabled gate wins over the other's enable
     path = tmp_path / "c.yaml"
@@ -78,19 +80,24 @@ def test_load_normalizes_legacy_feedback_keys(tmp_path):
         "  feedback:\n    enable: true\n",
         encoding="utf-8",
     )
-    assert Manifest.load(path).features["interaction_assessment"] == FeedbackConfig(enable=False)
+    assert Manifest.load(path).features["interaction-assessment"] == FeedbackConfig(enable=False)
 
     # an explicit new key wins over the legacy ones entirely
     path = tmp_path / "d.yaml"
     path.write_text(
         "name: d\nfeatures:\n"
-        "  interaction_assessment: true\n"
+        "  interaction-assessment: true\n"
         "  feedback_workflow: false\n",
         encoding="utf-8",
     )
-    assert Manifest.load(path).features["interaction_assessment"] == FeedbackConfig(enable=True, window_size=5)
+    assert Manifest.load(path).features["interaction-assessment"] == FeedbackConfig(enable=True, window_size=5)
     loaded_keys = set(Manifest.load(path).features)
     assert "feedback_workflow" not in loaded_keys and "feedback" not in loaded_keys
+
+    # the snake_case intermediate spelling also normalizes (with a warning)
+    path = tmp_path / "e.yaml"
+    path.write_text("name: e\nfeatures:\n  interaction_assessment: true\n", encoding="utf-8")
+    assert Manifest.load(path).features["interaction-assessment"] == FeedbackConfig(enable=True, window_size=5)
 
 
 def test_save_stable_key_order(tmp_path):

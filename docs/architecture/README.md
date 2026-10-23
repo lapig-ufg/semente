@@ -73,7 +73,7 @@ Stages in order:
    runs the staged onboarding flow (terms → persona), one stage per turn.
 4. **Summarization** (feature `summarization`) — a rolling summary refreshed
    every 6 turns (`SUMMARY_THRESHOLD`).
-5. **Interaction assessment** (feature `interaction_assessment`) — the
+5. **Interaction assessment** (feature `interaction-assessment`) — the
    per-turn loop: a satisfaction agent evaluates the turn
    (`Effectiveness`: level 1–5 + `changed_topic`), persistence routes
    to the DPO/SFT branches (the `window_size` nested option gates the SFT

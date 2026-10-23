@@ -35,7 +35,7 @@ FEATURES: dict[str, Feature] = {
     for feature in (
         Feature("tts", "TTS tool on the welcoming agent (audio replies)"),
         Feature("summarization", "Rolling conversation summary (every 6 turns)"),
-        Feature("interaction_assessment", "Satisfaction/persona loop, remediation cycles, DPO/SFT capture (enable + window_size)"),
+        Feature("interaction-assessment", "Satisfaction/persona loop, remediation cycles, DPO/SFT capture (enable + window_size)"),
         Feature("guardrails", "Pluggable input guardrails declared in DomainSpec", scaffold=True),
     )
 }
@@ -82,12 +82,12 @@ def _validate(name: str) -> Feature:
 
 def _feature_set(manifest: Manifest, name: str, enabled: bool) -> None:
     """Enable/disable ``features.<name>``, keeping any nested config."""
-    if name == "interaction_assessment":
-        cfg = manifest.features.get("interaction_assessment")
+    if name == "interaction-assessment":
+        cfg = manifest.features.get("interaction-assessment")
         base = cfg if isinstance(cfg, FeedbackConfig) else FeedbackConfig()
         manifest.features = {
             **manifest.features,
-            "interaction_assessment": base.model_copy(update={"enable": enabled}),
+            "interaction-assessment": base.model_copy(update={"enable": enabled}),
         }
         return
     manifest.features = {**manifest.features, name: enabled}

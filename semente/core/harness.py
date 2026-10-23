@@ -721,7 +721,7 @@ class Harness:
         
     def _interaction_assessment_enabled(self) -> bool:
         """The interaction_assessment gate: bool or {enable, window_size}."""
-        value = self.features.get("interaction_assessment", True)
+        value = self.features.get("interaction-assessment", True)
         if hasattr(value, "enable"):
             return value.enable
         if isinstance(value, dict):
@@ -1191,7 +1191,7 @@ class Harness:
                 )
             )
 
-            feedback_config = self.features.get("interaction_assessment", {})
+            feedback_config = self.features.get("interaction-assessment", {})
             is_enabled = False
             window_size = 5
 

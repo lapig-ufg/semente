@@ -61,7 +61,7 @@ Supported features:
 |---|---|
 | `tts` | TTS tool on the welcoming agent (audio replies) |
 | `summarization` | Rolling conversation summary (every 6 turns) |
-| `interaction_assessment` | Satisfaction/persona loop, remediation cycles, DPO/SFT capture (`{enable, window_size}`) |
+| `interaction-assessment` | Satisfaction/persona loop, remediation cycles, DPO/SFT capture (`{enable, window_size}`) |
 | `guardrails` | Pluggable input guardrails declared in `DomainSpec` |
 
 `add` writes an app-side example when one exists — today only `guardrails`

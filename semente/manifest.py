@@ -46,19 +46,27 @@ class Manifest:
                 features_data["guardrails"] = features_data.pop("pii_guardrail")
             else:
                 features_data = {k: v for k, v in features_data.items() if k != "pii_guardrail"}
-        # Legacy pair (normalized here, like the pii_guardrail alias above):
-        # `feedback_workflow` (the per-turn loop gate) and `feedback` (its
-        # DPO/SFT capture, enable + window_size) were one feature;
-        # `interaction_assessment` subsumes both. An explicit new key wins
-        # entirely; with only legacy keys, the `feedback` dict decides the
-        # structure/window and any `false` gate disables the feature.
-        ia_val = features_data.pop("interaction_assessment", None)
+        # Legacy keys (normalized here, like the pii_guardrail alias above):
+        # `feedback_workflow` (the per-turn loop gate), `feedback` (its DPO/SFT
+        # capture, enable + window_size), and the branch-intermediate
+        # `interaction_assessment` snake_case spelling — `interaction-assessment`
+        # (kebab-case, the feature-naming convention) subsumes all of them.
+        # An explicit kebab-case key wins entirely; with only legacy keys, the
+        # `feedback` dict decides the structure/window and any `false` gate
+        # disables the feature.
+        ia_val = features_data.pop("interaction-assessment", None)
+        if ia_val is None:
+            ia_val = features_data.pop("interaction_assessment", None)
+            if ia_val is not None:
+                log_warning("features.interaction_assessment is deprecated; rename it to features.interaction-assessment")
+        else:
+            features_data.pop("interaction_assessment", None)
         feedback_val = features_data.pop("feedback", None)
         if feedback_val is not None:
-            log_warning("features.feedback is deprecated; rename it to features.interaction_assessment")
+            log_warning("features.feedback is deprecated; rename it to features.interaction-assessment")
         legacy_loop = features_data.pop("feedback_workflow", None)
         if legacy_loop is not None:
-            log_warning("features.feedback_workflow is deprecated; rename it to features.interaction_assessment")
+            log_warning("features.feedback_workflow is deprecated; rename it to features.interaction-assessment")
 
         sources = [ia_val] if ia_val is not None else [v for v in (feedback_val, legacy_loop) if v is not None]
         gates: list[bool] = []
@@ -73,7 +81,7 @@ class Manifest:
                 window_size = value.window_size
             else:  # bool
                 gates.append(bool(value))
-        features_data["interaction_assessment"] = FeedbackConfig(
+        features_data["interaction-assessment"] = FeedbackConfig(
             enable=all(gates),
             window_size=window_size if window_size is not None else 5,
         )
@@ -102,10 +110,10 @@ class Manifest:
         data["channels"] = list(self.channels)
         if self.features:
             data["features"] = dict(self.features)
-            if "interaction_assessment" in data["features"] and isinstance(
-                data["features"]["interaction_assessment"], FeedbackConfig
+            if "interaction-assessment" in data["features"] and isinstance(
+                data["features"]["interaction-assessment"], FeedbackConfig
             ):
-                data["features"]["interaction_assessment"] = data["features"]["interaction_assessment"].model_dump()
+                data["features"]["interaction-assessment"] = data["features"]["interaction-assessment"].model_dump()
         if self.models:
             data["models"] = {k: dict(v) for k, v in self.models.items()}
         return data

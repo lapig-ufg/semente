@@ -9,15 +9,15 @@ from semente.schemas.fine_tuning import SFTDatasetRow, DPODatasetRow
 def test_manifest_interaction_assessment_config(tmp_path):
     manifest_file = tmp_path / "semente.yaml"
 
-    manifest_file.write_text("name: test-app\nfeatures:\n  interaction_assessment: true", encoding="utf-8")
+    manifest_file.write_text("name: test-app\nfeatures:\n  interaction-assessment: true", encoding="utf-8")
     m1 = Manifest.load(manifest_file)
-    assert m1.features["interaction_assessment"].enable is True
-    assert m1.features["interaction_assessment"].window_size == 5
+    assert m1.features["interaction-assessment"].enable is True
+    assert m1.features["interaction-assessment"].window_size == 5
 
-    manifest_file.write_text("name: test-app\nfeatures:\n  interaction_assessment:\n    enable: true\n    window_size: 10", encoding="utf-8")
+    manifest_file.write_text("name: test-app\nfeatures:\n  interaction-assessment:\n    enable: true\n    window_size: 10", encoding="utf-8")
     m2 = Manifest.load(manifest_file)
-    assert m2.features["interaction_assessment"].enable is True
-    assert m2.features["interaction_assessment"].window_size == 10
+    assert m2.features["interaction-assessment"].enable is True
+    assert m2.features["interaction-assessment"].window_size == 10
 
 
 def test_json_pii_sanitizer():

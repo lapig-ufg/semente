@@ -26,3 +26,9 @@
    aware). Legacy manifest keys still load, merged into the new key with a
    deprecation warning (same pattern as `pii_guardrail` → `guardrails`);
    an explicit `interaction_assessment` key wins entirely.
+4. **Feature names follow kebab-case** (all lowercase, words separated by
+   `-`): the merged feature is spelled `interaction-assessment` in the
+   manifest and CLI catalog. Legacy spellings (`feedback_workflow`,
+   `feedback`, and the snake_case `interaction_assessment` intermediate)
+   still load, normalized to the kebab-case key. Python identifiers and
+   schema/property names stay snake_case (`schemas/interaction_assessment.py`).

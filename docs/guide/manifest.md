@@ -12,7 +12,7 @@ engine: agno                 # agno (default) | adk | bare
 channels: [streamlit]        # streamlit and/or whatsapp
 features:                    # booleans default to true
   tts: true                  # attach TTS tool to the welcoming agent
-  interaction_assessment: true  # satisfaction/persona loop + DPO/SFT capture, or {enable: true, window_size: 5}
+  interaction-assessment: true  # satisfaction/persona loop + DPO/SFT capture, or {enable: true, window_size: 5}
   summarization: true        # rolling conversation summary
   guardrails: true           # pluggable input guardrails (DomainSpec.guardrails)
 models:                      # optional override of env-var model config
@@ -47,16 +47,16 @@ export SEMENTE_ENGINE=adk    # applies when the manifest has no engine field
 | Toggle | When off |
 |---|---|
 | `tts` | The welcoming agent is built without the TTS tool. |
-| `interaction_assessment` | The whole loop — satisfaction agent, DPO/SFT persistence and capture, persona updates, and remediation — is omitted from the run. Boolean or `{enable, window_size}` — see [Feedback & Fine-Tuning](feedback.md). |
+| `interaction-assessment` | The whole loop — satisfaction agent, DPO/SFT persistence and capture, persona updates, and remediation — is omitted from the run. Boolean or `{enable, window_size}` — see [Feedback & Fine-Tuning](feedback.md). |
 | `summarization` | The rolling conversation summary stage is omitted. |
 | `guardrails` | The app's guardrail chain (`DomainSpec.guardrails`) is skipped everywhere — see [Guardrails](guardrails.md). |
 
 Absent keys default to enabled. Turn the whole subsystem off with
-`interaction_assessment: false` (it also saves an LLM call per turn).
+`interaction-assessment: false` (it also saves an LLM call per turn).
 
 > **Legacy aliases:** the old `features.feedback_workflow` and
 > `features.feedback` keys still load (merged into
-> `interaction_assessment`, with deprecation warnings) — rename them in
+> `interaction-assessment`, with deprecation warnings) — rename them in
 > your manifest.
 >
 > **Legacy alias:** the old `features.pii_guardrail` key still loads

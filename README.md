@@ -130,7 +130,7 @@ engine: agno                 # agno (default) | adk | bare
 channels: [streamlit]        # streamlit and/or whatsapp
 features:                    # booleans default to true
   tts: true                  # TTS tool on the welcoming agent
-  interaction_assessment: true  # satisfaction/persona loop + remediation; or
+  interaction-assessment: true  # satisfaction/persona loop + remediation; or
                              # {enable: true, window_size: 5} (DPO/SFT capture)
   summarization: true        # rolling conversation summary
   guardrails: true           # pluggable input guardrails (see Guardrails doc)
