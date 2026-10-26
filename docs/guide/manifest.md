@@ -71,6 +71,11 @@ optional and, when set, is sent verbatim in that first message. A missing or
 unreadable `file` fails at startup — consent is never recorded without terms
 the user could have read. Paths are resolved relative to `semente.yaml`.
 
+The first `semente feature terms-acceptance --enable` (or
+`feature add terms-acceptance`) scaffolds `domain/terms_example.md` and
+configures `file` for you; replace that example with your real terms. Existing
+files and an already-configured `file` are never overwritten.
+
 ### Legacy `terms_text`
 
 The terms reference used to live in `agents.yml` (`welcoming_agent.terms_text`).

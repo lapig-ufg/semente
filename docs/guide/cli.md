@@ -61,6 +61,7 @@ semente feature ls                              # every feature + status (enable
 semente feature actives                          # currently active features only
 semente feature add guardrails                  # scaffold an example + enable
 semente feature add tts                         # framework-internal: just enable
+semente feature terms-acceptance --enable       # first enable: scaffold + configure the terms example
 semente feature tts --enable
 semente feature tts --disable                   # manifest-only — code is left alone
 ```
@@ -75,11 +76,15 @@ Supported features:
 | `guardrails` | Pluggable input guardrails declared in `DomainSpec` |
 | `terms-acceptance` | Onboarding terms gate: first-message consent + DB record (`{enable, file, url}`); **off by default** |
 
-`add` writes an app-side example when one exists — today only `guardrails`
-(it creates `domain/guardrails_example.py`, never overwriting an existing
-file) — and enables the feature. For framework-internal features `add`
-behaves like `enable`: the framework owns their behavior; there is no app
-code to scaffold.
+`add` writes an app-side example when one exists and enables the feature:
+`guardrails` creates `domain/guardrails_example.py`; `terms-acceptance`
+creates `domain/terms_example.md` and points
+`features.terms-acceptance.file` at it. Enabling `terms-acceptance` for the
+**first time** (`add` or `--enable`) does the same, so the gate never starts
+without terms to show the user. Existing files and an already-configured
+`file` are never overwritten. For framework-internal features `add` behaves
+like `enable`: the framework owns their behavior; there is no app code to
+scaffold.
 
 > `--disable` never deletes your code. It flips the manifest key; re-run
 > `semente feature <name> --enable` to turn it back on.

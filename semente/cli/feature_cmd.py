@@ -3,15 +3,22 @@
 A feature is a framework capability gated by a key in the manifest's
 ``features`` block (absent keys default to the catalog's ``default_enabled``;
 only ``terms-acceptance`` is off by default). ``add`` scaffolds an example
-implementation in the app's domain when one exists (guardrails) and enables
-the feature; for framework-internal features ``add`` behaves like ``enable``.
-Both commands edit the manifest only — they never touch app code.
+implementation in the app's domain when one exists (guardrails, terms) and
+enables the feature; for framework-internal features ``add`` behaves like
+``enable``.
+
+Commands edit the manifest only, with one exception: enabling
+``terms-acceptance`` for the first time (``add`` or ``--enable``) scaffolds
+``domain/terms_example.md`` and points ``features.terms-acceptance.file`` at
+it, so the gate never comes up without terms to show the user. An existing or
+already-configured file is never overwritten.
 """
 
 from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
@@ -42,6 +49,7 @@ FEATURES: dict[str, Feature] = {
         Feature(
             "terms-acceptance",
             "Onboarding terms gate: first-message consent + DB record (enable + file/url)",
+            scaffold=True,
             default_enabled=False,
         ),
     )
@@ -50,6 +58,34 @@ FEATURES: dict[str, Feature] = {
 KNOWN_FEATURES = list(FEATURES)  # back-compat export (status_cmd imports this)
 
 EXAMPLE_DIR = "domain"
+
+TERMS_EXAMPLE_FILE = "terms_example.md"
+
+TERMS_EXAMPLE_TEMPLATE = """\
+# Terms of Use — {name}
+
+> **Example document.** Scaffolded by `semente feature terms-acceptance --enable`.
+> Replace it with your own terms before going to production.
+
+## 1. Acceptance
+
+By using {name} you agree to these terms. If you do not agree, please stop
+using the service.
+
+## 2. Service
+
+{name} is provided as-is and for informational purposes. Features may change
+or be discontinued at any time.
+
+## 3. Data and privacy
+
+Messages are processed only to provide the service. Do not share sensitive
+personal data in the chat.
+
+## 4. Contact
+
+For questions about these terms, contact the app maintainers.
+"""
 
 GUARDRAILS_EXAMPLE_TEMPLATE = '''\
 """Example guardrails — scaffolded by `semente feature add guardrails`.
@@ -132,6 +168,57 @@ def _status_label(manifest: Manifest, name: str) -> str:
     return status
 
 
+def _terms_config(manifest: Manifest) -> TermsConfig:
+    """The manifest's terms config (normalized; absent means defaults)."""
+    cfg = manifest.features.get("terms-acceptance")
+    return cfg if isinstance(cfg, TermsConfig) else TermsConfig()
+
+
+def _relative_to_manifest(target, manifest_path) -> str:
+    """The portable path to write into the manifest (POSIX, manifest-relative)."""
+    try:
+        return target.resolve().relative_to(manifest_path.resolve().parent).as_posix()
+    except ValueError:
+        return target.as_posix()
+
+
+def _ensure_terms_scaffold(manifest: Manifest, manifest_path) -> bool:
+    """Scaffold the example terms and point the feature at it.
+
+    Runs on the first enable. If ``file`` is already configured it is left
+    alone (an app-owned document is never overwritten); a configured but
+    missing path only warns — startup is where the hard error belongs.
+    Returns True when it created/configured the example.
+    """
+    cfg = _terms_config(manifest)
+    if cfg.file:
+        path = Path(cfg.file)
+        if not path.is_absolute():
+            path = manifest_path.parent / path
+        if not path.exists():
+            print(f"Warning: features.terms-acceptance.file does not exist: {path}")
+        return False
+
+    example = manifest_path.parent / EXAMPLE_DIR / TERMS_EXAMPLE_FILE
+    example.parent.mkdir(parents=True, exist_ok=True)
+
+    if example.exists():
+        print(f"Example already exists: {example} — configuring it.")
+    else:
+        example.write_text(
+            TERMS_EXAMPLE_TEMPLATE.format(name=manifest.name), encoding="utf-8"
+        )
+        print(f"Scaffolded example: {example}")
+
+    relative = _relative_to_manifest(example, manifest_path)
+    manifest.features = {
+        **manifest.features,
+        "terms-acceptance": cfg.model_copy(update={"file": relative}),
+    }
+    print(f"Configured features.terms-acceptance.file: {relative}")
+    return True
+
+
 def cmd_feature_ls() -> None:
     manifest, path = load_manifest_or_exit()
     table = Table(show_header=True, box=None, title="Features", title_justify="left")
@@ -173,6 +260,9 @@ def cmd_feature_toggle(name: str, enable: bool | None) -> None:
         print(toggle_hint("feature", name))
         return
 
+    if enable and name == "terms-acceptance":
+        _ensure_terms_scaffold(manifest, path)
+
     _feature_set(manifest, name, enable)
     manifest.save(path)
     verb = "enabled" if enable else "disabled"
@@ -181,21 +271,18 @@ def cmd_feature_toggle(name: str, enable: bool | None) -> None:
 
 def cmd_feature_add(feature: str) -> None:
     """Enable the feature, scaffolding an example when one exists."""
-    feature_def = _validate(feature)
+    _validate(feature)
     manifest, path = load_manifest_or_exit()
 
-    if feature_def.scaffold:
+    if feature == "guardrails":
         _scaffold_guardrails_example(path, manifest.name)
+    elif feature == "terms-acceptance":
+        _ensure_terms_scaffold(manifest, path)
     else:
         print(f"'{feature}' is framework-internal — no app-side example to scaffold; enabling it only.")
 
     _feature_set(manifest, feature, True)
     manifest.save(path)
-    if feature == "terms-acceptance":
-        print(
-            "Set features.terms-acceptance.file (and optionally .url) in the manifest "
-            "to the terms text the agent should reference."
-        )
     print(f"Feature '{feature}' enabled. (Manifest: {path})")
 
 

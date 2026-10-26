@@ -30,7 +30,10 @@ def test_catalog_is_the_single_source():
         "guardrails",
         "terms-acceptance",
     ]
-    assert {f.name for f in FEATURES.values() if f.scaffold} == {"guardrails"}
+    assert {f.name for f in FEATURES.values() if f.scaffold} == {
+        "guardrails",
+        "terms-acceptance",
+    }
     assert {f.name for f in FEATURES.values() if not f.default_enabled} == {"terms-acceptance"}
 
 
@@ -129,6 +132,81 @@ def test_terms_toggle_preserves_file_and_url(app_dir):
 
     feature_cmd.cmd_feature_toggle("terms-acceptance", True)
     assert _manifest(app_dir).features["terms-acceptance"].enable is True
+
+
+def test_first_enable_scaffolds_and_configures_terms(app_dir, capsys):
+    feature_cmd.cmd_feature_toggle("terms-acceptance", True)
+    out = capsys.readouterr().out
+
+    example = app_dir / "domain" / "terms_example.md"
+    assert example.exists()
+    assert "Scaffolded example" in out
+    content = example.read_text(encoding="utf-8")
+    assert "Terms of Use" in content
+    assert "test-app" in content  # the manifest app name
+
+    cfg = _manifest(app_dir).features["terms-acceptance"]
+    assert cfg.enable is True
+    assert cfg.file == "domain/terms_example.md"
+    assert cfg.url == ""
+
+
+def test_second_enable_does_not_overwrite_the_terms_file(app_dir):
+    feature_cmd.cmd_feature_toggle("terms-acceptance", True)
+    example = app_dir / "domain" / "terms_example.md"
+    example.write_text("# our own terms\n", encoding="utf-8")
+
+    feature_cmd.cmd_feature_toggle("terms-acceptance", True)
+    assert example.read_text(encoding="utf-8") == "# our own terms\n"
+    assert _manifest(app_dir).features["terms-acceptance"].file == "domain/terms_example.md"
+
+    feature_cmd.cmd_feature_toggle("terms-acceptance", False)
+    assert example.exists()  # disable never deletes app files
+
+
+def test_enable_respects_a_configured_terms_file(app_dir):
+    (app_dir / "domain").mkdir(exist_ok=True)
+    (app_dir / "domain" / "mine.md").write_text("mine", encoding="utf-8")
+    manifest, path = feature_cmd.load_manifest_or_exit()
+    manifest.features = {"terms-acceptance": TermsConfig(enable=False, file="domain/mine.md")}
+    manifest.save(path)
+
+    feature_cmd.cmd_feature_toggle("terms-acceptance", True)
+    assert not (app_dir / "domain" / "terms_example.md").exists()
+    assert _manifest(app_dir).features["terms-acceptance"].file == "domain/mine.md"
+
+
+def test_enable_warns_when_configured_terms_file_is_missing(app_dir, capsys):
+    manifest, path = feature_cmd.load_manifest_or_exit()
+    manifest.features = {"terms-acceptance": TermsConfig(enable=False, file="domain/nope.md")}
+    manifest.save(path)
+
+    feature_cmd.cmd_feature_toggle("terms-acceptance", True)
+    assert "does not exist" in capsys.readouterr().out
+    assert _manifest(app_dir).features["terms-acceptance"].file == "domain/nope.md"
+
+
+def test_add_terms_acceptance_scaffolds_and_enables(app_dir):
+    feature_cmd.cmd_feature_add("terms-acceptance")
+    assert (app_dir / "domain" / "terms_example.md").exists()
+    cfg = _manifest(app_dir).features["terms-acceptance"]
+    assert cfg.enable is True
+    assert cfg.file == "domain/terms_example.md"
+
+
+def test_scaffold_path_is_relative_to_a_nested_manifest(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SEMENTE_MANIFEST", raising=False)
+    nested = tmp_path / "apps" / "x"
+    nested.mkdir(parents=True)
+    Manifest(name="nested-app").save(nested / "semente.yaml")
+    monkeypatch.setenv("SEMENTE_MANIFEST", "apps/x/semente.yaml")
+
+    feature_cmd.cmd_feature_toggle("terms-acceptance", True)
+
+    cfg = Manifest.load(nested / "semente.yaml").features["terms-acceptance"]
+    assert cfg.file == "domain/terms_example.md"
+    assert (nested / "domain" / "terms_example.md").exists()
 
 
 def test_add_guardrails_scaffolds_and_enables(app_dir):

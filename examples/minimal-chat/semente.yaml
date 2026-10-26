@@ -10,8 +10,8 @@ features:
   summarization: true
   guardrails: true
   terms-acceptance:
-    enable: false
-    file: ''
+    enable: true
+    file: domain/terms_example.md
     url: ''
   interaction-assessment:
     enable: true
