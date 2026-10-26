@@ -1,14 +1,21 @@
 name: minimal-chat
 language: en
 domain_module: domain
-engine: agno
 prompts_dir: domain/prompts
-channels: [streamlit]
+engine: agno
+channels:
+- streamlit
 features:
   tts: true
-  interaction-assessment: {enable: true, window_size: 5}
   summarization: true
   guardrails: true
+  terms-acceptance:
+    enable: false
+    file: ''
+    url: ''
+  interaction-assessment:
+    enable: true
+    window_size: 5
 models:
   primary:
     provider: google

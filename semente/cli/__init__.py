@@ -82,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     feature = sub.add_parser(
         "feature",
         help="Manage manifest features (semente.yaml features)",
-        description="List, add, enable, and disable the manifest's features (tts, summarization, interaction-assessment, guardrails).",
+        description="List, add, enable, and disable the manifest's features (tts, summarization, interaction-assessment, guardrails, terms-acceptance).",
     )
     feature.add_argument(
         "command_or_name", nargs="?", metavar="{ls,actives,add,name}",

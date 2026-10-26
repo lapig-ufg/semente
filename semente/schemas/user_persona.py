@@ -25,7 +25,7 @@ class UserPersona(BaseModel):
     )
     role: Optional[str] = Field(
         default="Not yet known",
-        description="The user's role or profession (e.g. 'Producer', 'Technician')."
+        description="The user's role or profession (e.g. 'teacher', 'agronomist')."
     )
     regionality: Optional[str] = Field(
         default="Not yet known",

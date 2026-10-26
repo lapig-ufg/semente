@@ -198,17 +198,11 @@ audio_input_value = st.audio_input(
     key=f"audio_uploader_{st.session_state.audio_uploader_key}",
     )
 
-chat_input_value = st.chat_input("Ask about pasture...")
-
-col_btn, _ = st.columns([0.4, 0.6])
-with col_btn:
-    loc_input_value = st.button("Send Property Location")
+chat_input_value = st.chat_input("Type your message...")
 
 user_query = None
 
-if loc_input_value:
-    user_query = """My coordinates are 2°46'32.94"S 48°31'41.74"W."""
-elif chat_input_value:
+if chat_input_value:
     user_query = chat_input_value
 elif audio_input_value:
     user_query = "[Audio received]"

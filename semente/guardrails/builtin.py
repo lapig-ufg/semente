@@ -2,8 +2,7 @@
 
 These are **opt-in**: a guard only runs when the app declares it in
 ``DomainSpec.guardrails``. The universally-safe ones live here; anything
-country- or domain-specific (documents, identifiers) ships with the domain —
-Pasto Legal's Brazil PII set migrated to ``migrate-to-pasto-legal/``.
+country- or domain-specific (documents, identifiers) belongs to the domain.
 """
 
 from __future__ import annotations

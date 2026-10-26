@@ -1,4 +1,4 @@
-"""Streamlit debug panel renderer for the Pasto Legal multi-agent system.
+"""Streamlit debug panel renderer for the Semente multi-agent pipeline.
 
 Renders a sidebar expander with tabs for inspecting session state,
 agent routing, tool calls, metrics, and message history in real time.

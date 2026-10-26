@@ -18,7 +18,25 @@ from semente.logging import log_warning
 class FeedbackConfig(BaseModel):
     enable: bool = Field(default=True)
     window_size: int = Field(default=5, ge=1)
-    
+
+
+class TermsConfig(BaseModel):
+    """``features.terms-acceptance`` — the onboarding terms gate.
+
+    Attributes:
+        enable: Whether the terms gate runs. Off by default: a domain-neutral
+            framework cannot assume the app has terms to accept.
+        file: Path to the reference terms text (Markdown/plain text), resolved
+            relative to the manifest. Required when ``enable`` is true.
+        url: Optional public link to the terms, sent verbatim in the first
+            message. When empty, the agent asks for consent without a link.
+    """
+
+    enable: bool = Field(default=False)
+    file: str = Field(default="")
+    url: str = Field(default="")
+
+
 @dataclass
 class Manifest:
     """Parsed ``semente.yaml`` — app-level configuration."""
@@ -29,8 +47,11 @@ class Manifest:
     prompts_dir: str | None = None
     engine: str | None = None  # None -> SEMENTE_ENGINE env var -> "agno"
     channels: list[str] = field(default_factory=lambda: ["streamlit"])
-    features: dict[str, bool] = field(default_factory=dict)
+    features: dict[str, Any] = field(default_factory=dict)
     models: dict[str, Any] = field(default_factory=dict)
+    # Directory the manifest was loaded from (not serialized); used to resolve
+    # relative paths such as ``features.terms-acceptance.file``.
+    source_dir: Path | None = field(default=None, compare=False, repr=False)
 
     @classmethod
     def load(cls, path: str | Path) -> "Manifest":
@@ -85,6 +106,19 @@ class Manifest:
             enable=all(gates),
             window_size=window_size if window_size is not None else 5,
         )
+        # Terms gate: absent means off (see TermsConfig). Present forms:
+        # ``terms-acceptance: false`` or ``{enable, file, url}``; the
+        # snake_case spelling is accepted as a legacy alias.
+        terms_val = features_data.pop("terms_acceptance", None)
+        if "terms-acceptance" in features_data:
+            terms_val = features_data["terms-acceptance"]
+        if terms_val is not None:
+            if isinstance(terms_val, TermsConfig):
+                features_data["terms-acceptance"] = terms_val
+            elif isinstance(terms_val, dict):
+                features_data["terms-acceptance"] = TermsConfig(**terms_val)
+            else:
+                features_data["terms-acceptance"] = TermsConfig(enable=bool(terms_val))
         return cls(
             name=data.get("name", "semente-app"),
             language=data.get("language", "en"),
@@ -94,6 +128,7 @@ class Manifest:
             channels=data.get("channels", ["streamlit"]),
             features=data.get("features", {}),
             models=data.get("models", {}),
+            source_dir=Path(path).resolve().parent,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -109,11 +144,10 @@ class Manifest:
             data["engine"] = self.engine
         data["channels"] = list(self.channels)
         if self.features:
-            data["features"] = dict(self.features)
-            if "interaction-assessment" in data["features"] and isinstance(
-                data["features"]["interaction-assessment"], FeedbackConfig
-            ):
-                data["features"]["interaction-assessment"] = data["features"]["interaction-assessment"].model_dump()
+            data["features"] = {
+                key: value.model_dump() if isinstance(value, BaseModel) else value
+                for key, value in self.features.items()
+            }
         if self.models:
             data["models"] = {k: dict(v) for k, v in self.models.items()}
         return data

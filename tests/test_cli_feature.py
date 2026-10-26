@@ -4,7 +4,7 @@ import pytest
 
 from semente.cli import feature_cmd
 from semente.cli.feature_cmd import FEATURES, KNOWN_FEATURES, _feature_status
-from semente.manifest import FeedbackConfig, Manifest
+from semente.manifest import FeedbackConfig, Manifest, TermsConfig
 
 
 @pytest.fixture
@@ -28,8 +28,10 @@ def test_catalog_is_the_single_source():
         "summarization",
         "interaction-assessment",
         "guardrails",
+        "terms-acceptance",
     ]
     assert {f.name for f in FEATURES.values() if f.scaffold} == {"guardrails"}
+    assert {f.name for f in FEATURES.values() if not f.default_enabled} == {"terms-acceptance"}
 
 
 def test_flag_toggle_roundtrip(app_dir, capsys):
@@ -98,6 +100,35 @@ def test_actives_lists_enabled_and_defaults(app_dir, monkeypatch):
     assert "tts" in out and "summarization" in out  # defaults count as active
     assert "guardrails" not in out or "Active" not in out.split("guardrails")[0]  # excluded
     assert "interaction-assessment" in out
+    assert "terms-acceptance" not in out  # default off
+
+
+def test_terms_acceptance_defaults_off(app_dir, capsys):
+    feature_cmd.cmd_feature_toggle("terms-acceptance", None)
+    assert "default (off)" in capsys.readouterr().out
+
+    feature_cmd.cmd_feature_toggle("terms-acceptance", True)
+    manifest = _manifest(app_dir)
+    assert isinstance(manifest.features["terms-acceptance"], TermsConfig)
+    assert manifest.features["terms-acceptance"].enable is True
+
+
+def test_terms_toggle_preserves_file_and_url(app_dir):
+    manifest, path = feature_cmd.load_manifest_or_exit()
+    manifest.features = {
+        "terms-acceptance": TermsConfig(enable=True, file="domain/terms.md", url="https://x.test/t")
+    }
+    manifest.save(path)
+
+    feature_cmd.cmd_feature_toggle("terms-acceptance", False)
+    saved = _manifest(app_dir).features["terms-acceptance"]
+    assert isinstance(saved, TermsConfig)
+    assert saved.enable is False
+    assert saved.file == "domain/terms.md"
+    assert saved.url == "https://x.test/t"
+
+    feature_cmd.cmd_feature_toggle("terms-acceptance", True)
+    assert _manifest(app_dir).features["terms-acceptance"].enable is True
 
 
 def test_add_guardrails_scaffolds_and_enables(app_dir):

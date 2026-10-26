@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from semente.manifest import FeedbackConfig, Manifest
+from semente.manifest import FeedbackConfig, Manifest, TermsConfig
 
 
 def test_save_load_roundtrip(tmp_path):
@@ -141,3 +141,54 @@ def test_load_after_cli_save(tmp_path):
     m.save(path)
     reloaded = Manifest.load(path)
     assert reloaded.features["tts"] is False
+
+
+# ---------------------------------------------------------------------
+# features.terms-acceptance
+# ---------------------------------------------------------------------
+def test_terms_absent_means_off(tmp_path):
+    """A domain-neutral default: no key, no terms gate and no injected config."""
+    path = tmp_path / "semente.yaml"
+    path.write_text("name: no-terms\n", encoding="utf-8")
+    loaded = Manifest.load(path)
+    assert "terms-acceptance" not in loaded.features
+
+
+def test_terms_bool_and_mapping_forms(tmp_path):
+    path = tmp_path / "a.yaml"
+    path.write_text("name: a\nfeatures:\n  terms-acceptance: true\n", encoding="utf-8")
+    assert Manifest.load(path).features["terms-acceptance"] == TermsConfig(enable=True)
+
+    path = tmp_path / "b.yaml"
+    path.write_text(
+        "name: b\nfeatures:\n  terms-acceptance:\n"
+        "    enable: true\n    file: domain/terms.md\n    url: https://x.test/t\n",
+        encoding="utf-8",
+    )
+    assert Manifest.load(path).features["terms-acceptance"] == TermsConfig(
+        enable=True, file="domain/terms.md", url="https://x.test/t"
+    )
+
+
+def test_terms_snake_case_alias_normalizes(tmp_path):
+    path = tmp_path / "semente.yaml"
+    path.write_text("name: c\nfeatures:\n  terms_acceptance: true\n", encoding="utf-8")
+    loaded = Manifest.load(path)
+    assert loaded.features["terms-acceptance"] == TermsConfig(enable=True)
+    assert "terms_acceptance" not in loaded.features
+
+
+def test_terms_roundtrip_and_source_dir(tmp_path):
+    path = tmp_path / "nested" / "semente.yaml"
+    path.parent.mkdir()
+    Manifest(
+        name="terms-app",
+        features={"terms-acceptance": TermsConfig(enable=True, file="terms.md")},
+    ).save(path)
+
+    loaded = Manifest.load(path)
+    assert loaded.source_dir == path.parent.resolve()
+    assert loaded.features["terms-acceptance"] == TermsConfig(enable=True, file="terms.md")
+    assert loaded.to_dict()["features"]["terms-acceptance"] == {
+        "enable": True, "file": "terms.md", "url": ""
+    }

@@ -33,15 +33,19 @@ One top-level tag per agent. The `single_agent` tag drives your main assistant:
 
 ```yaml
 single_agent:
-  name: "Pasto Legal"
+  name: "Support Assistant"
   instructions_default: |
-    You are the official assistant of Pasto Legal.
+    You are a helpful support assistant.
     Answer concisely, in the user's language.
   persona_fallback: |
-    General profile: rural producer. Adopt a warm tone.
-  registrations_empty: |
-    *No property registered at the moment.*
+    General profile: a new user. Adopt a warm, helpful tone.
 ```
+
+The framework also formats a few onboarding placeholders: `{app_name}` and
+`{terms_closed_note}` in `welcoming_agent.instructions_persona`, and
+`{terms_link_instruction}` / `{terms_text}` in `welcoming_agent.instructions`
+(the terms content comes from `features.terms-acceptance` — see
+[Manifest](manifest.md)).
 
 Dynamic agents keep runtime values in code (context blocks, persona text,
 candidate properties); the YAML holds the static template blocks, and Python
@@ -51,15 +55,17 @@ formats them in with `{placeholders}`.
 
 Tool descriptions passed to the Semente `@tool(description=...)` decorator
 (referenced from the domain with
-`from semente.configs.prompts import get_tool_description`):
+`from semente.configs.prompts import get_tool_description`). The framework's
+own groups (`onboarding_tools`, `persona_tools`, `tts_tools`, …) live in the
+bundled defaults; your domain adds its own groups:
 
 ```yaml
-analysis_tools:
-  generate_biomass_image:
+my_domain_tools:
+  lookup_order:
     description: |
-      Generates a thematic map of biomass over the property boundaries.
+      Looks up an order by its id.
       params:
-          feature_id (str): Identifier of the registered feature.
+          order_id (str): Identifier of the order.
 ```
 
 The `component` is the tool file name, the key is the function name.
@@ -69,10 +75,9 @@ The `component` is the tool file name, the key is the function name.
 Messages returned or injected by validation hooks:
 
 ```yaml
-pre_hooks:
-  unauthorized_production: "The user is not authorized to use the system."
 tool_hooks:
-  no_property_selected: "No property selected. Ask the user to provide one."
+  missing_required_state: "The required information is not available yet."
+  media_already_delivered: "That media was already delivered in this session."
 ```
 
 ## Localization

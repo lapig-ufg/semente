@@ -9,7 +9,7 @@ from semente.configs.prompts import get_tool_description
 @tool(description=get_tool_description("version_tools", "consult_update_notes"))
 def consult_update_notes() -> str:
     """
-    Reads and returns the system update notes (patch notes) for Pasto Legal.
+    Reads and returns the system update notes (patch notes).
     Use this tool when the user asks about the current version, new features, or updates.
     """
     log_debug("consult_update_notes: starting to read the release notes")

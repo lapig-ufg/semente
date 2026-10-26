@@ -17,9 +17,8 @@ _COORDINATES_RE = re.compile(r"(-?\d{1,3}\.\d{4,}\s*,\s*-?\d{1,3}\.\d{4,})")
 def _mask_pii(text: str) -> str:
     """Log-safe masking: the active guardrail chain + lat/long pairs.
 
-    Country-specific spans (CPF/CNPJ/CAR in the Pasto Legal deployment) are
-    covered by the guardrails the app declares — see
-    ``migrate-to-pasto-legal/``.
+    Country-specific spans are covered by the guardrails the app declares —
+    see ``semente.guardrails``.
     """
     if not text:
         return ""

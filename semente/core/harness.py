@@ -10,7 +10,7 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
     _input_preprocessing   media -> text, geo files -> GeoJSON (always)
     _run_input_guardrails  pluggable guardrail chain: redaction or a
                            blocked turn with a reply (guardrails)
-    _needs_onboarding      terms + profile gate (always)
+    _needs_onboarding      terms (terms-acceptance) + profile gate
     ├─ True:  _run_welcoming_agent
     └─ False: _summarize_conversation (summarization)
               _process_feedback      (interaction_assessment; returns whether a
@@ -557,16 +557,32 @@ class Harness:
     # Onboarding gate
     # ------------------------------------------------------------------
 
+    def _terms_enabled(self) -> bool:
+        """The ``features.terms-acceptance`` gate (absent means off).
+
+        Accepts a bare boolean, a dict, or the normalized ``TermsConfig`` so
+        the harness works with programmatically built manifests too.
+        """
+        value = self.features.get("terms-acceptance")
+        if value is None:
+            return False
+        if hasattr(value, "enable"):
+            return bool(value.enable)
+        if isinstance(value, dict):
+            return bool(value.get("enable", False))
+        return bool(value)
+
     def _needs_onboarding(self, state: dict, user_id: Optional[str]) -> bool:
         """Return True if the user still needs to go through onboarding.
 
-        Onboarding covers the formal acceptance of the terms and the
-        identification profile (name + role). Both are resolved from
-        ``session_state`` when present and only looked up in the database
-        for the parts still missing, so a user who already completed them
-        is never asked again — not even in a brand new session. On the way
-        out, the stored profile is copied into ``session_state`` so the
-        agent can personalise from the first reply.
+        Onboarding covers the formal acceptance of the terms (only when
+        ``features.terms-acceptance`` is enabled) and the identification
+        profile (name + role). Both are resolved from ``session_state`` when
+        present and only looked up in the database for the parts still
+        missing, so a user who already completed them is never asked again —
+        not even in a brand new session. On the way out, the stored profile is
+        copied into ``session_state`` so the agent can personalise from the
+        first reply.
 
         The completeness rule (``is_persona_complete``) is shared with the
         welcoming agent, so the gate and the agent can never disagree on
@@ -582,7 +598,8 @@ class Harness:
         if state.get("workflow_state") is None:
             state["workflow_state"] = WorkflowState().model_dump()
 
-        terms_accepted = bool(state.get("terms_accepted"))
+        terms_enabled = self._terms_enabled()
+        terms_accepted = bool(state.get("terms_accepted")) or not terms_enabled
         persona = state.get("user_persona") or {}
 
         if terms_accepted and is_persona_complete(persona):
@@ -594,7 +611,7 @@ class Harness:
 
         db_session = SessionLocal()
         try:
-            if not terms_accepted:
+            if terms_enabled and not terms_accepted:
                 acceptance = db_session.query(UserTermsAcceptance).filter(
                     UserTermsAcceptance.user_id == user_id,
                     UserTermsAcceptance.accepted == True,  # noqa: E712
@@ -1415,7 +1432,12 @@ def get_harness(manifest_path: str | None = None) -> Harness:
     from semente.guardrails import GuardrailChain, set_active_chain
 
     agent = build_agent(domain_spec, manifest)
-    welcoming_agent = build_welcoming_agent(tts_enabled=manifest.features.get("tts", True))
+    welcoming_agent = build_welcoming_agent(
+        tts_enabled=manifest.features.get("tts", True),
+        terms=manifest.features.get("terms-acceptance"),
+        app_name=manifest.name,
+        base_dir=manifest.source_dir,
+    )
     guardrails = GuardrailChain(domain_spec.guardrails)
     set_active_chain(guardrails)
     _harness_cache = Harness(

@@ -20,12 +20,12 @@ semente launch        # run an interface
 
 ## `semente init [directory]`
 
-Scaffolds a minimal working app, modeled on the [Pasto Legal](https://github.com/lapig-ufg/pasto-legal)
-reference implementation:
+Scaffolds a minimal working app with the framework's bundled, domain-neutral
+defaults:
 
 ```
 my-app/
-├── semente.yaml            # manifest: features on, streamlit channel, model block
+├── semente.yaml            # manifest: features, streamlit channel, model block
 ├── .env.example            # every variable group, commented
 ├── domain/
 │   ├── __init__.py        # domain_spec with an example echo tool
@@ -73,6 +73,7 @@ Supported features:
 | `summarization` | Rolling conversation summary (every 6 turns) |
 | `interaction-assessment` | Satisfaction/persona loop, remediation cycles, DPO/SFT capture (`{enable, window_size}`) |
 | `guardrails` | Pluggable input guardrails declared in `DomainSpec` |
+| `terms-acceptance` | Onboarding terms gate: first-message consent + DB record (`{enable, file, url}`); **off by default** |
 
 `add` writes an app-side example when one exists — today only `guardrails`
 (it creates `domain/guardrails_example.py`, never overwriting an existing

@@ -4,12 +4,12 @@ Implements the Semente engine port on top of ``google-adk``.
 
 Key adaptations (see MULTI_ENGINE.md §4.2):
 - **Dynamic tools**: the agent (and its tool set) is built per run, resolving
-  ``spec.tools`` callables against the run's session state — so Pasto Legal's
-  registration-state tool switching works.
+  ``spec.tools`` callables against the run's session state — so staged tool
+  switching (e.g. onboarding) works.
 - **State seeding + sync-back**: the ADK session is seeded from Semente's
   ``input.session_state`` (the orchestrator's dict, by reference); after the
   run, ADK's state is written back into that dict in place, so tool mutations
-  (terms acceptance, property registration) persist in the Semente store.
+  (terms acceptance, profile updates) persist in the Semente store.
 - **Tool adaptation**: Semente tools -> plain ADK functions; ``run_context`` is
   mapped to ADK's ``tool_context`` and stripped from the generated schema;
   agno toolkits (e.g. Calculator) are expanded.

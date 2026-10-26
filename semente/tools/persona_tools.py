@@ -1,5 +1,3 @@
-from typing import Literal
-
 from semente import tool
 from semente.context import Context as RunContext
 from semente.logging import log_debug, log_warning, log_error
@@ -89,15 +87,15 @@ def update_persona_name(name: str, run_context: RunContext) -> str:
 
 
 @tool(description=get_tool_description("persona_tools", "update_persona_role"))
-def update_persona_role(role: Literal["Producer", "Technician"], run_context: RunContext) -> str:
+def update_persona_role(role: str, run_context: RunContext) -> str:
     """
-    Organically updates the user's professional role in the persona on the session state.
+    Organically updates the user's professional role or occupation in the persona.
 
-    Use this tool when it is clearly established whether the user is a rural
-    producer or a technical assistant/agronomist.
+    Use this tool when the user clearly identifies what they do.
 
     Args:
-        role (Literal["Producer", "Technician"]): The identified professional role.
+        role (str): The role or occupation in the user's own words
+            (e.g. "teacher", "small business owner", "agronomist").
     """
     log_debug(f"update_persona_role: role={role}")
     try:
@@ -130,7 +128,7 @@ def update_persona_region(regionality: str, run_context: RunContext) -> str:
     Use this tool when the user mentions the city, state or region where they operate.
 
     Args:
-        regionality (str): The user's city, state or region (e.g. "Sorriso - MT", "South of Minas").
+        regionality (str): The user's city, state or region (e.g. "Lisbon", "Minas Gerais").
     """
     log_debug(f"update_persona_region: regionality={regionality}")
     try:

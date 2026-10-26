@@ -1,6 +1,6 @@
 """Conversion of geospatial documents to a single GeoJSON ``FeatureCollection``.
 
-Engine-neutral port of the Pasto Legal geo intake: handles the user-facing
+Engine-neutral geo intake: handles the user-facing
 formats
 
     - ``.zip`` (shapefile or any vector file inside)

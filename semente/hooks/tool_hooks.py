@@ -1,6 +1,13 @@
+"""Reusable tool hooks — validate state, deduplicate media, wrap failures.
+
+Declare them on a domain tool with ``@tool(tool_hooks=[...])``. Hook texts
+live in the app's ``hooks.yml`` under ``tool_hooks`` (see the bundled
+defaults).
+"""
+
 import json
-from typing import Callable, Dict, Any
 from datetime import datetime, timedelta
+from typing import Any, Callable, Dict
 
 from semente.context import Context
 from semente.configs.prompts import get_hook_texts
@@ -9,23 +16,29 @@ from semente.configs.prompts import get_hook_texts
 _hook_texts = get_hook_texts("tool_hooks")
 
 
-def validate_selected_property_hook(run_context: Context, function_call: Callable, arguments: Dict[str, Any]) -> Any:
+def validate_state_hook(required_key: str = "required_state") -> Callable:
+    """Build a hook that runs the tool only when the session has ``required_key``.
+
+    Use it as ``@tool(tool_hooks=[validate_state_hook("profile")])``. When the
+    key is missing/empty the tool is not called and the user gets the
+    ``missing_required_state`` text instead.
     """
-    Validation hook to guarantee that a property is stored in the system.
-    """
-    session_state = run_context.session_state
 
-    if session_state and 'all_properties' in session_state:
-        return function_call(**arguments)
+    def hook(run_context: Context, function_call: Callable, arguments: Dict[str, Any]) -> Any:
+        session_state = getattr(run_context, "session_state", None) or {}
+        if session_state.get(required_key):
+            return function_call(**arguments)
+        return _hook_texts["missing_required_state"].strip()
 
-    return _hook_texts["no_property_selected"].strip()
+    return hook
 
-def validate_rate_limit_hook(run_context: Any, function_call: Callable, arguments: Dict[str, Any]) -> Any:
-    """ Universal hook to avoid reprocessing and control expiration (7 days). """
+
+def validate_rate_limit_hook(run_context: Context, function_call: Callable, arguments: Dict[str, Any]) -> Any:
+    """Universal hook to avoid reprocessing and control expiration (7 days)."""
     session_state = run_context.session_state or {}
 
     delivered_media = session_state.get("delivered_media", {})
-    
+
     search_key = json.dumps({"func": function_call.__name__, "args": arguments}, sort_keys=True)
 
     if search_key in delivered_media:
@@ -38,14 +51,13 @@ def validate_rate_limit_hook(run_context: Any, function_call: Callable, argument
         except Exception:
             pass
 
-
     try:
-        result = function_call(**arguments)        
-        if hasattr(result, 'content') and "Error" in str(result.content):
+        result = function_call(**arguments)
+        if hasattr(result, "content") and "Error" in str(result.content):
             return result
-        
-        if not hasattr(result, 'images') or not result.images:
-             return _hook_texts["media_empty"].strip()
+
+        if not hasattr(result, "images") or not result.images:
+            return _hook_texts["media_empty"].strip()
 
         delivered_media[search_key] = datetime.now().isoformat()
         run_context.session_state["delivered_media"] = delivered_media

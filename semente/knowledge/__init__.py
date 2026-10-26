@@ -223,9 +223,9 @@ def _get_indexed_source_hashes(vector_db) -> set[str]:
 def synchronize(kb: Knowledge, docs_dir: str | Path, excluded_files: set[str] | None = None) -> None:
     """Sync the KB with the markdown files in ``docs_dir`` (content-hash diff).
 
-    ponytail: the multi-worker leader-only advisory lock from pasto_legal_kb was
-    dropped; add it back (session-level pg_try_advisory_lock) when a multi-worker
-    deployment re-embeds concurrently.
+    ponytail: the multi-worker leader-only advisory lock from the original
+    deployment was dropped; add it back (session-level pg_try_advisory_lock)
+    when a multi-worker deployment re-embeds concurrently.
     """
     excluded = excluded_files or set()
     kb_dir = Path(docs_dir)

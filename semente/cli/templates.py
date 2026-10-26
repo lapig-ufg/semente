@@ -1,8 +1,8 @@
 """Scaffold templates for ``semente init`` — a working minimal app.
 
-Modeled on the Pasto Legal reference app: a manifest, an .env.example with the
-standard variable groups, a ``domain/`` package exposing ``domain_spec``, the
-localized prompt files, and a FastAPI entry point for WhatsApp.
+A manifest, an .env.example with the standard variable groups, a ``domain/``
+package exposing ``domain_spec``, the localized prompt files, and a FastAPI
+entry point for WhatsApp.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ features:
   interaction-assessment: {{enable: true, window_size: 5}}
   summarization: true
   guardrails: true
+  terms-acceptance: {{enable: false}}
 models:
   primary:
     provider: {provider}

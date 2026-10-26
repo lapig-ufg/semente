@@ -68,9 +68,10 @@ Stages in order:
    are sanitized through the same chain; the channel doors (WhatsApp
    `MessageContent`, Streamlit) redact through it too. An app declaring no
    guardrails redacts nothing — privacy is declaration-driven.
-3. **Onboarding gate** — DB-backed check of terms acceptance and persona
-   completeness. When needed, the **welcoming agent** takes over the turn and
-   runs the staged onboarding flow (terms → persona), one stage per turn.
+3. **Onboarding gate** — DB-backed check of persona completeness and, when
+   the `terms-acceptance` feature is enabled, terms acceptance. When needed,
+   the **welcoming agent** takes over the turn and runs the staged onboarding
+   flow (terms → persona, or persona only), one stage per turn.
 4. **Summarization** (feature `summarization`) — a rolling summary refreshed
    every 6 turns (`SUMMARY_THRESHOLD`).
 5. **Interaction assessment** (feature `interaction-assessment`) — the

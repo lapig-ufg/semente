@@ -54,7 +54,7 @@ User (WhatsApp / Streamlit)
    Harness (single-object pipeline)
     ├── Input pre-processing (media → text, geo → GeoJSON)
     ├── Guardrail chain (pluggable: redact or block)
-    ├── Onboarding gate (terms + persona)
+    ├── Onboarding gate (persona; optional terms gate)
     ├── Summarization, feedback loop, then your agent
     ├── Remediation (apology instead of a frustrated answer)
     └── Output finalization (TTS)

@@ -52,6 +52,7 @@ def test_init_manifest_content(tmp_path):
     assert manifest.channels == ["streamlit"]
     assert manifest.features["tts"] is True
     assert manifest.features["guardrails"] is True
+    assert manifest.features["terms-acceptance"].enable is False  # opt-in
     assert manifest.models["primary"]["provider"] == "ollama"
     assert manifest.models["primary"]["id"]  # the ollama default id
 

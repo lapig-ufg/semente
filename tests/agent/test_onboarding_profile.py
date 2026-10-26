@@ -2,16 +2,15 @@
 
 Covers ``Harness._needs_onboarding``, which decides whether the user
 goes to the welcoming agent or proceeds to the normal flow. The gate must
-require three things — terms acceptance, name and role — and, when all
-exist in the database, load the profile into session_state so the agent can
-personalise the reply.
+require the terms acceptance (only when ``features.terms-acceptance`` is
+enabled), the name and the role — and, when all exist in the database, load
+the profile into session_state so the agent can personalise the reply.
 
-Ported from pasto-legal `tests/workflows/test_onboarding_profile.py`
-(PR #159 + tip fix `0816be3`), adapted to the Harness architecture:
-the gate now takes ``(state, user_id)`` directly, so no StepInput doubles
-are needed. Semente's DB defaults to SQLite (`tmp/agno.db`), so the fixture
-creates the tables and cleans the two gate tables per test instead of
-standing up a separate database.
+Ported from the upstream test suite, adapted to the Harness architecture: the
+gate now takes ``(state, user_id)`` directly, so no StepInput doubles are
+needed. Semente's DB defaults to SQLite (``tmp/agno.db``), so the fixture
+creates the tables and cleans the two gate tables per test instead of standing
+up a separate database.
 """
 
 import datetime
@@ -23,17 +22,20 @@ from semente.core.harness import Harness
 from semente.database.models import UserProfile, UserTermsAcceptance
 from semente.database.session import SessionLocal, engine
 from semente.services.session_migration import CURRENT_SCHEMA_VERSION
-from semente.manifest import Manifest
+from semente.manifest import Manifest, TermsConfig
 
 
 UID = "test:onboarding:5562900000000"
 
 
-def _agent() -> Harness:
+def _agent(features: dict[str, Any] | None = None) -> Harness:
+    """A harness with the terms gate enabled (the pre-feature behavior)."""
+    if features is None:
+        features = {"terms-acceptance": TermsConfig(enable=True)}
     return Harness(
         agent=object(),
         welcoming_agent=object(),
-        manifest=Manifest(name="test-app"),
+        manifest=Manifest(name="test-app", features=features),
     )
 
 
@@ -199,3 +201,36 @@ def test_old_state_is_migrated_without_breaking(db):
     assert state["workflow_state"]["schema_version"] == CURRENT_SCHEMA_VERSION
     assert state["some_legacy_flag"] is True
     assert state["user_persona"]["name"] == "João"
+
+
+# ---------------------------------------------------------------------
+# features.terms-acceptance (off by default)
+# ---------------------------------------------------------------------
+def test_terms_disabled_releases_without_acceptance_row(db):
+    """Terms off: a complete profile is enough, even with no acceptance row."""
+    _save_profile(db, name="João", role="Producer")
+    state: dict[str, Any] = {}
+
+    assert _agent(features={})._needs_onboarding(state, UID) is False
+    assert "terms_accepted" not in state  # no fake acceptance is written
+
+
+def test_terms_disabled_still_requires_the_profile(db):
+    """Terms off must not skip the persona gate."""
+    state: dict[str, Any] = {}
+    assert _agent(features={})._needs_onboarding(state, UID) is True
+    assert state.get("terms_accepted") is None
+
+
+def test_terms_disabled_session_profile_needs_no_database(db):
+    """Terms off + persona in the session: released with no DB query at all."""
+    state: dict[str, Any] = {"user_persona": {"name": "João", "role": "Producer"}}
+    assert _agent(features={})._needs_onboarding(state, UID) is False
+
+
+def test_terms_explicitly_disabled_config_behaves_like_absent(db):
+    _save_profile(db, name="João", role="Producer")
+    state: dict[str, Any] = {}
+
+    features = {"terms-acceptance": TermsConfig(enable=False)}
+    assert _agent(features=features)._needs_onboarding(state, UID) is False

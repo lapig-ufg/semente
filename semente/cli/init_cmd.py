@@ -1,9 +1,9 @@
 """``semente init`` — scaffold a new Semente app.
 
-Creates the minimal working app surface (modeled on the Pasto Legal reference
-implementation): ``semente.yaml``, ``.env.example``, a ``domain/`` package with
-the example tool and localized prompt files, ``main.py``, and ``.gitignore``.
-Existing files are never overwritten without ``--force``.
+Creates the minimal working app surface: ``semente.yaml``, ``.env.example``, a
+``domain/`` package with the example tool and localized prompt files,
+``main.py``, and ``.gitignore``. Existing files are never overwritten without
+``--force``.
 """
 
 from __future__ import annotations
