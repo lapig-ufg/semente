@@ -1,0 +1,17 @@
+name: groot
+language: en
+domain_module: domain
+prompts_dir: domain/prompts
+engine: agno
+channels:
+- streamlit
+features:
+  onboarding: false          # no welcome/name/role step: Groot answers right away
+  tts: false
+  summarization: true
+  guardrails: true
+  interaction-assessment: false
+models:
+  primary:
+    provider: google
+    id: gemini-3.5-flash-lite

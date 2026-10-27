@@ -1,0 +1,4 @@
+# Tool descriptions for Groot. The framework's own groups
+# (onboarding_tools, persona_tools, ...) come from Semente's bundled defaults.
+# The three docs tools carry their descriptions inline in domain/__init__.py.
+docs_tools: {}
