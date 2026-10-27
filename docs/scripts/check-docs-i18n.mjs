@@ -34,7 +34,8 @@ for (const f of pt) if (!en.includes(f)) errors.push(`Falta a versão EN: docs/$
 const baseIdx = process.argv.indexOf('--base')
 if (baseIdx !== -1) {
   const base = process.argv[baseIdx + 1]
-  const changed = execSync(`git diff --name-only ${base}...HEAD -- docs`, { encoding: 'utf8' })
+  // Páginas novas (A) já são cobertas pela checagem de pares acima; só comparamos as modificadas.
+  const changed = execSync(`git diff --name-only --diff-filter=M ${base}...HEAD -- docs`, { encoding: 'utf8' })
     .split('\n')
     .filter((f) => f.endsWith('.md'))
   const set = new Set(changed)
