@@ -7,7 +7,7 @@ dir is set) so that domain tools loading prompts at import time resolve
 correctly.
 
 No Agno ``AgentOS`` — the FastAPI app is assembled directly and the WhatsApp
-router is mounted on it.
+and A2A routers are mounted on it.
 """
 
 from __future__ import annotations
@@ -41,5 +41,10 @@ def build_app(manifest_path: str | Path | None = None) -> Any:
     if "whatsapp" in manifest.channels:
         whatsapp = Whatsapp(agent=agent)
         app.include_router(whatsapp.get_router())
+    if "a2a" in manifest.channels:
+        from semente.interfaces.a2a import A2A
+
+        a2a = A2A(agent=agent, name=manifest.name, card=manifest.a2a)
+        app.include_router(a2a.get_router())
 
     return app

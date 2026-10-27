@@ -49,6 +49,9 @@ class Manifest:
     channels: list[str] = field(default_factory=lambda: ["streamlit"])
     features: dict[str, Any] = field(default_factory=dict)
     models: dict[str, Any] = field(default_factory=dict)
+    # Optional Agent Card details for the ``a2a`` channel: ``description``,
+    # ``version`` and ``skills`` (list of {id, name, description, tags, examples}).
+    a2a: dict[str, Any] = field(default_factory=dict)
     # Directory the manifest was loaded from (not serialized); used to resolve
     # relative paths such as ``features.terms-acceptance.file``.
     source_dir: Path | None = field(default=None, compare=False, repr=False)
@@ -128,6 +131,7 @@ class Manifest:
             channels=data.get("channels", ["streamlit"]),
             features=data.get("features", {}),
             models=data.get("models", {}),
+            a2a=data.get("a2a") or {},
             source_dir=Path(path).resolve().parent,
         )
 
@@ -150,6 +154,8 @@ class Manifest:
             }
         if self.models:
             data["models"] = {k: dict(v) for k, v in self.models.items()}
+        if self.a2a:
+            data["a2a"] = dict(self.a2a)
         return data
 
     def save(self, path: str | Path) -> None:

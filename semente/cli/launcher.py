@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 LAUNCHABLE_INTERFACES = ["streamlit"]
-CHANNEL_INTERFACES = ["whatsapp"]
+CHANNEL_INTERFACES = ["whatsapp", "a2a"]
 
 
 def _streamlit_webapp() -> Path:
