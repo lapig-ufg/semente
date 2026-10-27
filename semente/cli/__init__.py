@@ -17,6 +17,7 @@ import sys
 from semente.cli.channel_cmd import cmd_channel_actives, cmd_channel_ls, cmd_channel_toggle
 from semente.cli.feature_cmd import cmd_feature_actives, cmd_feature_add, cmd_feature_ls, cmd_feature_toggle
 from semente.cli.init_cmd import cmd_init
+from semente.cli.mcp_cmd import cmd_mcp
 from semente.cli.launcher import LAUNCHABLE_INTERFACES, CHANNEL_INTERFACES, cmd_launch
 from semente.cli.provider_cmd import (
     KNOWN_PROVIDERS,
@@ -136,6 +137,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     launch.add_argument("--demo", action="store_true", help="Run the default demo agent (no app needed)")
 
+    # --- mcp ------------------------------------------------------------------
+    mcp = sub.add_parser(
+        "mcp",
+        help="Expose a remote A2A agent as one MCP tool (stdio)",
+        description="Start a stdio MCP server whose single tool forwards questions to an A2A agent (needs semente-agents[mcp]).",
+    )
+    mcp.add_argument("--url", required=True, help="Base URL of the A2A agent (e.g. http://localhost:3000)")
+    mcp.add_argument("--name", help="Tool/agent name (default: the Agent Card name)")
+    mcp.add_argument("--api-key", help="Bearer key for the agent (default: A2A_API_KEY env var)")
+
     return parser
 
 
@@ -203,6 +214,8 @@ def main() -> None:
         sys.exit(cmd_status())
     elif args.command == "launch":
         cmd_launch(args.interface, demo=args.demo)
+    elif args.command == "mcp":
+        sys.exit(cmd_mcp(args.url, name=args.name, api_key=args.api_key))
     else:
         parser.print_help()
         sys.exit(1)

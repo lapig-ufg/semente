@@ -67,6 +67,10 @@ weather = [
     "requests-cache>=1.2.0",
     "retry-requests>=1.0.0",
 ]
+mcp = [
+    # `semente mcp` wraps an A2A agent as one MCP tool. 2.x renamed FastMCP.
+    "mcp>=1.9,<2",
+]
 dev = [
     "pytest>=9.0.2",
 ]

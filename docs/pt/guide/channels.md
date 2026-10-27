@@ -116,6 +116,39 @@ O Agent Card é construído a partir do `name` do manifesto e do
 | `A2A_API_KEY` | Se definida, `POST /a2a` exige `Authorization: Bearer <chave>` ou `X-API-Key`. O card continua público e anuncia o esquema |
 | `A2A_PUBLIC_URL` | URL pública base escrita no card (defina atrás de proxy/ngrok) |
 
+### Use como ferramenta MCP
+
+`semente mcp` encapsula **qualquer** agente A2A como uma única ferramenta
+[MCP](https://modelcontextprotocol.io), para que clientes MCP (Claude Desktop,
+Cursor, ...) possam fazer perguntas a ele. É um servidor stdio que repassa cada
+chamada ao `POST /a2a` do agente; a ferramenta leva o nome do Agent Card
+(`ask_<nome>`) e mantém uma conversa por processo do servidor.
+
+```bash
+pip install 'semente-agents[mcp]'
+semente mcp --url http://localhost:3000
+```
+
+```json
+{
+  "mcpServers": {
+    "groot": {
+      "command": "semente",
+      "args": ["mcp", "--url", "http://localhost:3000"]
+    }
+  }
+}
+```
+
+| Opção | Finalidade |
+|---|---|
+| `--url` | URL base do agente A2A (obrigatória) |
+| `--name` | Nome da ferramenta/agente (padrão: o nome do Agent Card) |
+| `--api-key` | Chave Bearer (padrão: `A2A_API_KEY`) |
+
+A ferramenta recebe `message` e um `context_id` opcional para escolher outra
+conversa.
+
 ## Adicionando um canal
 
 Canais são fábricas de roteadores FastAPI conectadas em

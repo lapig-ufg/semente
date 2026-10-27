@@ -115,6 +115,39 @@ The Agent Card is built from the manifest `name` and the optional
 | `A2A_API_KEY` | If set, `POST /a2a` requires `Authorization: Bearer <key>` or `X-API-Key`. The card stays public and advertises the scheme |
 | `A2A_PUBLIC_URL` | Public base URL written in the card (set it behind a proxy/ngrok) |
 
+### Use it as an MCP tool
+
+`semente mcp` wraps **any** A2A agent as a single
+[MCP](https://modelcontextprotocol.io) tool, so MCP clients (Claude Desktop,
+Cursor, ...) can ask it questions. It is a stdio server that forwards each call
+to the agent's `POST /a2a`; the tool is named after the Agent Card
+(`ask_<name>`) and keeps one conversation per server process.
+
+```bash
+pip install 'semente-agents[mcp]'
+semente mcp --url http://localhost:3000
+```
+
+```json
+{
+  "mcpServers": {
+    "groot": {
+      "command": "semente",
+      "args": ["mcp", "--url", "http://localhost:3000"]
+    }
+  }
+}
+```
+
+| Option | Purpose |
+|---|---|
+| `--url` | Base URL of the A2A agent (required) |
+| `--name` | Tool/agent name (default: the Agent Card name) |
+| `--api-key` | Bearer key (default: `A2A_API_KEY`) |
+
+The tool takes `message` and an optional `context_id` to pick another
+conversation.
+
 ## Adding a channel
 
 Channels are FastAPI router factories wired in `semente.build.build_app`.

@@ -108,6 +108,16 @@ semente channel whatsapp              # status + as dicas de habilitar/desabilit
 | `whatsapp` | Canal de webhook do WhatsApp (montado pelo `build_app`; execute via `main.py`) |
 | `a2a` | Canal JSON-RPC Agent2Agent + Agent Card (montado pelo `build_app`; execute via `main.py`) |
 
+## `semente mcp`
+
+Encapsula um agente A2A em execução como uma única ferramenta MCP (servidor
+stdio). Requer `pip install 'semente-agents[mcp]'`. Veja
+[Canais](/pt/guide/channels#use-como-ferramenta-mcp).
+
+```bash
+semente mcp --url http://localhost:3000 [--name NOME] [--api-key CHAVE]
+```
+
 ## `semente provider`
 
 Gerencia a configuração de modelos: provedores, ids de modelo, o fallback
