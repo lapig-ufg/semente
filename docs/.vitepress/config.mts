@@ -102,6 +102,25 @@ export default defineConfig({
   title: 'Semente',
   description: 'Multi-agent AI chat framework for land use and agriculture',
   base,
+  // First visit: open the Portuguese pages when the browser prefers pt.
+  // After that the language of the page being viewed is remembered, so the
+  // language switcher always wins over browser detection.
+  head: [
+    [
+      'script',
+      {},
+      `(function(){try{
+var b=${JSON.stringify(base)},p=location.pathname;
+if(p.indexOf(b)!==0)return;
+var rest=p.slice(b.length),isPt=rest==='pt'||rest.indexOf('pt/')===0,k='semente-lang',s=localStorage.getItem(k);
+if(!s){
+var l=(navigator.languages&&navigator.languages[0])||navigator.language||'en';
+if(l.toLowerCase().indexOf('pt')===0&&!isPt){location.replace(b+'pt/'+rest+location.search+location.hash);return;}
+}
+localStorage.setItem(k,isPt?'pt':'en');
+}catch(e){}})();`,
+    ],
+  ],
   // Machine-readable docs for AI consumers: /llms.txt, /llms-full.txt and a
   // plain-Markdown copy of every page (https://llmstxt.org).
   vite: {
