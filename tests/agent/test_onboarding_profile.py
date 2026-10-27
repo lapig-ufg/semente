@@ -234,3 +234,25 @@ def test_terms_explicitly_disabled_config_behaves_like_absent(db):
 
     features = {"terms-acceptance": TermsConfig(enable=False)}
     assert _agent(features=features)._needs_onboarding(state, UID) is False
+
+# ---------------------------------------------------------------------
+# features.onboarding (on by default)
+# ---------------------------------------------------------------------
+def test_onboarding_disabled_skips_the_gate_without_any_data(db):
+    """Onboarding off: a brand-new anonymous user goes straight to the agent."""
+    state: dict[str, Any] = {}
+    harness = _agent(features={"onboarding": False})
+
+    assert harness._needs_onboarding(state, None) is False
+    assert state["workflow_state"] is not None  # session bootstrap still ran
+
+
+def test_onboarding_disabled_overrides_terms_acceptance(db):
+    features = {"onboarding": False, "terms-acceptance": TermsConfig(enable=True)}
+    assert _agent(features=features)._needs_onboarding({}, UID) is False
+
+
+def test_onboarding_enabled_by_default_and_explicitly(db):
+    assert _agent(features={})._needs_onboarding({}, UID) is True
+    assert _agent(features={"onboarding": True})._needs_onboarding({}, UID) is True
+    assert _agent(features={"onboarding": {"enable": False}})._needs_onboarding({}, UID) is False
