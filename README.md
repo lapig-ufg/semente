@@ -12,7 +12,7 @@ knowledge base, skills, and prompts.
 
 > *Pasto Legal was the first seed.*
 
-📖 **Full documentation:** https://leandroleal.github.io/semente (source in [`docs/`](docs/)).
+📖 **Full documentation:** https://semente.lapig.ufg.br (source in [`docs/`](docs/)).
 
 ---
 
@@ -31,7 +31,7 @@ the starting point for your own app.
 ### 2. Install
 
 ```bash
-git clone https://github.com/leandroleal/semente.git
+git clone https://github.com/lapig-ufg/semente.git
 cd semente
 uv venv .venv && source .venv/bin/activate
 uv pip install -e .

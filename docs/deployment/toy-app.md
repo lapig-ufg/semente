@@ -16,7 +16,7 @@ This guide walks through running it locally and deploying it to production.
 ## 1. Get the code
 
 ```bash
-git clone https://github.com/leandroleal/semente.git
+git clone https://github.com/lapig-ufg/semente.git
 cd semente
 ```
 
