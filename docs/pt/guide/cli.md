@@ -72,6 +72,7 @@ Features suportadas:
 | Feature | Significado |
 |---|---|
 | `tts` | Ferramenta TTS no agente de boas-vindas (respostas em áudio) |
+| `onboarding` | Portão de boas-vindas + nome/função antes do agente principal; `--disable` responde direto (**ligado por padrão**) |
 | `summarization` | Resumo contínuo da conversa (a cada 6 turnos) |
 | `interaction-assessment` | Ciclo de satisfação/persona, ciclos de remediação, captura DPO/SFT (`{enable, window_size}`) |
 | `guardrails` | Guardrails de entrada plugáveis declarados no `DomainSpec` |

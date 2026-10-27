@@ -11,6 +11,7 @@ prompts_dir: domain/prompts  # opcional; diretório de prompts explícito (sobre
 engine: agno                 # agno (padrão) | adk | bare
 channels: [streamlit]        # streamlit e/ou whatsapp
 features:                    # booleanos valem true por padrão (terms-acceptance: false)
+  onboarding: true           # etapa de boas-vindas + nome/função antes do agente principal; false = responde direto
   tts: true                  # anexa a ferramenta TTS ao agente de boas-vindas
   interaction-assessment: true  # ciclo de satisfação/persona + captura DPO/SFT, ou {enable: true, window_size: 5}
   summarization: true        # resumo contínuo da conversa
@@ -50,6 +51,7 @@ export SEMENTE_ENGINE=adk    # vale quando o manifesto não tem o campo engine
 
 | Interruptor | Quando desligado |
 |---|---|
+| `onboarding` | Todo o portão de onboarding (termos + nome/função) é ignorado: cada turno vai direto ao agente principal, mesmo para um usuário novo e anônimo. Pensado para bots de propósito único como o [Groot](/pt/showcase/groot). Ligado por padrão. |
 | `tts` | O agente de boas-vindas é construído sem a ferramenta TTS. |
 | `interaction-assessment` | Todo o ciclo — agente de satisfação, persistência e captura DPO/SFT, atualizações de persona e remediação — é omitido da execução. Booleano ou `{enable, window_size}` — veja [Feedback e Fine-Tuning](feedback.md). |
 | `summarization` | A etapa de resumo contínuo da conversa é omitida. |

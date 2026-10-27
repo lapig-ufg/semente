@@ -71,6 +71,7 @@ Supported features:
 | Feature | Meaning |
 |---|---|
 | `tts` | TTS tool on the welcoming agent (audio replies) |
+| `onboarding` | Welcome + name/role gate before the main agent; `--disable` answers right away (**on by default**) |
 | `summarization` | Rolling conversation summary (every 6 turns) |
 | `interaction-assessment` | Satisfaction/persona loop, remediation cycles, DPO/SFT capture (`{enable, window_size}`) |
 | `guardrails` | Pluggable input guardrails declared in `DomainSpec` |

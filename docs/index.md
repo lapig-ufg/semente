@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: Semente
-  text: A declarative multi-agent orchestration for land-use monitoring and environmental data.
+  text: Declarative multi-agent AI framework — decoupling domain knowledge from agent orchestration.
   tagline: Grow a domain-specific AI assistant from a single seed — tools, knowledge, and prompts.
   image:
     src: /semente/logo.svg

@@ -14,6 +14,11 @@ knowledge base, skills, and prompts.
 
 📖 **Full documentation:** https://semente.lapig.ufg.br (source in [`docs/`](docs/)).
 
+🤖 **For AI agents:** machine-readable docs at
+[`/llms.txt`](https://lapig-ufg.github.io/semente/llms.txt) (index) and
+[`/llms-full.txt`](https://lapig-ufg.github.io/semente/llms-full.txt) (everything
+in one file). Every page is also available as plain Markdown by appending `.md`.
+
 ---
 
 ## Quickstart — deploy the Toy App

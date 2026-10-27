@@ -1,4 +1,5 @@
 import { defineConfig, type DefaultTheme } from 'vitepress'
+import llmstxt from 'vitepress-plugin-llms'
 
 // Project pages live under /semente/ — assets 404 without this base.
 // cleanUrls: false (default) because GitHub Pages has no fallback rewrite.
@@ -48,7 +49,10 @@ function sidebar(prefix: string, t: Record<string, string>): DefaultTheme.Sideba
     [`${prefix}/showcase/`]: [
       {
         text: t.showcase,
-        items: [{ text: 'Pasto Legal', link: `${prefix}/showcase/pasto-legal` }],
+        items: [
+          { text: 'Pasto Legal', link: `${prefix}/showcase/pasto-legal` },
+          { text: t.groot, link: `${prefix}/showcase/groot` },
+        ],
       },
     ],
   }
@@ -71,6 +75,7 @@ const en = {
   engines: 'Engines',
   toyApp: 'Toy App',
   overview: 'Overview',
+  groot: 'Groot (Docs AI)',
 }
 
 const pt = {
@@ -90,12 +95,27 @@ const pt = {
   engines: 'Engines',
   toyApp: 'App de Exemplo',
   overview: 'Visão Geral',
+  groot: 'Groot (IA da Documentação)',
 }
 
 export default defineConfig({
   title: 'Semente',
   description: 'Multi-agent AI chat framework for land use and agriculture',
   base,
+  // Machine-readable docs for AI consumers: /llms.txt, /llms-full.txt and a
+  // plain-Markdown copy of every page (https://llmstxt.org).
+  vite: {
+    plugins: [
+      llmstxt({
+        domain: 'https://lapig-ufg.github.io',
+        title: 'Semente',
+        description:
+          'Multi-agent AI chat framework for land use and agriculture. English docs at the root, Portuguese (pt-BR) under /pt/.',
+        details:
+          'Every page exists in English and in Portuguese (URLs starting with /pt/). Prefer the English pages unless the user writes in Portuguese.',
+      }),
+    ],
+  },
   locales: {
     root: {
       label: 'English',

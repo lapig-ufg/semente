@@ -11,6 +11,7 @@ prompts_dir: domain/prompts  # optional; explicit prompts dir (overrides languag
 engine: agno                 # agno (default) | adk | bare
 channels: [streamlit]        # streamlit and/or whatsapp
 features:                    # booleans default to true (terms-acceptance: false)
+  onboarding: true           # welcome + name/role step before the main agent; false = answer right away
   tts: true                  # attach TTS tool to the welcoming agent
   interaction-assessment: true  # satisfaction/persona loop + DPO/SFT capture, or {enable: true, window_size: 5}
   summarization: true        # rolling conversation summary
@@ -50,6 +51,7 @@ export SEMENTE_ENGINE=adk    # applies when the manifest has no engine field
 
 | Toggle | When off |
 |---|---|
+| `onboarding` | The whole onboarding gate (terms + name/role) is skipped: every turn goes straight to the main agent, even for a brand-new anonymous user. Meant for single-purpose bots such as [Groot](/showcase/groot). On by default. |
 | `tts` | The welcoming agent is built without the TTS tool. |
 | `interaction-assessment` | The whole loop — satisfaction agent, DPO/SFT persistence and capture, persona updates, and remediation — is omitted from the run. Boolean or `{enable, window_size}` — see [Feedback & Fine-Tuning](feedback.md). |
 | `summarization` | The rolling conversation summary stage is omitted. |
