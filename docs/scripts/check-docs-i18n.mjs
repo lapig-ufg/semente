@@ -34,11 +34,13 @@ for (const f of pt) if (!en.includes(f)) errors.push(`Falta a versão EN: docs/$
 const baseIdx = process.argv.indexOf('--base')
 if (baseIdx !== -1) {
   const base = process.argv[baseIdx + 1]
-  // Páginas novas (A) já são cobertas pela checagem de pares acima; só comparamos as modificadas.
-  const changed = execSync(`git diff --name-only --diff-filter=M ${base}...HEAD -- docs`, { encoding: 'utf8' })
-    .split('\n')
-    .filter((f) => f.endsWith('.md'))
-  const set = new Set(changed)
+  // Só páginas modificadas exigem o par; o par pode ter sido modificado ou criado (A) no mesmo PR.
+  const diff = (filter) =>
+    execSync(`git diff --name-only --diff-filter=${filter} ${base}...HEAD -- docs`, { encoding: 'utf8' })
+      .split('\n')
+      .filter((f) => f.endsWith('.md'))
+  const changed = diff('M')
+  const set = new Set(diff('AM'))
   for (const f of changed) {
     const isPt = f.startsWith('docs/pt/')
     const name = isPt ? f.slice('docs/pt/'.length) : f.slice('docs/'.length)
