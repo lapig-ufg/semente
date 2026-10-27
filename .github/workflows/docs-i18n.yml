@@ -1,0 +1,21 @@
+name: Check docs i18n
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+
+jobs:
+  i18n-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: EN and PT docs must change together
+        run: node docs/scripts/check-docs-i18n.mjs --base origin/${{ github.base_ref }}

@@ -71,6 +71,7 @@ Supported features:
 | Feature | Meaning |
 |---|---|
 | `tts` | TTS tool on the welcoming agent (audio replies) |
+| `onboarding` | Welcome + name/role gate before the main agent; `--disable` answers right away (**on by default**) |
 | `summarization` | Rolling conversation summary (every 6 turns) |
 | `interaction-assessment` | Satisfaction/persona loop, remediation cycles, DPO/SFT capture (`{enable, window_size}`) |
 | `guardrails` | Pluggable input guardrails declared in `DomainSpec` |
@@ -105,6 +106,16 @@ semente channel whatsapp              # status + the enable/disable hints
 |---|---|
 | `streamlit` | Local web chat (dev-friendly UI with debug panel) |
 | `whatsapp` | WhatsApp webhook channel (assembled by `build_app`; run via `main.py`) |
+| `a2a` | Agent2Agent JSON-RPC channel + Agent Card (assembled by `build_app`; run via `main.py`) |
+
+## `semente mcp`
+
+Wraps a running A2A agent as a single MCP tool (stdio server). Needs
+`pip install 'semente-agents[mcp]'`. See [Channels](/guide/channels#use-it-as-an-mcp-tool).
+
+```bash
+semente mcp --url http://localhost:3000 [--name NAME] [--api-key KEY]
+```
 
 ## `semente provider`
 

@@ -557,6 +557,13 @@ class Harness:
     # Onboarding gate
     # ------------------------------------------------------------------
 
+    def _onboarding_enabled(self) -> bool:
+        """The ``features.onboarding`` switch (absent means on)."""
+        value = self.features.get("onboarding", True)
+        if isinstance(value, dict):
+            return bool(value.get("enable", True))
+        return bool(value)
+
     def _terms_enabled(self) -> bool:
         """The ``features.terms-acceptance`` gate (absent means off).
 
@@ -584,6 +591,11 @@ class Harness:
         copied into ``session_state`` so the agent can personalise from the
         first reply.
 
+        ``features.onboarding: false`` turns the whole gate off (terms and
+        profile): every turn goes straight to the main agent — meant for
+        anonymous, single-purpose apps such as a docs or FAQ bot. The
+        session-state bootstrap below still runs.
+
         The completeness rule (``is_persona_complete``) is shared with the
         welcoming agent, so the gate and the agent can never disagree on
         whether the user's identification is done.
@@ -597,6 +609,9 @@ class Harness:
 
         if state.get("workflow_state") is None:
             state["workflow_state"] = WorkflowState().model_dump()
+
+        if not self._onboarding_enabled():
+            return False
 
         terms_enabled = self._terms_enabled()
         terms_accepted = bool(state.get("terms_accepted")) or not terms_enabled

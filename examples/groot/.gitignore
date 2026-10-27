@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Semente runtime artifacts
+.env
+logs/
+tmp/
+data/
+users_db.json
+.streamlit/secrets.toml

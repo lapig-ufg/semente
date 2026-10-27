@@ -18,6 +18,7 @@ console = Console()
 CHANNELS: dict[str, str] = {
     "streamlit": "Local web chat (dev-friendly UI with a debug panel)",
     "whatsapp": "WhatsApp webhook channel (assembled by build_app; run via main.py)",
+    "a2a": "A2A (Agent2Agent) server: Agent Card + JSON-RPC (assembled by build_app; run via main.py)",
 }
 
 KNOWN_CHANNELS = list(CHANNELS)

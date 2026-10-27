@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: Semente
-  text: Multi-agent AI chat for land use
+  text: Declarative multi-agent AI framework — decoupling domain knowledge from agent orchestration.
   tagline: Grow a domain-specific AI assistant from a single seed — tools, knowledge, and prompts.
   image:
     src: /semente/logo.svg
@@ -33,11 +33,8 @@ features:
 
 ## What is Semente?
 
-**Semente** (Portuguese for *seed*) is a multi-agent AI chat framework for land
-use and agriculture. It was extracted from
-[Pasto Legal](https://github.com/lapig-ufg/pasto-legal) (LAPIG/UFG) — an AI
-assistant that delivers satellite-based pasture diagnostics to Brazilian
-ranchers over WhatsApp.
+**Semente** (Portuguese for *seed*) Build multi-agent AI pipelines and
+conversational channels from pure domain knowledge—without framework lock-in.
 
 Semente keeps the domain-neutral engine and lets you grow a new assistant by
 supplying a **domain**: the tools, knowledge base, skills, and prompts that make

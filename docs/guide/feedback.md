@@ -97,6 +97,6 @@ class DPODatasetRow(BaseModel):
 │   └── _generate_apology          # overrides the output when a cycle is open
 ```
 
-See the [Architecture](/architecture/README) page for where this sits in the full
+See the [Architecture](/architecture/) page for where this sits in the full
 turn pipeline. Persisted trajectories are sanitized field-by-field through
 the app's [guardrail chain](/guide/guardrails) before storage.

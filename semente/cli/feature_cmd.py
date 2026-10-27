@@ -43,6 +43,7 @@ FEATURES: dict[str, Feature] = {
     feature.name: feature
     for feature in (
         Feature("tts", "TTS tool on the welcoming agent (audio replies)"),
+        Feature("onboarding", "Welcoming/onboarding gate (terms + name/role); off = straight to the main agent"),
         Feature("summarization", "Rolling conversation summary (every 6 turns)"),
         Feature("interaction-assessment", "Satisfaction/persona loop, remediation cycles, DPO/SFT capture (enable + window_size)"),
         Feature("guardrails", "Pluggable input guardrails declared in DomainSpec", scaffold=True),
