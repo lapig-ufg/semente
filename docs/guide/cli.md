@@ -106,6 +106,7 @@ semente channel whatsapp              # status + the enable/disable hints
 |---|---|
 | `streamlit` | Local web chat (dev-friendly UI with debug panel) |
 | `whatsapp` | WhatsApp webhook channel (assembled by `build_app`; run via `main.py`) |
+| `a2a` | Agent2Agent JSON-RPC channel + Agent Card (assembled by `build_app`; run via `main.py`) |
 
 ## `semente provider`
 

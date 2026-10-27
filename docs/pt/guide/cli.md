@@ -106,6 +106,7 @@ semente channel whatsapp              # status + as dicas de habilitar/desabilit
 |---|---|
 | `streamlit` | Chat web local (interface amigável ao desenvolvimento, com painel de depuração) |
 | `whatsapp` | Canal de webhook do WhatsApp (montado pelo `build_app`; execute via `main.py`) |
+| `a2a` | Canal JSON-RPC Agent2Agent + Agent Card (montado pelo `build_app`; execute via `main.py`) |
 
 ## `semente provider`
 

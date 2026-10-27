@@ -53,7 +53,7 @@ lê as páginas em inglês ou português conforme o caso.
 examples/groot/
 ├── semente.yaml              # manifesto: engine agno, streamlit, modelo Gemini
 ├── .env.example
-├── main.py                   # entrada FastAPI opcional (WhatsApp)
+├── main.py                   # entrada FastAPI (serve A2A)
 └── domain/
     ├── __init__.py           # as três ferramentas + domain_spec
     └── prompts/
@@ -72,6 +72,12 @@ prompts_dir: domain/prompts
 engine: agno
 channels:
 - streamlit
+- a2a
+a2a:
+  description: Responde perguntas sobre o framework Semente, citando a documentação.
+  skills:
+    - id: semente-docs-qa
+      name: Perguntas e respostas sobre a doc do Semente
 features:
   onboarding: false          # responde direto, sem etapa de boas-vindas
   tts: false
@@ -165,15 +171,19 @@ SEMENTE_DOCS_DIR=/caminho/para/outra/docs
 O mesmo exemplo vira um bot de perguntas e respostas para qualquer pasta de
 Markdown: troque a pasta e o prompt do `agents.yml`.
 
-## 4. Sirva no WhatsApp
+## 4. Sirva via A2A
 
-Habilite o canal e siga os passos de produção do
-[guia do App de Exemplo](/pt/deployment/toy-app#_6-implante-em-producao-whatsapp):
+O Groot também fala [A2A](/pt/guide/channels#a2a), então outros agentes podem
+descobri-lo e perguntar sobre o Semente. O Streamlit não serve A2A; execute o
+ponto de entrada FastAPI em um segundo terminal:
 
 ```bash
-semente channel whatsapp --enable
 python main.py
+curl http://localhost:3000/.well-known/agent-card.json
 ```
+
+Chame-o com `message/send` como no [guia de canais](/pt/guide/channels#a2a).
+Defina `A2A_API_KEY` para exigir uma chave em `POST /a2a`.
 
 ## Para ir além
 

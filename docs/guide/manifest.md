@@ -9,7 +9,7 @@ language: pt-BR              # optional; loads prompts/<lang>/ if present
 domain_module: domain        # import path exposing `domain_spec`
 prompts_dir: domain/prompts  # optional; explicit prompts dir (overrides language)
 engine: agno                 # agno (default) | adk | bare
-channels: [streamlit]        # streamlit and/or whatsapp
+channels: [streamlit]        # streamlit, whatsapp and/or a2a
 features:                    # booleans default to true (terms-acceptance: false)
   onboarding: true           # welcome + name/role step before the main agent; false = answer right away
   tts: true                  # attach TTS tool to the welcoming agent
@@ -34,7 +34,7 @@ models:                      # optional override of env-var model config
 | `domain_module` | `str` | `domain` | Import path of the module exposing `domain_spec`. |
 | `prompts_dir` | `str` | — | Explicit prompts directory (relative to cwd). Overrides `language`. |
 | `engine` | `str` | `agno` | Agent engine: `agno`, `adk`, or `bare`. See [Engines](engines.md). |
-| `channels` | `list` | `[streamlit]` | `streamlit` and/or `whatsapp`. |
+| `channels` | `list` | `[streamlit]` | `streamlit`, `whatsapp` and/or `a2a`. |
 | `features` | `dict` | all `true` (except `terms-acceptance`) | Feature toggles (see below). |
 | `models` | `dict` | — | Overrides the `.env` model config. |
 
@@ -113,6 +113,24 @@ models:
   fallback: { provider: ollama, id: gemma4:31b-cloud }
 ```
 
+## A2A agent card
+
+Optional `a2a` block that customizes the Agent Card served by the
+[A2A channel](/guide/channels#a2a). Without it, the card uses the manifest name
+and a default `chat` skill.
+
+```yaml
+a2a:
+  description: Answers questions about the Semente framework.
+  version: 1.0.0
+  skills:
+    - id: semente-docs-qa
+      name: Semente docs Q&A
+      description: Explains Semente concepts and cites the docs.
+      tags: [docs, semente]
+      examples: [What is the Harness?]
+```
+
 ## Environment variables
 
 Semente reads configuration from a `.env` file in the working directory
@@ -131,6 +149,8 @@ Semente reads configuration from a `.env` file in the working directory
 | `PGVECTOR_*` | PgVector connection (knowledge base) |
 | `WHATSAPP_*` | WhatsApp Business API credentials |
 | `VALKEY_*` | Valkey/Redis (WhatsApp debouncing, prod) |
+| `A2A_API_KEY` | Optional key protecting `POST /a2a` |
+| `A2A_PUBLIC_URL` | Public base URL advertised in the Agent Card |
 | `GEE_*` | Earth Engine service account (geospatial domains) |
 | `S3_*` | S3-compatible storage (media, prod) |
 

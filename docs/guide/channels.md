@@ -1,7 +1,8 @@
 # Channels
 
-Semente ships two channels: **WhatsApp** (production, for end users) and
-**Streamlit** (development, for debugging). Both run the same Harness.
+Semente ships three channels: **WhatsApp** (production, for end users),
+**Streamlit** (development, for debugging) and **A2A** (agent-to-agent). All of
+them run the same Harness.
 
 ## Streamlit
 
@@ -66,6 +67,53 @@ ngrok http 3000
 ```
 
 Point the WhatsApp webhook URL at the ngrok HTTPS URL.
+
+## A2A
+
+The A2A channel exposes the agent over the
+[Agent2Agent protocol](https://a2a-protocol.org), so other agents (any
+framework) can discover and call it. It goes through the same Harness as the
+other channels, so guardrails, summarization and sessions all apply.
+
+Enable it and run the FastAPI entry point:
+
+```bash
+semente channel a2a --enable
+python main.py
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /.well-known/agent-card.json` | Agent Card (discovery). `/.well-known/agent.json` also works |
+| `POST /a2a` | JSON-RPC 2.0 endpoint |
+
+```bash
+curl -s http://localhost:3000/a2a -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0", "id": 1, "method": "message/send",
+  "params": {"message": {
+    "kind": "message", "role": "user", "messageId": "m1",
+    "parts": [{"kind": "text", "text": "What is the Harness?"}]
+  }}
+}'
+```
+
+The reply is a `message` with a text part and a `contextId`. Send the same
+`contextId` back to continue the conversation (it maps to the Semente
+session).
+
+**Scope.** Text only. `message/stream` returns `-32004` (unsupported);
+`tasks/get`, `tasks/cancel` and `tasks/resubscribe` return `-32001`
+(no tasks — replies are immediate messages). Unknown methods return `-32601`;
+malformed input returns `-32700`/`-32600`/`-32602`; a Harness failure
+returns `-32603` without leaking details.
+
+The Agent Card is built from the manifest `name` and the optional
+[`a2a` block](/guide/manifest#a2a-agent-card).
+
+| Variable | Purpose |
+|---|---|
+| `A2A_API_KEY` | If set, `POST /a2a` requires `Authorization: Bearer <key>` or `X-API-Key`. The card stays public and advertises the scheme |
+| `A2A_PUBLIC_URL` | Public base URL written in the card (set it behind a proxy/ngrok) |
 
 ## Adding a channel
 

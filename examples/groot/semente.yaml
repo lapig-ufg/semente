@@ -5,6 +5,7 @@ prompts_dir: domain/prompts
 engine: agno
 channels:
 - streamlit
+- a2a
 features:
   onboarding: false          # no welcome/name/role step: Groot answers right away
   tts: false
@@ -15,3 +16,18 @@ models:
   primary:
     provider: google
     id: gemini-3.5-flash-lite
+a2a:
+  description: >-
+    Groot helps people understand the Semente framework (multi-agent AI chat for
+    land use and agriculture). Ask about concepts, configuration, the CLI,
+    channels, engines, deployment or how to write a domain; answers come from
+    the official documentation, in English or Portuguese.
+  skills:
+    - id: semente-docs-qa
+      name: Semente documentation Q&A
+      description: Answers questions about the Semente framework using its official docs and cites the page.
+      tags: [semente, documentation, q-and-a]
+      examples:
+        - What is the difference between the agno and bare engines?
+        - Como habilito o aceite dos termos?
+        - How do I write a DomainSpec with a custom tool?

@@ -9,7 +9,7 @@ language: pt-BR              # opcional; carrega prompts/<lang>/ se existir
 domain_module: domain        # caminho de import que expõe `domain_spec`
 prompts_dir: domain/prompts  # opcional; diretório de prompts explícito (sobrescreve language)
 engine: agno                 # agno (padrão) | adk | bare
-channels: [streamlit]        # streamlit e/ou whatsapp
+channels: [streamlit]        # streamlit, whatsapp e/ou a2a
 features:                    # booleanos valem true por padrão (terms-acceptance: false)
   onboarding: true           # etapa de boas-vindas + nome/função antes do agente principal; false = responde direto
   tts: true                  # anexa a ferramenta TTS ao agente de boas-vindas
@@ -34,7 +34,7 @@ models:                      # sobrescrita opcional da configuração de modelo 
 | `domain_module` | `str` | `domain` | Caminho de import do módulo que expõe `domain_spec`. |
 | `prompts_dir` | `str` | — | Diretório de prompts explícito (relativo ao cwd). Sobrescreve `language`. |
 | `engine` | `str` | `agno` | Engine de agentes: `agno`, `adk` ou `bare`. Veja [Engines](engines.md). |
-| `channels` | `list` | `[streamlit]` | `streamlit` e/ou `whatsapp`. |
+| `channels` | `list` | `[streamlit]` | `streamlit`, `whatsapp` e/ou `a2a`. |
 | `features` | `dict` | todas `true` (exceto `terms-acceptance`) | Interruptores de features (veja abaixo). |
 | `models` | `dict` | — | Sobrescreve a configuração de modelo do `.env`. |
 
@@ -114,6 +114,24 @@ models:
   fallback: { provider: ollama, id: gemma4:31b-cloud }
 ```
 
+## Card do agente A2A
+
+Bloco `a2a` opcional que personaliza o Agent Card servido pelo
+[canal A2A](/pt/guide/channels#a2a). Sem ele, o card usa o nome do manifesto e
+uma skill padrão `chat`.
+
+```yaml
+a2a:
+  description: Responde perguntas sobre o framework Semente.
+  version: 1.0.0
+  skills:
+    - id: semente-docs-qa
+      name: Perguntas e respostas sobre a doc do Semente
+      description: Explica conceitos do Semente e cita a documentação.
+      tags: [docs, semente]
+      examples: [O que é o Harness?]
+```
+
 ## Variáveis de ambiente
 
 O Semente lê a configuração de um arquivo `.env` no diretório de trabalho
@@ -132,6 +150,8 @@ O Semente lê a configuração de um arquivo `.env` no diretório de trabalho
 | `PGVECTOR_*` | Conexão PgVector (base de conhecimento) |
 | `WHATSAPP_*` | Credenciais da WhatsApp Business API |
 | `VALKEY_*` | Valkey/Redis (debouncing do WhatsApp, prod) |
+| `A2A_API_KEY` | Chave opcional que protege `POST /a2a` |
+| `A2A_PUBLIC_URL` | URL pública base anunciada no Agent Card |
 | `GEE_*` | Conta de serviço do Earth Engine (domínios geoespaciais) |
 | `S3_*` | Armazenamento compatível com S3 (mídia, prod) |
 

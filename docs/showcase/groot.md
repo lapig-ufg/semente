@@ -52,7 +52,7 @@ reads the English or Portuguese pages accordingly.
 examples/groot/
 ├── semente.yaml              # manifest: engine agno, streamlit, Gemini model
 ├── .env.example
-├── main.py                   # optional FastAPI entry (WhatsApp)
+├── main.py                   # FastAPI entry (serves A2A)
 └── domain/
     ├── __init__.py           # the three tools + domain_spec
     └── prompts/
@@ -71,6 +71,12 @@ prompts_dir: domain/prompts
 engine: agno
 channels:
 - streamlit
+- a2a
+a2a:
+  description: Answers questions about the Semente framework, citing the docs.
+  skills:
+    - id: semente-docs-qa
+      name: Semente docs Q&A
 features:
   onboarding: false          # answer right away, no welcome step
   tts: false
@@ -164,15 +170,19 @@ SEMENTE_DOCS_DIR=/path/to/another/docs
 The same example becomes a Q&A bot for any Markdown folder: change the folder
 and the prompt in `agents.yml`.
 
-## 4. Serve it on WhatsApp
+## 4. Serve it over A2A
 
-Enable the channel and follow the production steps of the
-[Toy App guide](/deployment/toy-app#_6-deploy-to-production-whatsapp):
+Groot also speaks [A2A](/guide/channels#a2a), so other agents can discover and
+ask it about Semente. Streamlit cannot serve A2A, so run the FastAPI entry in a
+second terminal:
 
 ```bash
-semente channel whatsapp --enable
 python main.py
+curl http://localhost:3000/.well-known/agent-card.json
 ```
+
+Call it with `message/send` as shown in the [channels guide](/guide/channels#a2a).
+Set `A2A_API_KEY` to require a key on `POST /a2a`.
 
 ## Going further
 
