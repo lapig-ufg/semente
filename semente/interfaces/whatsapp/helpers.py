@@ -7,7 +7,7 @@ from typing import Any, List, Optional, Tuple, Union
 
 import httpx
 
-from semente.logging import log_error, log_info, log_warning
+from semente.logging import log_debug, log_error, log_info, log_warning
 
 from semente.guardrails import (
     GuardrailContext,
