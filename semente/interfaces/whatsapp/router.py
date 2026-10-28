@@ -229,7 +229,11 @@ def attach_routes(
         # Splits identity: user_id (possibly encrypted) for DB storage, phone_number (raw) for API sends
         user_id = _encrypt_phone(phone_number, encryption_key) if enable_encryption and encryption_key else phone_number
         timestamp: str = message.get("timestamp")
-        try:   
+        # Assigned inside the try, but read by the finally: any failure before
+        # the lock is taken (typing indicator, extraction, unsupported type)
+        # must not turn into UnboundLocalError and escape the background task.
+        valkey_execution_lock = None
+        try:
             message_id = message.get("id")
             await typing_indicator_async(message_id, config)
 
@@ -377,13 +381,13 @@ def attach_routes(
                 await send_whatsapp_message_async(phone_number, response.content, config)
 
         except Exception as e:
-            log_error(f"Error processing message: {e}")
+            log_error(f"Error processing message: {e}", exc_info=True)
             try:
                 await send_whatsapp_message_async(phone_number, _ERROR_MESSAGE, config)
             except Exception as send_error:
-                log_error(f"Error sending error message: {send_error}")
+                log_error(f"Error sending error message: {send_error}", exc_info=True)
         finally:
-            if valkey_execution_lock.locked():
+            if valkey_execution_lock is not None and valkey_execution_lock.locked():
                 with suppress(Exception):
                     valkey_execution_lock.release()
 
