@@ -31,7 +31,7 @@ import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 from semente.logging import log_error, log_warning
 
@@ -43,6 +43,10 @@ SUPPORTED_EXTENSIONS = {".zip", ".rar", ".kmz", ".kml", ".geojson", ".json"}
 
 # Vector extensions looked up inside archives.
 _ARCHIVE_VECTOR_EXTENSIONS = {".shp", ".kml", ".geojson", ".json", ".gpkg"}
+
+# Attribute columns (case-insensitive, in priority order) that may carry the
+# name of each polygon in the source file.
+_LABEL_COLUMNS = ("name", "nome", "piquete", "label")
 
 
 class GeoFileError(ValueError):
@@ -336,6 +340,27 @@ def _normalize_layer(gdf: "gpd.GeoDataFrame") -> "gpd.GeoDataFrame":  # noqa: F8
     return gdf
 
 
+def _find_label_column(gdf: "gpd.GeoDataFrame") -> Optional[str]:  # noqa: F821
+    """Returns the column holding the polygon names, or None when absent."""
+    by_lower = {str(column).lower(): column for column in gdf.columns}
+    for candidate in _LABEL_COLUMNS:
+        if candidate in by_lower:
+            return by_lower[candidate]
+    return None
+
+
+def _clean_label(value) -> Optional[str]:
+    """Normalizes a source attribute value to a usable label (or None)."""
+    if value is None:
+        return None
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    text = str(value).strip()
+    if not text or text.lower() in ("nan", "none"):
+        return None
+    return text
+
+
 def convert_geo_file_to_geojson(content: bytes, filename: str) -> bytes:
     """Converts any supported geospatial document to a single-geometry GeoJSON.
 
@@ -368,10 +393,16 @@ def convert_geo_file_to_geojson(content: bytes, filename: str) -> bytes:
         dataframes = _collect_dataframes(content, filename, Path(tmp))
 
     polygons: List[Polygon] = []
+    labels: List[Optional[str]] = []
     for gdf in dataframes:
         try:
-            for geometry in _normalize_layer(gdf).geometry:
-                polygons.extend(_safe_polygons(geometry))
+            layer = _normalize_layer(gdf)
+            label_column = _find_label_column(layer)
+            for index, geometry in enumerate(layer.geometry):
+                parts = _safe_polygons(geometry)
+                label = _clean_label(layer[label_column].iloc[index]) if label_column else None
+                polygons.extend(parts)
+                labels.extend([label] * len(parts))
         except Exception as error:
             log_error(f"geojson_io: failed processing layer of {filename}: {error}")
 
@@ -395,6 +426,7 @@ def convert_geo_file_to_geojson(content: bytes, filename: str) -> bytes:
                 "properties": {
                     "source_file": filename,
                     "polygon_count": len(polygons),
+                    "polygon_labels": labels,
                 },
                 "geometry": mapping(geometry),
             }
