@@ -8,8 +8,8 @@ from typing import List
 from semente import Image, Audio, File
 
 from semente.configs.config import config
-from semente.interfaces.streamlit.debug_helpers import extract_workflow_debug_data, extract_session_state
-from semente.interfaces.streamlit.debug_panel import render_debug_panel
+from semente.api.interfaces.streamlit.debug_helpers import extract_workflow_debug_data, extract_session_state
+from semente.api.interfaces.streamlit.debug_panel import render_debug_panel
 from semente.core.harness import get_harness
 
 st.set_page_config(page_title="Semente", page_icon="🌱")

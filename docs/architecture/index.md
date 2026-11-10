@@ -100,7 +100,7 @@ any exception from the primary triggers one retry with the fallback model.
 | `semente/core/` | The `Harness` turn pipeline; engine-free types (`StepOutput`, `Session`, `SessionStore`) |
 | `semente/agents/` | Agent factories: `build_agent`, welcoming, media, feedback, persona, summary |
 | `semente/backends/` | The **engine port**: contract (`base.py`), registry, and the `agno`, `adk`, `bare` backends; `toolkit.py` is the engine-neutral tool-execution seam |
-| `semente/interfaces/` | Channels: Streamlit webapp (+ debug panel), WhatsApp webhook router |
+| `semente/api/` | `SementeApp` (manifest + harness + mounted interfaces) and `interfaces/`: REST, WhatsApp, A2A (routers), Streamlit (+ debug panel) and MCP (CLI-launched) |
 | `semente/configs/` | Env config factory, prompts/i18n loader, first-run wizard, logging |
 | `semente/domain/` | The customization seam: `DomainSpec`, demo domain |
 | `semente/hooks/` | Tool middleware (hooks) shipped with the framework |
@@ -112,7 +112,6 @@ any exception from the primary triggers one retry with the fallback model.
 | `semente/knowledge/` | Engine-neutral knowledge-base factory and search tool |
 | `semente/skills.py` | Engine-neutral SKILL.md loader (`load_skills`) with three access tools |
 | `semente/cli/` | The `semente` command: `init`, `config`, `status`, `launch` |
-| `semente/build.py` | `build_app(manifest)` — the programmatic entry point |
 
 ## The engine port
 
@@ -161,5 +160,5 @@ the `SEMENTE_ENGINE` env var → `agno` default. See
 | Surface | What | Notes |
 |---|---|---|
 | `semente` CLI | `init`, `config`, `status`, `launch` | `launch streamlit` for the dev chat UI; `launch --demo` for the built-in demo agent |
-| `build_app(manifest_path)` | FastAPI ASGI app | Mounts the WhatsApp webhook when `channels` includes `whatsapp`; run with `python main.py` |
+| `SementeApp(manifest_path).build_app()` | FastAPI app + interface registry | Always mounts REST; mounts WhatsApp/A2A when `channels` enables them; `python main.py` serves it |
 | `get_harness(manifest_path)` | The live pipeline | What channels call; `manifest_path` resolves from the argument, `SEMENTE_MANIFEST`, then `./semente.yaml` |

@@ -1,8 +1,8 @@
 """``semente launch`` — start an app interface.
 
-Currently only ``streamlit`` runs as a launcher interface; ``whatsapp`` is a
-build_app/FastAPI channel (``python main.py``), listed so the command surface
-matches the manifest's channel vocabulary.
+Only ``streamlit`` runs as a launcher interface; ``whatsapp`` and ``a2a`` are
+FastAPI channels mounted by ``SementeApp`` (``python main.py``), listed so the
+command surface matches the manifest's channel vocabulary.
 """
 
 from __future__ import annotations
@@ -17,7 +17,13 @@ CHANNEL_INTERFACES = ["whatsapp", "a2a"]
 
 
 def _streamlit_webapp() -> Path:
-    return Path(__file__).parent.parent / "interfaces" / "streamlit" / "streamlit_webapp.py"
+    return (
+        Path(__file__).parent.parent
+        / "api"
+        / "interfaces"
+        / "streamlit"
+        / "streamlit_webapp.py"
+    )
 
 
 def run_streamlit(demo: bool = False) -> None:

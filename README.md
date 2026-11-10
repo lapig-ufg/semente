@@ -60,13 +60,13 @@ semente launch streamlit
 Open **http://localhost:8501** and chat — the Echo assistant replies
 `Echo: <your message>`.
 
-### 5. Deploy to production (WhatsApp)
+### 5. Run the HTTP app
 
 ```python
 # main.py
-from semente.build import build_app
+from semente.api import SementeApp
 
-app = build_app("semente.yaml")
+app = SementeApp("semente.yaml").build_app()
 
 if __name__ == "__main__":
     import uvicorn
@@ -74,12 +74,15 @@ if __name__ == "__main__":
 ```
 
 ```bash
-python main.py          # FastAPI WhatsApp webhook on :3000
-ngrok http 3000         # expose it, then set the WhatsApp webhook URL
+python main.py          # FastAPI on :3000 (REST is always on)
+curl localhost:3000/health
 ```
 
-Requires `WHATSAPP_*` and `VALKEY_*` env vars (see `.env.example` and the
-[deployment guide](docs/deployment/toy-app.md)).
+The REST interface is always mounted (`POST /runs`, session read/update,
+`GET /health`); set `REST_API_KEY` to authenticate it. Enable WhatsApp and/or
+A2A with `semente channel <name> --enable` — both are mounted on the same app,
+and WhatsApp needs the `WHATSAPP_*` and `VALKEY_*` env vars (see
+`.env.example` and the [deployment guide](docs/deployment/toy-app.md)).
 
 ---
 

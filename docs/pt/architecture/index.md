@@ -104,7 +104,7 @@ de fallback.
 | `semente/core/` | O pipeline de turno `Harness`; tipos livres de engine (`StepOutput`, `Session`, `SessionStore`) |
 | `semente/agents/` | Fábricas de agentes: `build_agent`, boas-vindas, mídia, feedback, persona, resumo |
 | `semente/backends/` | A **porta de engine**: contrato (`base.py`), registro e os backends `agno`, `adk`, `bare`; `toolkit.py` é a costura neutra de execução de ferramentas |
-| `semente/interfaces/` | Canais: webapp Streamlit (+ painel de depuração), roteador de webhook do WhatsApp |
+| `semente/api/` | `SementeApp` (manifesto + harness + interfaces montadas) e `interfaces/`: REST, WhatsApp, A2A (roteadores), Streamlit (+ painel de depuração) e MCP (via CLI) |
 | `semente/configs/` | Fábrica de config de ambiente, carregador de prompts/i18n, assistente da primeira execução, logging |
 | `semente/domain/` | O ponto de customização: `DomainSpec`, domínio de demonstração |
 | `semente/hooks/` | Middleware de ferramentas (hooks) que acompanha o framework |
@@ -116,7 +116,6 @@ de fallback.
 | `semente/knowledge/` | Fábrica de base de conhecimento neutra quanto à engine e ferramenta de busca |
 | `semente/skills.py` | Carregador SKILL.md neutro quanto à engine (`load_skills`) com três ferramentas de acesso |
 | `semente/cli/` | O comando `semente`: `init`, `config`, `status`, `launch` |
-| `semente/build.py` | `build_app(manifest)` — o ponto de entrada programático |
 
 ## A porta de engine
 
@@ -166,5 +165,5 @@ a variável de ambiente `SEMENTE_ENGINE` → padrão `agno`. Veja
 | Superfície | O quê | Observações |
 |---|---|---|
 | CLI `semente` | `init`, `config`, `status`, `launch` | `launch streamlit` para a interface de chat de desenvolvimento; `launch --demo` para o agente de demonstração embutido |
-| `build_app(manifest_path)` | App ASGI FastAPI | Monta o webhook do WhatsApp quando `channels` inclui `whatsapp`; execute com `python main.py` |
+| `SementeApp(manifest_path).build_app()` | App FastAPI + registro de interfaces | Sempre monta a REST; monta WhatsApp/A2A quando `channels` os habilita; `python main.py` a serve |
 | `get_harness(manifest_path)` | O pipeline ativo | O que os canais chamam; o `manifest_path` é resolvido a partir do argumento, de `SEMENTE_MANIFEST` e depois de `./semente.yaml` |

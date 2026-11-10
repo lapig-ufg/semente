@@ -2,7 +2,7 @@
 
 A manifest, an .env.example with the standard variable groups, a ``domain/``
 package exposing ``domain_spec``, the localized prompt files, and a FastAPI
-entry point for WhatsApp.
+entry point (REST always on; WhatsApp/A2A when enabled).
 """
 
 from __future__ import annotations
@@ -113,13 +113,13 @@ domain_spec = DomainSpec(
 MAIN_PY_TEMPLATE = '''\
 """{name} entry point — assembles the app from the Semente framework.
 
-Run with:  python main.py   (WhatsApp webhook on port 3000, when the
-whatsapp channel is enabled in semente.yaml)
+Run with:  python main.py   (FastAPI on port 3000: the REST API is always
+available; WhatsApp and A2A follow the channels in semente.yaml)
 """
 
-from semente.build import build_app
+from semente.api import SementeApp
 
-app = build_app("semente.yaml")
+app = SementeApp("semente.yaml").build_app()
 
 if __name__ == "__main__":
     import uvicorn

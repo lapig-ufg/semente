@@ -21,7 +21,21 @@ def _manifest(app_dir):
 
 
 def test_catalog():
-    assert KNOWN_CHANNELS == list(CHANNELS) == ["streamlit", "whatsapp"]
+    assert KNOWN_CHANNELS == list(CHANNELS) == ["streamlit", "whatsapp", "a2a"]
+    assert list(channel_cmd.DEFAULT_INTERFACES) == ["rest"]
+
+
+def test_rest_is_the_default_and_cannot_be_toggled(app_dir):
+    with pytest.raises(SystemExit) as exc:
+        channel_cmd.cmd_channel_toggle("rest", True)
+    assert "always mounted" in str(exc.value.code)
+
+
+def test_always_on_interfaces_match_the_app_catalogue():
+    """The CLI's always-on list must not drift from SementeApp's."""
+    from semente.api.interfaces import ALWAYS_ON
+
+    assert tuple(channel_cmd.DEFAULT_INTERFACES) == ALWAYS_ON
 
 
 def test_flag_toggle_roundtrip(app_dir):
@@ -57,6 +71,7 @@ def test_ls_lists_all_channels(app_dir, monkeypatch):
     channel_cmd.cmd_channel_ls()
     out = out_stream.getvalue()
     assert "streamlit" in out and "whatsapp" in out
+    assert "rest" in out and "always on" in out
     assert "enabled" in out and "disabled" in out
 
 

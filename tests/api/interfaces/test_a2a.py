@@ -6,7 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from semente.interfaces.a2a import A2A
+from semente.api.interfaces.a2a import A2A
 from semente.manifest import Manifest
 
 

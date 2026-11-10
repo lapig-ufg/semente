@@ -105,8 +105,11 @@ semente channel whatsapp              # status + the enable/disable hints
 | Channel | Meaning |
 |---|---|
 | `streamlit` | Local web chat (dev-friendly UI with debug panel) |
-| `whatsapp` | WhatsApp webhook channel (assembled by `build_app`; run via `main.py`) |
-| `a2a` | Agent2Agent JSON-RPC channel + Agent Card (assembled by `build_app`; run via `main.py`) |
+| `whatsapp` | WhatsApp webhook channel (mounted by `SementeApp`; run via `main.py`) |
+| `a2a` | Agent2Agent JSON-RPC channel + Agent Card (mounted by `SementeApp`; run via `main.py`) |
+
+The **REST API is not a channel**: `SementeApp` always mounts it, so
+`semente channel ls` shows it as `always on` and it cannot be toggled.
 
 ## `semente mcp`
 

@@ -17,6 +17,7 @@ classifiers = [
 dependencies = [
     "agno==2.6.6",
     "fastapi==0.115.8",
+    "python-multipart>=0.0.20",
     "uvicorn~=0.34.0",
     "sqlalchemy==2.0.41",
     "pydantic>=2.12.5",

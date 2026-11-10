@@ -18,8 +18,8 @@ from pydantic import BaseModel, Field
 
 from semente.logging import log_error, log_info, log_warning
 
-from semente.interfaces.whatsapp.security import validate_webhook_signature
-from semente.interfaces.whatsapp.helpers import (
+from semente.api.interfaces.whatsapp.security import validate_webhook_signature
+from semente.api.interfaces.whatsapp.helpers import (
     WhatsAppConfig,
     download_event_media_async,
     extract_message_content,

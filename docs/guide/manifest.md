@@ -9,7 +9,7 @@ language: pt-BR              # optional; loads prompts/<lang>/ if present
 domain_module: domain        # import path exposing `domain_spec`
 prompts_dir: domain/prompts  # optional; explicit prompts dir (overrides language)
 engine: agno                 # agno (default) | adk | bare
-channels: [streamlit]        # streamlit, whatsapp and/or a2a
+channels: [streamlit]        # streamlit, whatsapp and/or a2a (REST is always on)
 features:                    # booleans default to true (terms-acceptance: false)
   onboarding: true           # welcome + name/role step before the main agent; false = answer right away
   tts: true                  # attach TTS tool to the welcoming agent
@@ -34,7 +34,7 @@ models:                      # optional override of env-var model config
 | `domain_module` | `str` | `domain` | Import path of the module exposing `domain_spec`. |
 | `prompts_dir` | `str` | — | Explicit prompts directory (relative to cwd). Overrides `language`. |
 | `engine` | `str` | `agno` | Agent engine: `agno`, `adk`, or `bare`. See [Engines](engines.md). |
-| `channels` | `list` | `[streamlit]` | `streamlit`, `whatsapp` and/or `a2a`. |
+| `channels` | `list` | `[streamlit]` | `streamlit`, `whatsapp` and/or `a2a`. The REST API is always mounted and needs no entry. |
 | `features` | `dict` | all `true` (except `terms-acceptance`) | Feature toggles (see below). |
 | `models` | `dict` | — | Overrides the `.env` model config. |
 
@@ -151,6 +151,8 @@ Semente reads configuration from a `.env` file in the working directory
 | `VALKEY_*` | Valkey/Redis (WhatsApp debouncing, prod) |
 | `A2A_API_KEY` | Optional key protecting `POST /a2a` |
 | `A2A_PUBLIC_URL` | Public base URL advertised in the Agent Card |
+| `REST_API_KEY` | **Required** by the `rest` channel: Bearer key for every route except `/health` |
+| `REST_MAX_FILES` / `REST_MAX_FILE_BYTES` | `POST /runs` upload limits (default 10 files / 25 MB each) |
 | `GEE_*` | Earth Engine service account (geospatial domains) |
 | `S3_*` | S3-compatible storage (media, prod) |
 

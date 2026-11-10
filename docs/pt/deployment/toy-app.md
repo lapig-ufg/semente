@@ -76,9 +76,9 @@ e de uma instância Valkey/Redis para o debouncing de mensagens.
 
 ```python
 # main.py
-from semente.build import build_app
+from semente.api import SementeApp
 
-app = build_app("semente.yaml")
+app = SementeApp("semente.yaml").build_app()
 
 if __name__ == "__main__":
     import uvicorn

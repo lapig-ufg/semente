@@ -1,8 +1,10 @@
 # Canais
 
-O Semente traz três canais: **WhatsApp** (produção, para usuários finais),
-**Streamlit** (desenvolvimento, para depuração) e **A2A** (agente-para-agente).
-Todos executam o mesmo Harness.
+O Semente traz quatro interfaces: **REST** (API HTTP simples, sempre ativa),
+**WhatsApp** (produção, para usuários finais), **A2A** (agente-para-agente) e
+**Streamlit** (desenvolvimento, para depuração). Todas executam o mesmo
+Harness. O `SementeApp` monta a REST incondicionalmente e as demais conforme a
+lista `channels` do manifesto. As interfaces ficam em `semente/api/interfaces/`.
 
 ## Streamlit
 
@@ -36,9 +38,9 @@ Ele cuida de:
 
 ```python
 # main.py
-from semente.build import build_app
+from semente.api import SementeApp
 
-app = build_app("semente.yaml")
+app = SementeApp("semente.yaml").build_app()
 
 if __name__ == "__main__":
     import uvicorn
@@ -149,8 +151,135 @@ semente mcp --url http://localhost:3000
 A ferramenta recebe `message` e um `context_id` opcional para escolher outra
 conversa.
 
-## Adicionando um canal
+## REST
 
-Canais são fábricas de roteadores FastAPI conectadas em
-`semente.build.build_app`. Para adicionar um, implemente o roteador e registre-o
-em `build_app` com base na lista `channels` do manifesto.
+A REST expõe o agente como uma API HTTP simples, para frontends web, apps
+móveis e integrações que não falam WhatsApp nem A2A. Ela roda o mesmo Harness,
+então guardrails, sumarização, sessões e mídia continuam valendo.
+
+É a **interface padrão**: o `SementeApp` sempre a monta — não há entrada em
+`channels` nem nada para habilitar. Basta subir o app:
+
+```bash
+export REST_API_KEY=change-me
+python main.py            # REST em :3000
+```
+
+| Rota | Auth | Finalidade |
+|---|---|---|
+| `POST /runs` | Bearer | Um turno de conversa |
+| `GET /sessions/{session_id}/session` | Bearer | Ler a sessão persistida |
+| `POST /sessions/{session_id}/session` | Bearer | Upsert da sessão (merge parcial) |
+| `GET /health` | pública | Sonda de liveness |
+
+A documentação OpenAPI interativa fica em `/docs` (schema em
+`/openapi.json`), então dá para testar as rotas pelo navegador.
+
+A autenticação **é obrigatória e só aceita Bearer**: todas as rotas exceto
+`/health` exigem `Authorization: Bearer <REST_API_KEY>`. Sem `REST_API_KEY`
+configurada, as rotas protegidas respondem `503` — a API nunca roda aberta.
+
+### Executando um turno
+
+`POST /runs` aceita JSON (arquivos inline em base64) ou
+`multipart/form-data` (uploads reais).
+
+```bash
+curl -s http://localhost:3000/runs \
+  -H "Authorization: Bearer $REST_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "O que é o Harness?", "user_id": "u1", "session_id": "s1"}'
+```
+
+```json
+{"run_id": "run_…", "session_id": "s1", "user_id": "u1", "content": "…",
+ "images": [], "audio": [], "videos": [], "files": []}
+```
+
+Quando `session_id` é omitido, ele é gerado (`rest:<user_id>:<aleatório>`) e
+devolvido na resposta; `user_id` assume `rest:anonymous`. Mídia gerada volta
+em base64 (`base64`) ou como `url`, quando o agente produziu um link.
+
+### Arquivos
+
+Em JSON, os arquivos vão em `files`, com `data` em base64 (payload puro ou
+`data:` URL) ou `url` para o agente buscar:
+
+```bash
+curl -s http://localhost:3000/runs \
+  -H "Authorization: Bearer $REST_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "leia isto", "files": [
+        {"name": "foto.png", "mime_type": "image/png", "data": "iVBORw0…"}
+      ]}'
+```
+
+Em multipart, use o campo `files` (tipo inferido) ou declare o tipo no nome do
+campo — `images`, `audio`, `videos`, `documents`:
+
+```bash
+curl -s http://localhost:3000/runs \
+  -H "Authorization: Bearer $REST_API_KEY" \
+  -F 'message=descreva isto' \
+  -F 'images=@foto.png' \
+  -F 'documents=@relatorio.pdf'
+```
+
+`files_metadata` (string JSON no multipart, lista ou objeto com nome como
+chave no JSON) sobrescreve a classificação de cada arquivo:
+
+```json
+[{"name": "relatorio.pdf", "type": "document", "mime_type": "application/pdf"}]
+```
+
+Limites: `REST_MAX_FILES` (padrão 10) e `REST_MAX_FILE_BYTES` (padrão 25 MB)
+— exceder qualquer um retorna `413`.
+
+### Sessões
+
+`GET /sessions/{session_id}/session` devolve `user_id`, `session_state`, o
+histórico `runs` e o último `interaction_assessment`; use `?user_id=` para
+restringir a busca. `404` quando não existe, `503` quando o app não tem
+armazenamento de sessão.
+
+`POST /sessions/{session_id}/session` é um upsert com merge parcial:
+`session_state` é mesclado em profundidade, `runs` e `interaction_assessment`
+substituem o valor armazenado quando presentes, e `user_id` só é obrigatório
+para criar uma sessão nova. As escritas passam pela mesma sanitização de
+guardrails usada pelo pipeline antes de persistir.
+
+```bash
+curl -s -X POST http://localhost:3000/sessions/s1/session \
+  -H "Authorization: Bearer $REST_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id": "u1", "session_state": {"user_persona": {"name": "Ana"}}}'
+```
+
+| Variável | Finalidade |
+|---|---|
+| `REST_API_KEY` | **Obrigatória.** Chave Bearer para todas as rotas exceto `/health` |
+| `REST_MAX_FILES` | Arquivos por requisição (padrão 10) |
+| `REST_MAX_FILE_BYTES` | Limite por arquivo (padrão 25 MB) |
+
+## Adicionando uma interface
+
+Uma interface é uma fábrica de roteador FastAPI que mora em
+`semente/api/interfaces/`. Há dois jeitos de adicionar:
+
+```python
+from semente.api import SementeApp
+from semente.api.interfaces import HTTP_INTERFACES
+
+# 1. registre a fábrica: montada quando `channels` inclui o nome
+HTTP_INTERFACES["metrics"] = lambda harness, manifest: Metrics(harness=harness)
+
+# 2. ou monte uma interface avulsa em um app
+semente_app = SementeApp("semente.yaml")
+semente_app.build_app()          # instância FastAPI + interfaces padrão
+semente_app.register("metrics", Metrics(harness=semente_app.harness))
+```
+
+Nos dois casos ela precisa de ``get_router()`` devolvendo um ``APIRouter``. A
+REST é sempre montada; as demais seguem a lista `channels` do manifesto.
+Interfaces que não servem HTTP (Streamlit, MCP) rodam em processo próprio e
+aparecem em `semente/api/interfaces/__init__.py` em `CLI_INTERFACES`.

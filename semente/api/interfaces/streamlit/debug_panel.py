@@ -272,7 +272,7 @@ def render_debug_panel() -> None:
             if st.button("Refresh State", key="refresh_debug_state"):
                 try:
                     from semente.core.harness import get_harness
-                    from semente.interfaces.streamlit.debug_helpers import extract_session_state
+                    from semente.api.interfaces.streamlit.debug_helpers import extract_session_state
                     live_state = get_harness().get_session_state(
                         session_id=st.session_state.session_id
                     )

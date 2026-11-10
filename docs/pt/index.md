@@ -68,9 +68,9 @@ pip install semente-agents
 ```
 
 ```python
-from semente.build import build_app
+from semente.api import SementeApp
 
-app = build_app("semente.yaml")  # app FastAPI (webhook do WhatsApp)
+app = SementeApp("semente.yaml").build_app()  # app FastAPI: REST sempre ativa
 ```
 
 Veja [Primeiros Passos](/pt/guide/getting-started) para o passo a passo

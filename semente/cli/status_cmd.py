@@ -90,6 +90,7 @@ def cmd_status() -> int:
     channels.add_column()
     for channel in manifest.channels:
         channels.add_row(channel, "[green]enabled[/green]")
+    channels.add_row("rest", "[green]always on[/green]")
     console.print(channels)
 
     features = Table(show_header=False, box=None, title="Features", title_justify="left")

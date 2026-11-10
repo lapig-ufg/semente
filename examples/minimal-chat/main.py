@@ -1,12 +1,12 @@
 """minimal-chat entry point — assembles the app from the Semente framework.
 
-Run with:  python main.py   (WhatsApp webhook on port 3000, when the
-whatsapp channel is enabled in semente.yaml)
+Run with:  python main.py   (FastAPI on port 3000; the REST API is always
+available, WhatsApp/A2A follow the channels in semente.yaml)
 """
 
-from semente.build import build_app
+from semente.api import SementeApp
 
-app = build_app("semente.yaml")
+app = SementeApp("semente.yaml").build_app()
 
 if __name__ == "__main__":
     import uvicorn

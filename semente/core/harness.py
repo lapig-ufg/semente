@@ -541,6 +541,15 @@ class Harness:
             log_info(f"guardrails[media:{label}]: removed ({', '.join(result.removed)})")
         return result.text
 
+    def sanitize(self, data):
+        """Guardrail sanitization for data written outside the pipeline.
+
+        Channels that persist state on their own (the REST session update) go
+        through here, so guardrail redaction applies exactly as it does for
+        pipeline persistence.
+        """
+        return self._sanitize(data)
+
     def _sanitize(self, data):
         """Sanitize persisted JSON-like data through the active chain."""
         if self._chain is None:

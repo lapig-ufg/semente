@@ -9,7 +9,7 @@ language: pt-BR              # opcional; carrega prompts/<lang>/ se existir
 domain_module: domain        # caminho de import que expõe `domain_spec`
 prompts_dir: domain/prompts  # opcional; diretório de prompts explícito (sobrescreve language)
 engine: agno                 # agno (padrão) | adk | bare
-channels: [streamlit]        # streamlit, whatsapp e/ou a2a
+channels: [streamlit]        # streamlit, whatsapp e/ou a2a (a REST é sempre ativa)
 features:                    # booleanos valem true por padrão (terms-acceptance: false)
   onboarding: true           # etapa de boas-vindas + nome/função antes do agente principal; false = responde direto
   tts: true                  # anexa a ferramenta TTS ao agente de boas-vindas
@@ -34,7 +34,7 @@ models:                      # sobrescrita opcional da configuração de modelo 
 | `domain_module` | `str` | `domain` | Caminho de import do módulo que expõe `domain_spec`. |
 | `prompts_dir` | `str` | — | Diretório de prompts explícito (relativo ao cwd). Sobrescreve `language`. |
 | `engine` | `str` | `agno` | Engine de agentes: `agno`, `adk` ou `bare`. Veja [Engines](engines.md). |
-| `channels` | `list` | `[streamlit]` | `streamlit`, `whatsapp` e/ou `a2a`. |
+| `channels` | `list` | `[streamlit]` | `streamlit`, `whatsapp` e/ou `a2a`. A API REST é sempre montada e não precisa de entrada. |
 | `features` | `dict` | todas `true` (exceto `terms-acceptance`) | Interruptores de features (veja abaixo). |
 | `models` | `dict` | — | Sobrescreve a configuração de modelo do `.env`. |
 
@@ -152,6 +152,8 @@ O Semente lê a configuração de um arquivo `.env` no diretório de trabalho
 | `VALKEY_*` | Valkey/Redis (debouncing do WhatsApp, prod) |
 | `A2A_API_KEY` | Chave opcional que protege `POST /a2a` |
 | `A2A_PUBLIC_URL` | URL pública base anunciada no Agent Card |
+| `REST_API_KEY` | **Obrigatória** no canal `rest`: chave Bearer para todas as rotas exceto `/health` |
+| `REST_MAX_FILES` / `REST_MAX_FILE_BYTES` | Limites de upload do `POST /runs` (padrão 10 arquivos / 25 MB cada) |
 | `GEE_*` | Conta de serviço do Earth Engine (domínios geoespaciais) |
 | `S3_*` | Armazenamento compatível com S3 (mídia, prod) |
 

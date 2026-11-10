@@ -1,7 +1,8 @@
 """``semente channel`` — list and toggle the manifest channels.
 
 A channel is one of the surfaces Semente can expose the app through
-(``channels`` in the manifest). Toggling edits the manifest only.
+(``channels`` in the manifest). Toggling edits the manifest only. The REST
+interface is not a channel: SementeApp always mounts it.
 """
 
 from __future__ import annotations
@@ -17,14 +18,24 @@ console = Console()
 
 CHANNELS: dict[str, str] = {
     "streamlit": "Local web chat (dev-friendly UI with a debug panel)",
-    "whatsapp": "WhatsApp webhook channel (assembled by build_app; run via main.py)",
-    "a2a": "A2A (Agent2Agent) server: Agent Card + JSON-RPC (assembled by build_app; run via main.py)",
+    "whatsapp": "WhatsApp webhook channel (mounted by SementeApp; run via main.py)",
+    "a2a": "A2A (Agent2Agent) server: Agent Card + JSON-RPC (mounted by SementeApp; run via main.py)",
+}
+
+#: Mounted by SementeApp regardless of the manifest ``channels`` list.
+DEFAULT_INTERFACES: dict[str, str] = {
+    "rest": "REST API: POST /runs and session read/update, Bearer auth",
 }
 
 KNOWN_CHANNELS = list(CHANNELS)
 
 
 def _validate(name: str) -> None:
+    if name in DEFAULT_INTERFACES:
+        sys.exit(
+            f"'{name}' is the default interface and is always mounted by SementeApp "
+            "— there is nothing to toggle."
+        )
     if name not in CHANNELS:
         sys.exit(f"Unknown channel '{name}' (available: {', '.join(KNOWN_CHANNELS)})")
 
@@ -39,8 +50,12 @@ def cmd_channel_ls() -> None:
         active = name in manifest.channels
         label = "[green]enabled[/green]" if active else "[red]disabled[/red]"
         table.add_row(name, label, description)
+    for name, description in DEFAULT_INTERFACES.items():
+        table.add_row(name, "[green]always on[/green]", description)
     console.print(table)
-    console.print(f"Manifest: {path} — toggle with 'semente channel <name> --enable/--disable'.")
+    console.print(
+        f"Manifest: {path} — toggle with 'semente channel <name> --enable/--disable'."
+    )
 
 
 def cmd_channel_actives() -> None:

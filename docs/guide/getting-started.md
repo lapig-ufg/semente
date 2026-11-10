@@ -109,7 +109,7 @@ my-app/
 │   └── prompts/         # agents.yml, tools.yml, hooks.yml
 ├── semente.yaml         # manifest
 ├── .env                 # secrets (API keys, DB, WhatsApp)
-└── main.py              # optional FastAPI entry (WhatsApp)
+└── main.py              # optional FastAPI entry (REST always on + channels)
 ```
 
 ## Next steps

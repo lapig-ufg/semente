@@ -30,7 +30,7 @@ uv venv .venv && source .venv/bin/activate   # install: uv pip install -e ".[dev
 
 ## Entry points
 
-- `semente.core.harness.Harness` owns a full user turn; every channel calls `get_harness().run(...)`. Agent construction: `semente/agents/build_agent.py`; programmatic app assembly: `semente/build.py` (`build_app(manifest)` → FastAPI ASGI).
+- `semente.core.harness.Harness` owns a full user turn; every channel calls `get_harness().run(...)`. Agent construction: `semente/agents/build_agent.py`; programmatic app assembly: `semente/api/` (`SementeApp(manifest).build_app()` → FastAPI app; REST is always mounted, WhatsApp/A2A follow `channels`); interfaces live in `semente/api/interfaces/`.
 - `semente` CLI (`semente/cli/`): `init`, `feature <name> --enable|--disable`, `channel <name> --enable|--disable`, `provider`, `status`, `launch streamlit|whatsapp [--demo]`. Toggling edits the manifest only; API keys go to `.env` via `provider key`.
 
 ## Docs site

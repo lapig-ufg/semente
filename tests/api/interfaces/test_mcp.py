@@ -10,9 +10,9 @@ from fastapi.testclient import TestClient
 
 pytest.importorskip("mcp")
 
-from semente.interfaces.a2a import A2A  # noqa: E402
-from semente.interfaces.mcp import A2AClientError, build_server, send_message  # noqa: E402
-from semente.interfaces.mcp import server as mcp_server  # noqa: E402
+from semente.api.interfaces.a2a import A2A  # noqa: E402
+from semente.api.interfaces.mcp import A2AClientError, build_server, send_message  # noqa: E402
+from semente.api.interfaces.mcp import server as mcp_server  # noqa: E402
 
 BASE = "http://agent.test"
 REAL_ASYNC_CLIENT = httpx.AsyncClient

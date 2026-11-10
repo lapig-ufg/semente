@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from fastapi.routing import APIRouter
 
-from semente.interfaces.whatsapp.router import attach_routes
+from semente.api.interfaces.whatsapp.router import attach_routes
 
 
 class Whatsapp:

@@ -1,12 +1,12 @@
 """Groot entry point — assembles the app from the Semente framework.
 
 Interactive chat:  semente launch streamlit
-WhatsApp webhook:  python main.py   (when the whatsapp channel is enabled)
+HTTP interfaces:   python main.py   (REST always on; WhatsApp/A2A when enabled)
 """
 
-from semente.build import build_app
+from semente.api import SementeApp
 
-app = build_app("semente.yaml")
+app = SementeApp("semente.yaml").build_app()
 
 if __name__ == "__main__":
     import uvicorn

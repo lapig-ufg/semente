@@ -96,7 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     channel = sub.add_parser(
         "channel",
         help="Manage manifest channels (semente.yaml channels)",
-        description="List and enable/disable the channels the app runs on (streamlit, whatsapp).",
+        description="List and enable/disable the channels the app runs on (streamlit, whatsapp, a2a). The REST API is always mounted by SementeApp.",
     )
     channel.add_argument(
         "command_or_name", nargs="?", metavar="{ls,actives,name}",

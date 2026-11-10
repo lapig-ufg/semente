@@ -8,7 +8,7 @@ from typing import Optional
 
 def cmd_mcp(url: str, name: Optional[str] = None, api_key: Optional[str] = None) -> int:
     try:
-        from semente.interfaces.mcp import run_stdio
+        from semente.api.interfaces.mcp import run_stdio
         import mcp  # noqa: F401
     except ImportError:
         print(

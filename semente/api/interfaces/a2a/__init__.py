@@ -20,6 +20,6 @@ the scheme. Set ``A2A_PUBLIC_URL`` when the app sits behind a proxy so the
 card carries the externally reachable URL.
 """
 
-from semente.interfaces.a2a.a2a import A2A
+from semente.api.interfaces.a2a.a2a import A2A
 
 __all__ = ["A2A"]

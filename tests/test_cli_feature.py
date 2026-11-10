@@ -25,6 +25,7 @@ def test_catalog_is_the_single_source():
     assert KNOWN_FEATURES == list(FEATURES)
     assert [f.name for f in FEATURES.values()] == [
         "tts",
+        "onboarding",
         "summarization",
         "interaction-assessment",
         "guardrails",

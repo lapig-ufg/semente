@@ -9,7 +9,7 @@ internal GeoJSON artifacts (``format="geojson"``).
 """
 
 from semente.core.types import StepOutput
-from semente.interfaces.whatsapp.helpers import filter_generated_media
+from semente.api.interfaces.whatsapp.helpers import filter_generated_media
 from semente.tools.types import Audio, File, Image, Video
 
 

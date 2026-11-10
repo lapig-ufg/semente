@@ -64,6 +64,21 @@ class SessionStore:
         self.model = model
 
     def get(self, user_id: Optional[str], session_id: str) -> Optional[dict]:
+        record = self.get_record(user_id, session_id)
+        if record is None:
+            return None
+        return {
+            "session_state": record["session_state"],
+            "runs": record["runs"],
+            "interaction_assessment": record["interaction_assessment"],
+        }
+
+    def get_record(self, user_id: Optional[str], session_id: str) -> Optional[dict]:
+        """Like :meth:`get`, but also returns the identity columns.
+
+        The REST channel exposes sessions over HTTP and must echo the owning
+        ``user_id`` along with the canonical ``session_id``.
+        """
         db = self.session_factory()
         try:
             query = db.query(self.model).filter(self.model.session_id == session_id)
@@ -73,6 +88,8 @@ class SessionStore:
             if record is None:
                 return None
             return {
+                "user_id": record.user_id,
+                "session_id": record.session_id,
                 "session_state": record.session_state or {},
                 "runs": record.runs or [],
                 "interaction_assessment": (
