@@ -206,6 +206,7 @@ def test_property_sources_parsing_and_roundtrip(tmp_path):
     assert load("registry").property_sources == ["registry"]
     assert load("[a, b]").property_sources == ["a", "b"]
     assert load("null").property_sources == []
+    assert load('" "').property_sources == []
     for bad in ("3", "[1, 2]", "{a: b}"):
         with pytest.raises(ValueError, match="property_sources"):
             load(bad)

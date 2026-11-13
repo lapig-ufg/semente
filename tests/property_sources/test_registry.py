@@ -77,3 +77,13 @@ def test_enabled_sources_skips_unknown_with_warning(monkeypatch, caplog):
         sources = registry.enabled_sources()
     assert [s.key for s in sources] == ["buffer", "fake"]
     assert "ghost" in caplog.text
+
+
+def test_enabled_sources_does_not_mask_a_factory_keyerror(monkeypatch):
+    def broken():
+        raise KeyError("inner")
+
+    registry.register_source("broken", broken)
+    monkeypatch.setenv("SEMENTE_PROPERTY_SOURCES", "broken")
+    with pytest.raises(KeyError, match="inner"):
+        registry.enabled_sources()

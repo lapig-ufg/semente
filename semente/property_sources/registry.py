@@ -48,8 +48,8 @@ def enabled_sources(manifest: Optional[Manifest] = None) -> list[PropertySource]
     """Instances of the enabled sources; unknown keys are skipped with a warning."""
     sources = []
     for key in enabled_keys(manifest):
-        try:
+        if key in _factories:
             sources.append(get_source(key))
-        except KeyError:
+        else:
             log_warning(f"property sources: unknown source {key!r} ignored")
     return sources

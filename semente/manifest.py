@@ -39,10 +39,10 @@ class TermsConfig(BaseModel):
 
 def _parse_property_sources(value: Any) -> list[str]:
     """None/empty -> [], a string -> one key, a list of strings as is; otherwise ValueError."""
-    if value is None or value in ("", []):
-        return []
     if isinstance(value, str):
-        return [value]
+        return [value] if value.strip() else []
+    if value is None or value == []:
+        return []
     if isinstance(value, list) and all(isinstance(key, str) for key in value):
         return list(value)
     raise ValueError(f"property_sources must be a string or a list of strings, got {value!r}")
