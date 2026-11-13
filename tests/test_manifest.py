@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from semente.manifest import FeedbackConfig, Manifest, TermsConfig
 
 
@@ -192,3 +194,41 @@ def test_terms_roundtrip_and_source_dir(tmp_path):
     assert loaded.to_dict()["features"]["terms-acceptance"] == {
         "enable": True, "file": "terms.md", "url": ""
     }
+
+
+def test_property_sources_read_and_absent(tmp_path):
+    """``property_sources`` is read from YAML; absent or null means an empty list."""
+    path = tmp_path / "semente.yaml"
+    path.write_text("name: a\nproperty_sources: [registry, buffer]\n", encoding="utf-8")
+    assert Manifest.load(path).property_sources == ["registry", "buffer"]
+    path.write_text("name: a\n", encoding="utf-8")
+    assert Manifest.load(path).property_sources == []
+    path.write_text("name: a\nproperty_sources:\n", encoding="utf-8")
+    assert Manifest.load(path).property_sources == []
+
+
+def test_property_sources_roundtrip_and_to_dict_stability(tmp_path):
+    """The field survives load -> to_dict -> load and is omitted from to_dict when empty."""
+    path = tmp_path / "semente.yaml"
+    path.write_text("name: a\nproperty_sources: [registry]\n", encoding="utf-8")
+    first = Manifest.load(path)
+    assert first.to_dict()["property_sources"] == ["registry"]
+    first.save(path)
+    assert Manifest.load(path).property_sources == ["registry"]
+    assert "property_sources" not in Manifest(name="plain").to_dict()
+
+
+def test_property_sources_string_list_null_and_invalid(tmp_path):
+    """A string is one key; a list of strings is kept; anything else raises ValueError."""
+    path = tmp_path / "semente.yaml"
+    path.write_text("name: a\nproperty_sources: registry\n", encoding="utf-8")
+    assert Manifest.load(path).property_sources == ["registry"]
+    path.write_text("name: a\nproperty_sources: [a, b]\n", encoding="utf-8")
+    assert Manifest.load(path).property_sources == ["a", "b"]
+    path.write_text("name: a\nproperty_sources: null\n", encoding="utf-8")
+    assert Manifest.load(path).property_sources == []
+    for bad in ("3", "[1, 2]", "{a: b}"):
+        path.write_text(f"name: a\nproperty_sources: {bad}\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="property_sources"):
+            Manifest.load(path)
+

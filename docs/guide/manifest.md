@@ -20,6 +20,7 @@ features:                    # booleans default to true (terms-acceptance: false
     enable: true
     file: domain/terms.md    # reference terms text (required when enabled)
     url: https://example.com/terms  # optional: link sent in the first message
+property_sources: [buffer]    # optional; enabled property sources, in priority order
 models:                      # optional override of env-var model config
   primary: { provider: google, id: gemini-3.5-flash-lite }
   fallback: { provider: ollama, id: gemma4:31b-cloud }
@@ -37,6 +38,7 @@ models:                      # optional override of env-var model config
 | `channels` | `list` | `[streamlit]` | `streamlit`, `whatsapp` and/or `a2a`. |
 | `features` | `dict` | all `true` (except `terms-acceptance`) | Feature toggles (see below). |
 | `models` | `dict` | — | Overrides the `.env` model config. |
+| `property_sources` | `list` (or one `str`) | `[buffer]` when omitted or empty | Keys of the enabled [property sources](property-sources.md), in priority order. A single string is one key; anything other than a string or list of strings raises `ValueError`. `SEMENTE_PROPERTY_SOURCES` takes precedence (ignored if it holds only separators). |
 
 ## Engine resolution
 
@@ -143,6 +145,7 @@ Semente reads configuration from a `.env` file in the working directory
 | `SEMENTE_MANIFEST` | Path to the manifest (default `semente.yaml`) |
 | `SEMENTE_ENGINE` | Engine when the manifest has no `engine` field (`agno`, `adk`, `bare`) |
 | `SEMENTE_DEMO` | Set by `semente launch streamlit --demo`; boots the built-in demo domain |
+| `SEMENTE_PROPERTY_SOURCES` | Comma-separated property source keys; overrides the manifest `property_sources` |
 | `SEMENTE_PROMPTS_DIR` | Prompts directory (overridden by manifest `prompts_dir`) |
 | `TTS_MODEL` | TTS model id (default `gemini-3.1-flash-tts-preview`) |
 | `POSTGRES_*` | PostgreSQL connection (prod) |
