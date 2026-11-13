@@ -37,6 +37,17 @@ class TermsConfig(BaseModel):
     url: str = Field(default="")
 
 
+def _parse_property_sources(value: Any) -> list[str]:
+    """None/empty -> [], a string -> one key, a list of strings as is; otherwise ValueError."""
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if value is None or value == []:
+        return []
+    if isinstance(value, list) and all(isinstance(key, str) for key in value):
+        return list(value)
+    raise ValueError(f"property_sources must be a string or a list of strings, got {value!r}")
+
+
 @dataclass
 class Manifest:
     """Parsed ``semente.yaml`` — app-level configuration."""
@@ -52,6 +63,8 @@ class Manifest:
     # Optional Agent Card details for the ``a2a`` channel: ``description``,
     # ``version`` and ``skills`` (list of {id, name, description, tags, examples}).
     a2a: dict[str, Any] = field(default_factory=dict)
+    # Enabled property source keys (see semente.property_sources).
+    property_sources: list[str] = field(default_factory=list)
     # Directory the manifest was loaded from (not serialized); used to resolve
     # relative paths such as ``features.terms-acceptance.file``.
     source_dir: Path | None = field(default=None, compare=False, repr=False)
@@ -132,6 +145,7 @@ class Manifest:
             features=data.get("features", {}),
             models=data.get("models", {}),
             a2a=data.get("a2a") or {},
+            property_sources=_parse_property_sources(data.get("property_sources")),
             source_dir=Path(path).resolve().parent,
         )
 
@@ -156,6 +170,8 @@ class Manifest:
             data["models"] = {k: dict(v) for k, v in self.models.items()}
         if self.a2a:
             data["a2a"] = dict(self.a2a)
+        if self.property_sources:
+            data["property_sources"] = list(self.property_sources)
         return data
 
     def save(self, path: str | Path) -> None:

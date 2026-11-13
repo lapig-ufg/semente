@@ -86,6 +86,19 @@ Calculator(exclude_tools=["is_prime", "factorial"])
 from semente.logging import log_debug, log_info, log_warning, log_error
 ```
 
+## Property sources
+
+```python
+from semente.property_sources import (
+    PropertySource, PropertySourceError, PropertyCandidate,
+    register_source, enabled_sources,
+)
+```
+
+An engine-free contract for where candidate property boundaries come from
+(a registry, a land-use map, an approximate circle). See
+[Property sources](property-sources.md).
+
 ## The guarantee
 
 `scripts/check_domain_purity.sh` fails CI if any `domain/` or `examples/`

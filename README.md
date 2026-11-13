@@ -139,6 +139,7 @@ features:                    # booleans default to true
                              # {enable: true, window_size: 5} (DPO/SFT capture)
   summarization: true        # rolling conversation summary
   guardrails: true           # pluggable input guardrails (see Guardrails doc)
+property_sources: [buffer]   # optional; property source keys (see docs/guide/property-sources.md)
 models:                      # optional override of env-var model config
   primary: { provider: google, id: gemini-3.5-flash-lite }
   fallback: { provider: ollama, id: gemma4:31b-cloud }
@@ -158,6 +159,7 @@ The `engine` field (or `SEMENTE_ENGINE` env var) swaps the agent engine — see
 | [Guardrails](docs/guide/guardrails.md) | Pluggable input safety (redact/block) |
 | [Domain API](docs/guide/domain-api.md) | The engine-free import surface |
 | [Manifest Reference](docs/guide/manifest.md) | Every `semente.yaml` option |
+| [Property Sources](docs/guide/property-sources.md) | Contract for candidate property boundaries |
 | [CLI Reference](docs/guide/cli.md) | `init`, `feature`, `channel`, `provider`, `status`, `launch` |
 | [Feedback & Fine-Tuning](docs/guide/feedback.md) | DPO/SFT capture loop |
 | [Prompts & i18n](docs/guide/prompts.md) | YAML prompts + localization |

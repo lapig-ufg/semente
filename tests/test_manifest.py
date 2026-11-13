@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from semente.manifest import FeedbackConfig, Manifest, TermsConfig
 
 
@@ -192,3 +194,24 @@ def test_terms_roundtrip_and_source_dir(tmp_path):
     assert loaded.to_dict()["features"]["terms-acceptance"] == {
         "enable": True, "file": "terms.md", "url": ""
     }
+
+
+def test_property_sources_parsing_and_roundtrip(tmp_path):
+    path = tmp_path / "semente.yaml"
+
+    def load(value):
+        path.write_text(f"name: a\nproperty_sources: {value}\n", encoding="utf-8")
+        return Manifest.load(path)
+
+    assert load("registry").property_sources == ["registry"]
+    assert load("[a, b]").property_sources == ["a", "b"]
+    assert load("null").property_sources == []
+    assert load('" "').property_sources == []
+    for bad in ("3", "[1, 2]", "{a: b}"):
+        with pytest.raises(ValueError, match="property_sources"):
+            load(bad)
+    manifest = load("[registry]")
+    assert manifest.to_dict()["property_sources"] == ["registry"]
+    manifest.save(path)
+    assert Manifest.load(path).property_sources == ["registry"]
+    assert "property_sources" not in Manifest(name="plain").to_dict()

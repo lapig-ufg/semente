@@ -86,6 +86,19 @@ Calculator(exclude_tools=["is_prime", "factorial"])
 from semente.logging import log_debug, log_info, log_warning, log_error
 ```
 
+## Fontes de propriedade
+
+```python
+from semente.property_sources import (
+    PropertySource, PropertySourceError, PropertyCandidate,
+    register_source, enabled_sources,
+)
+```
+
+Um contrato sem engine para a origem dos candidatos a limite de propriedade
+(um cadastro, um mapa de uso do solo, um círculo aproximado). Veja
+[Fontes de propriedade](property-sources.md).
+
 ## A garantia
 
 O `scripts/check_domain_purity.sh` faz o CI falhar se qualquer módulo de

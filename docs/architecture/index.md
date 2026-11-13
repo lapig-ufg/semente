@@ -110,6 +110,7 @@ any exception from the primary triggers one retry with the fallback model.
 | `semente/schemas/` | Pydantic state schemas (persona, interaction assessment, fine-tuning rows) |
 | `semente/services/` | Plain services behind the agents: `audio/tts`, `geospatial/geojson_io`, `session_migration` |
 | `semente/knowledge/` | Engine-neutral knowledge-base factory and search tool |
+| `semente/property_sources/` | Engine-free contract for candidate property boundaries (`PropertySource`, `PropertyCandidate`), `buffer` source and registry |
 | `semente/skills.py` | Engine-neutral SKILL.md loader (`load_skills`) with three access tools |
 | `semente/cli/` | The `semente` command: `init`, `config`, `status`, `launch` |
 | `semente/build.py` | `build_app(manifest)` — the programmatic entry point |

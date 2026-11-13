@@ -20,6 +20,7 @@ features:                    # booleanos valem true por padrão (terms-acceptanc
     enable: true
     file: domain/terms.md    # texto de referência dos termos (obrigatório se habilitado)
     url: https://example.com/terms  # opcional: link enviado na primeira mensagem
+property_sources: [buffer]    # opcional; fontes de propriedade habilitadas, por prioridade
 models:                      # sobrescrita opcional da configuração de modelo por variáveis de ambiente
   primary: { provider: google, id: gemini-3.5-flash-lite }
   fallback: { provider: ollama, id: gemma4:31b-cloud }
@@ -37,6 +38,7 @@ models:                      # sobrescrita opcional da configuração de modelo 
 | `channels` | `list` | `[streamlit]` | `streamlit`, `whatsapp` e/ou `a2a`. |
 | `features` | `dict` | todas `true` (exceto `terms-acceptance`) | Interruptores de features (veja abaixo). |
 | `models` | `dict` | — | Sobrescreve a configuração de modelo do `.env`. |
+| `property_sources` | `list` (ou uma `str`) | `[buffer]` quando omitido ou vazio | Chaves das [fontes de propriedade](property-sources.md) habilitadas, por prioridade. Uma string única é uma chave; qualquer valor que não seja string ou lista de strings levanta `ValueError`. A variável `SEMENTE_PROPERTY_SOURCES` tem precedência (ignorada se só tiver separadores). |
 
 ## Resolução da engine
 
@@ -144,6 +146,7 @@ O Semente lê a configuração de um arquivo `.env` no diretório de trabalho
 | `SEMENTE_MANIFEST` | Caminho do manifesto (padrão `semente.yaml`) |
 | `SEMENTE_ENGINE` | Engine quando o manifesto não tem campo `engine` (`agno`, `adk`, `bare`) |
 | `SEMENTE_DEMO` | Definida por `semente launch streamlit --demo`; inicia o domínio de demonstração embutido |
+| `SEMENTE_PROPERTY_SOURCES` | Chaves das fontes de propriedade separadas por vírgula; sobrescreve o `property_sources` do manifesto |
 | `SEMENTE_PROMPTS_DIR` | Diretório de prompts (sobrescrito pelo `prompts_dir` do manifesto) |
 | `TTS_MODEL` | ID do modelo TTS (padrão `gemini-3.1-flash-tts-preview`) |
 | `POSTGRES_*` | Conexão PostgreSQL (prod) |
