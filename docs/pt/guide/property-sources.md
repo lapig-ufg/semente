@@ -1,106 +1,66 @@
 # Fontes de Propriedade
 
 Uma **fonte de propriedade** responde de onde vêm os candidatos a limite de
-propriedade: quais polígonos estão ao redor de uma coordenada e qual polígono
-pertence a um identificador da fonte (um número de cadastro, por exemplo). O
-contrato é **sem engine** e agnóstico a país: vive em
-`semente.property_sources` e importa sem o extra `geo`.
+propriedade: quais polígonos estão ao redor de uma coordenada e qual pertence a
+um identificador da própria fonte. O contrato em `semente.property_sources` é
+sem engine, agnóstico a país e importa sem o extra `geo`.
 
-```python
-from semente.property_sources import (
-    PropertySource, PropertySourceError, PropertyCandidate, CandidateAttribute,
-    GeometryOrigin, BufferSource,
-    register_source, get_source, enabled_keys, enabled_sources,
-)
-```
-
-## O contrato
+## Contrato
 
 ```python
 class PropertySource(Protocol):          # runtime_checkable
     key: str
-
     def find_by_point(self, latitude, longitude, search_radius_m=2000) -> list[PropertyCandidate]: ...
     def find_by_id(self, identifier) -> PropertyCandidate | None: ...
 ```
 
-- `find_by_point` devolve candidatos ordenados por relevância (possivelmente vazio).
-- `find_by_id` devolve o candidato de um identificador da fonte, ou `None`.
-- Ambos levantam `PropertySourceError` quando a fonte não consegue responder.
-- `search_radius_m` é o **raio de busca em metros** ao redor do ponto. Não tem
-  relação com o raio do buffer do `BufferSource` (o padrão do protocolo é
-  2000 m; o círculo do buffer tem 500 m).
+`find_by_point` devolve candidatos do melhor para o pior (possivelmente vazio);
+`search_radius_m` é um raio de busca em metros, sem relação com o raio do buffer
+abaixo. `find_by_id` devolve `None` quando o identificador não existe.
 
-### `PropertyCandidate`
+## Candidato
 
-| Campo | Descrição |
-|---|---|
-| `candidate_id` | Identificador estável dentro da fonte. |
-| `name` | Nome dado pela fonte, se houver. |
-| `origin` | `GeometryOrigin`: `registered_boundary`, `osm_landuse` (polígono genérico de uso do solo; o nome é histórico), `user_polygon` ou `approximate_circle`. |
-| `source` | Chave da fonte. |
-| `source_date` | Data dos dados da fonte (ISO), se conhecida. |
-| `geometry` | GeoJSON `Polygon` ou `MultiPolygon` (lon, lat). O modelo não valida o formato. |
-| `area_ha` | Área em hectares. |
-| `distance_m` | Distância do ponto buscado (0 quando está dentro). |
-| `attributes` | `list[CandidateAttribute(key, value, unit)]`. |
-| `license` | Licença e atribuição dos dados. |
-| `warnings` | Chaves neutras de aviso (veja abaixo). |
+Campos de `PropertyCandidate`: `candidate_id`, `origin`, `source`, `geometry`
+(GeoJSON Polygon/MultiPolygon, lon/lat WGS84, formato não validado), `area_ha`,
+mais `name`, `source_date`, `distance_m` (0 quando o ponto está dentro),
+`attributes` (dict; ponha a unidade na chave, ex.: `radius_m`), `license` e
+`warnings` (chaves neutras que o app converte em texto) como opcionais.
 
-`type_key` é `origin.value` e `to_session()` devolve JSON puro (para o
-`session_state`). O candidato não tem conversão para nenhum modelo do app:
-transformar um candidato confirmado na sua própria área ou feature é tarefa do app.
+`GeometryOrigin`: `registered_boundary` (só polígonos oficiais, nunca
+aproximações), `osm_landuse` (polígono genérico de uso do solo; o nome é
+histórico), `user_polygon`, `approximate_circle`. Converta o candidato
+confirmado para o seu modelo no app; serialize com `model_dump(mode="json")`.
 
-### Erros
+## Erros
 
-Existem dois tipos de falha:
+- Entrada inválida (coordenada fora de `|lat| <= 85`, `|lon| <= 180`, ou raio
+  inválido) levanta `ValueError`.
+- Uma fonte que não consegue responder levanta `PropertySourceError(kind, message)`
+  com `kind` em `unavailable`, `timeout`, `not_found` ou `urban_area`.
+- Devolva `[]` ou `None` quando a fonte respondeu sem resultado.
 
-- **Erros do chamador** levantam `ValueError`: coordenada inválida (o intervalo
-  suportado é `|latitude| <= 85` e `|longitude| <= 180`) ou raio inválido.
-- **Falhas da fonte** levantam `PropertySourceError(kind, message)`, com um
-  `kind` de `PropertySourceError.KINDS`:
+## Fonte embutida `buffer`
 
-| Kind | Significado |
-|---|---|
-| `unavailable` | Serviço fora do ar ou resposta de erro. |
-| `timeout` | O serviço não respondeu a tempo. |
-| `not_found` | Identificador desconhecido. |
-| `urban_area` | O ponto está em um uso do solo em que nenhum candidato de propriedade é oferecido. |
+`BufferSource` (chave `buffer`, raio padrão 500 m, finito e > 0) devolve um
+candidato: um círculo geodésico de 64 vértices como `MultiPolygon`,
+`approximate_circle`, `distance_m=0`, atributo `radius_m` e aviso
+`approximate_area`. `find_by_id` é sempre `None`. O anel não é dividido no
+antimeridiano (as longitudes são apenas normalizadas).
 
-Devolva `[]` (ou `None`) quando nada for encontrado; levante o erro apenas
-quando a fonte não conseguiu responder.
-
-### Avisos
-
-`warnings` são chaves neutras, nunca texto para o usuário. O app as converte
-para o seu próprio texto (e idioma). A fonte embutida emite `approximate_area`.
-
-## A fonte embutida `buffer`
-
-`BufferSource` (chave `buffer`, raio padrão 500 m) devolve um candidato: um
-círculo geodésico de 64 vértices ao redor do ponto, como `MultiPolygon`, com
-`origin=approximate_circle`, `distance_m=0`, um atributo `radius` (em `m`) e o
-aviso `approximate_area`. `find_by_id` sempre devolve `None` e
-`search_radius_m` é ignorado. O construtor exige `radius_m` finito e `> 0` e
-coordenada inválida levanta `ValueError`. Perto do antimeridiano o anel não é
-dividido: as longitudes são apenas normalizadas para [-180, 180).
-
-> O círculo **não** é o limite de uma propriedade. É uma aproximação ao redor
-> do ponto, oferecida quando não há limite real disponível. Os apps devem
-> apresentá-lo como tal.
+> O círculo **não** é o limite de uma propriedade. Ele só ocupa o lugar de um
+> quando não há limite real disponível; os apps devem apresentá-lo assim.
 
 ## Adaptando a um país
 
-Um país conecta o seu próprio cadastro implementando o protocolo e
-registrando-o. Exemplo sobre um cadastro nacional hipotético:
+Implemente o protocolo sobre o seu cadastro e registre-o. Defina seus próprios
+timeouts de rede e mapeie as falhas para `PropertySourceError`:
 
 ```python
 from semente.property_sources import (
     GeometryOrigin, PropertyCandidate, PropertySourceError, register_source,
 )
 
-# query_registry() and get_registry_row() are YOUR country's registry client
-# (an HTTP API, a database, a file export). They are not part of Semente.
+# query_registry() and get_registry_row() are YOUR country's registry client; not part of Semente.
 
 
 class NationalRegistrySource:
@@ -126,47 +86,29 @@ class NationalRegistrySource:
 
     def _to_candidate(self, row):
         return PropertyCandidate(
-            candidate_id=row["registry_number"], name=row["owner_label"],
-            origin=GeometryOrigin.REGISTERED_BOUNDARY, source=self.key,
-            source_date=row["updated_at"], geometry=row["geojson"],
+            candidate_id=row["registry_number"], origin=GeometryOrigin.REGISTERED_BOUNDARY,
+            source=self.key, source_date=row["updated_at"], geometry=row["geojson"],
             area_ha=row["area_ha"], distance_m=row["distance_m"],
-            license="national open data licence",
         )
 
 
 register_source("registry", NationalRegistrySource)
 ```
 
-Regras práticas:
-
-- `geometry` é GeoJSON em lon/lat (WGS84); `area_ha` vem da fonte.
-- `distance_m` é 0 quando o ponto está dentro do polígono.
-- Ordene os candidatos por relevância, o melhor primeiro.
-- Levante `PropertySourceError` apenas quando a fonte não conseguiu responder;
-  devolva `[]` ou `None` quando ela respondeu sem resultado.
-- Defina seus próprios timeouts nas chamadas de rede e mapeie-os para `timeout`.
-- Use `registered_boundary` apenas para polígonos oficiais, nunca para aproximações.
-
 ## Registro e configuração
 
-| Função | Descrição |
-|---|---|
-| `register_source(key, factory)` | Registra (ou substitui) uma fonte; `factory` é uma classe ou callable, chamada uma vez, sob demanda. Registrar de novo descarta a instância em cache. |
-| `get_source(key)` | Devolve a instância compartilhada; levanta `KeyError` para chave desconhecida. |
-| `enabled_keys(manifest=None)` | Chaves das fontes habilitadas, por ordem de prioridade. |
-| `enabled_sources(manifest=None)` | Instâncias das fontes habilitadas; chaves desconhecidas são ignoradas com aviso no log. |
+`register_source(key, factory)` registra (ou substitui) uma fonte; a instância é
+criada sob demanda e compartilhada. `get_source(key)` levanta `KeyError` para
+chave desconhecida. `enabled_keys(manifest=None)` e `enabled_sources(manifest=None)`
+devolvem as fontes habilitadas por prioridade, a partir de:
 
-As chaves habilitadas vêm de, por ordem de precedência:
-
-1. a variável de ambiente `SEMENTE_PROPERTY_SOURCES` (separada por vírgulas;
-   ignorada se só tiver separadores);
-2. a lista `property_sources` do [manifesto](manifest.md);
+1. a variável `SEMENTE_PROPERTY_SOURCES` (separada por vírgulas; ignorada se só tiver separadores);
+2. `property_sources` no [manifesto](manifest.md);
 3. o padrão `["buffer"]`.
 
-Sem o argumento `manifest`, o manifesto é carregado do caminho usual
-(`SEMENTE_MANIFEST` ou `./semente.yaml`). Arquivo ausente é silencioso; arquivo
-que falha ao carregar gera um aviso no log e vale o padrão. Registre suas
-fontes na importação do seu domínio, antes de chamar `enabled_sources()`.
+Sem `manifest`, ele é lido de `SEMENTE_MANIFEST` ou `./semente.yaml` (ausente:
+silencioso; quebrado: aviso no log). Chaves desconhecidas são ignoradas com
+aviso. Registre suas fontes quando o seu domínio for importado.
 
 ```yaml
 property_sources: [registry, buffer]

@@ -1,82 +1,59 @@
-"""Approximate-circle source: a buffer around the coordinate, honestly labeled.
-
-It is the fallback when no real boundary is available. The circle is NOT a
-property boundary: it is an approximation around the point, and its candidate
-says so (origin ``approximate_circle``, warning ``approximate_area``).
-"""
+"""Approximate-circle source. The circle is NOT a property boundary: it only stands in for one."""
 
 from __future__ import annotations
 
 import math
 from typing import Optional
 
-from semente.property_sources._geodesy import circle_area_hectares, circle_multipolygon
-from semente.property_sources.candidate import CandidateAttribute, GeometryOrigin, PropertyCandidate
+from semente.property_sources.candidate import GeometryOrigin, PropertyCandidate
 
 DEFAULT_RADIUS_METERS = 500
+_EARTH_RADIUS_M = 6_371_008.8
+_VERTICES = 64
+
+
+def _circle(lat: float, lon: float, radius_m: float) -> list:
+    """Closed 64-vertex geodesic ring as MultiPolygon coordinates (not split at the antimeridian)."""
+    phi1, lambda1, delta = math.radians(lat), math.radians(lon), radius_m / _EARTH_RADIUS_M
+    ring = []
+    for i in range(_VERTICES):
+        theta = math.radians(360.0 * i / _VERTICES)
+        sin_phi2 = math.sin(phi1) * math.cos(delta) + math.cos(phi1) * math.sin(delta) * math.cos(theta)
+        lambda2 = lambda1 + math.atan2(
+            math.sin(theta) * math.sin(delta) * math.cos(phi1), math.cos(delta) - math.sin(phi1) * sin_phi2
+        )
+        ring.append([(math.degrees(lambda2) + 180.0) % 360.0 - 180.0, math.degrees(math.asin(sin_phi2))])
+    ring.append(list(ring[0]))
+    return [[ring]]
 
 
 class BufferSource:
-    """Source that returns one circle around the searched point.
-
-    The circle is not a property boundary; it only stands in for one when no
-    registered or mapped polygon is available.
-
-    Attributes:
-        key (str): ``"buffer"``.
-        radius_m (float): Radius of the circle in meters.
-    """
+    """One approximate circle of ``radius_m`` around the searched point (``search_radius_m`` is ignored)."""
 
     key = "buffer"
 
     def __init__(self, radius_m: float = DEFAULT_RADIUS_METERS):
-        """Creates the source.
-
-        Args:
-            radius_m (float): Radius of the circle in meters (finite and > 0).
-
-        Raises:
-            ValueError: If ``radius_m`` is not a finite positive number.
-        """
+        """Raises ValueError unless ``radius_m`` is a finite number > 0."""
         if not isinstance(radius_m, (int, float)) or not math.isfinite(radius_m) or radius_m <= 0:
             raise ValueError(f"BufferSource radius_m must be a finite number > 0, got {radius_m!r}.")
         self.radius_m = radius_m
 
     def find_by_point(self, latitude: float, longitude: float, search_radius_m: float = 2000) -> list[PropertyCandidate]:
-        """Returns one approximate circle of ``radius_m`` around the point.
-
-        Args:
-            latitude (float): Latitude in decimal degrees.
-            longitude (float): Longitude in decimal degrees.
-            search_radius_m (float): Unused; kept for the protocol.
-
-        Returns:
-            list[PropertyCandidate]: A single candidate with origin ``approximate_circle``,
-            a 64-vertex MultiPolygon, ``distance_m`` 0, a ``radius`` attribute (m) and
-            the warning ``approximate_area``.
-
-        Raises:
-            ValueError: If the coordinate is invalid (``|latitude| <= 85``, ``|longitude| <= 180``).
-        """
-        coordinates = circle_multipolygon(latitude, longitude, self.radius_m)
+        """Raises ValueError unless ``|latitude| <= 85`` and ``|longitude| <= 180`` (finite)."""
+        if not (isinstance(latitude, (int, float)) and isinstance(longitude, (int, float))
+                and math.isfinite(latitude) and math.isfinite(longitude)
+                and abs(latitude) <= 85 and abs(longitude) <= 180):
+            raise ValueError(f"Invalid coordinate: ({latitude}, {longitude}).")
         return [PropertyCandidate(
             candidate_id=f"circle-{latitude:.5f}-{longitude:.5f}-{self.radius_m:g}",
             origin=GeometryOrigin.APPROXIMATE_CIRCLE,
             source=self.key,
-            geometry={"type": "MultiPolygon", "coordinates": coordinates},
-            area_ha=round(circle_area_hectares(self.radius_m), 2),
+            geometry={"type": "MultiPolygon", "coordinates": _circle(latitude, longitude, self.radius_m)},
+            area_ha=round(math.pi * self.radius_m ** 2 / 10_000.0, 2),
             distance_m=0.0,
-            attributes=[CandidateAttribute(key="radius", value=self.radius_m, unit="m")],
+            attributes={"radius_m": self.radius_m},
             warnings=["approximate_area"],
         )]
 
     def find_by_id(self, identifier: str) -> Optional[PropertyCandidate]:
-        """Circles have no identifiers: always None.
-
-        Args:
-            identifier (str): Ignored.
-
-        Returns:
-            None: Always.
-        """
         return None

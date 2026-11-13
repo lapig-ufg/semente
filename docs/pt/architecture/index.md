@@ -114,6 +114,7 @@ de fallback.
 | `semente/schemas/` | Schemas de estado Pydantic (persona, avaliação da interação, linhas de fine-tuning) |
 | `semente/services/` | Serviços simples por trás dos agentes: `audio/tts`, `geospatial/geojson_io`, `session_migration` |
 | `semente/knowledge/` | Fábrica de base de conhecimento neutra quanto à engine e ferramenta de busca |
+| `semente/property_sources/` | Contrato sem engine para candidatos a limite de propriedade (`PropertySource`, `PropertyCandidate`), fonte `buffer` e registro |
 | `semente/skills.py` | Carregador SKILL.md neutro quanto à engine (`load_skills`) com três ferramentas de acesso |
 | `semente/cli/` | O comando `semente`: `init`, `config`, `status`, `launch` |
 | `semente/build.py` | `build_app(manifest)` — o ponto de entrada programático |
