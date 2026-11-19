@@ -43,11 +43,11 @@ single_agent:
 ```
 
 O framework também formata alguns placeholders de onboarding: `{app_name}` e
-`{terms_closed_note}` em `welcoming_agent.instructions_persona` e
-`welcoming_agent.instructions_first_contact`, e `{terms_link_instruction}` /
-`{terms_text}` / `{after_terms_note}` em `welcoming_agent.instructions` (o
-conteúdo dos termos vem de `features.terms-acceptance`, e `{after_terms_note}`
-muda com `features.first-contact` — veja [Manifesto](manifest.md)).
+`{terms_closed_note}` em `welcoming_agent.instructions_persona`, e
+`{terms_link_instruction}` / `{terms_text}` / `{after_terms_note}` em
+`welcoming_agent.instructions` (o conteúdo dos termos vem de
+`features.terms-acceptance`, e `{after_terms_note}` muda com
+`features.first-contact` — veja [Manifesto](manifest.md)).
 
 Agentes dinâmicos mantêm valores de tempo de execução no código (blocos de
 contexto, texto da persona, propriedades candidatas); o YAML guarda os blocos de

@@ -585,10 +585,11 @@ class Harness:
         """The ``features.first-contact`` gate (absent means on).
 
         On: the first contact is a greeting plus the name/role persona
-        meeting. Off: the welcoming agent only greets and then the main agent
-        takes over — the persona system keeps working, but name/role are never
-        asked during onboarding. Accepts a bare boolean, a dict, or anything
-        carrying an ``enable`` attribute.
+        meeting. Off: no greeting and no persona meeting — the persona system
+        keeps working, but name/role are never asked during onboarding. The
+        terms stage, when enabled, still greets while asking for consent.
+        Accepts a bare boolean, a dict, or anything carrying an ``enable``
+        attribute.
         """
         value = self.features.get("first-contact", True)
         if hasattr(value, "enable"):
@@ -609,9 +610,13 @@ class Harness:
         session. On the way out, the stored profile is copied into
         ``session_state`` so the agent can personalise from the first reply.
 
-        ``features.first-contact: false`` disables only the persona meeting:
-        the welcoming agent greets the user once per session and the gate then
-        releases (terms acceptance, when enabled, is still required).
+        ``features.first-contact: false`` disables the greeting and the
+        persona meeting. Only the terms stage (when enabled) still needs the
+        welcoming agent; its prompt greets the user while asking for consent.
+
+        When neither the terms nor the first contact is enabled there is
+        nothing for the welcoming agent to do, so the gate returns False
+        immediately and the main agent handles every turn.
 
         ``features.onboarding: false`` turns the whole gate off (terms and
         profile): every turn goes straight to the main agent — meant for
@@ -637,37 +642,39 @@ class Harness:
 
         terms_enabled = self._terms_enabled()
         first_contact_enabled = self._first_contact_enabled()
+
+        # Nothing to onboard: no terms to accept and no first contact
+        # (greeting + persona meeting). Never call the welcoming agent.
+        if not terms_enabled and not first_contact_enabled:
+            return False
+
         terms_accepted = bool(state.get("terms_accepted")) or not terms_enabled
         persona = state.get("user_persona") or {}
 
-        # First-contact off: no name/role gate. The welcoming agent greets the
-        # user once per session and every following turn goes to the main
-        # agent. Terms acceptance (when enabled) is still a hard gate.
+        # First-contact off: terms only (the both-off case returned above).
+        # No persona gate, no greeting and no profile lookup.
         if not first_contact_enabled:
-            greeted = bool(state.get("is_greeted"))
-            if terms_accepted and greeted:
+            if terms_accepted:
                 return False
 
-            if terms_enabled and not terms_accepted:
-                user_id = user_id or state.get("user_id")
-                if not user_id:
-                    return True
+            user_id = user_id or state.get("user_id")
+            if not user_id:
+                return True
 
-                db_session = SessionLocal()
-                try:
-                    acceptance = db_session.query(UserTermsAcceptance).filter(
-                        UserTermsAcceptance.user_id == user_id,
-                        UserTermsAcceptance.accepted == True,  # noqa: E712
-                    ).first()
-                finally:
-                    db_session.close()
+            db_session = SessionLocal()
+            try:
+                acceptance = db_session.query(UserTermsAcceptance).filter(
+                    UserTermsAcceptance.user_id == user_id,
+                    UserTermsAcceptance.accepted == True,  # noqa: E712
+                ).first()
+            finally:
+                db_session.close()
 
-                if not acceptance:
-                    return True
+            if not acceptance:
+                return True
 
-                state["terms_accepted"] = True
-
-            return not greeted
+            state["terms_accepted"] = True
+            return False
 
         if terms_accepted and is_persona_complete(persona):
             return False
@@ -721,15 +728,12 @@ class Harness:
         images: Optional[list],
         audio: Optional[list],
     ) -> StepOutput:
-        """Run the staged welcoming agent (terms, persona, or greeting only).
+        """Run the staged welcoming agent (terms or persona stage).
 
         Onboarding turns (terms acceptance, persona setup) are SFT noise:
-        they are never recorded into ``recent_agent_runs``. A successful turn
-        marks the session as greeted: with ``features.first-contact`` off the
-        gate uses that flag to hand the conversation over to the main agent
-        after the single greeting.
+        they are never recorded into ``recent_agent_runs``.
         """
-        output = self._invoke_agent(
+        return self._invoke_agent(
             self.welcoming_agent,
             self._build_agent_input(session, user_text, session.session_state),
             images,
@@ -739,8 +743,6 @@ class Harness:
             user_id=session.user_id,
             record=False,
         )
-        session.session_state["is_greeted"] = True
-        return output
 
     def _summarize_conversation(
         self, session: Session, user_text: str, state: dict

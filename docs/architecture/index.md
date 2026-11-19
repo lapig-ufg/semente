@@ -72,8 +72,9 @@ Stages in order:
    the `terms-acceptance` feature is enabled, terms acceptance. When needed,
    the **welcoming agent** takes over the turn and runs the staged onboarding
    flow (terms → persona, or persona only), one stage per turn. With
-   `first-contact` off, the agent only greets the user once and the persona
-   meeting (name/role) is skipped; terms acceptance still applies.
+   `first-contact` off the greeting and the persona meeting (name/role) are
+   skipped; the terms stage still applies. With neither `first-contact` nor
+   `terms-acceptance` enabled, the welcoming agent is never called.
 4. **Summarization** (feature `summarization`) — a rolling summary refreshed
    every 6 turns (`SUMMARY_THRESHOLD`).
 5. **Interaction assessment** (feature `interaction-assessment`) — the

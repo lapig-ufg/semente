@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from semente.core.harness import Harness
-from semente.core.types import Session, StepOutput
+from semente.core.types import StepOutput
 from semente.database.models import UserProfile, UserTermsAcceptance
 from semente.database.session import SessionLocal, engine
 from semente.services.session_migration import CURRENT_SCHEMA_VERSION
@@ -262,36 +262,57 @@ def test_onboarding_enabled_by_default_and_explicitly(db):
 # ---------------------------------------------------------------------
 # features.first-contact (on by default)
 # ---------------------------------------------------------------------
-def test_first_contact_disabled_greets_once_then_releases(db):
-    """Off: one greeting turn, then the main agent takes over."""
+def test_no_terms_and_no_first_contact_never_needs_onboarding(db):
+    """Both stages off: the welcoming agent is never called."""
     harness = _agent(features={"first-contact": False})
     state: dict[str, Any] = {}
 
-    assert harness._needs_onboarding(state, UID) is True
-    assert state.get("is_greeted") is None
-
-    state["is_greeted"] = True
     assert harness._needs_onboarding(state, UID) is False
+    assert harness._needs_onboarding({}, None) is False
+    assert state["workflow_state"] is not None  # bootstrap still ran
 
 
-def test_first_contact_disabled_needs_no_profile_or_user_id(db):
-    """Off: the persona gate is gone, so even an anonymous user is released."""
+def test_first_contact_disabled_terms_off_ignores_profile_and_user_id(db):
+    """No terms and no first contact: nothing to onboard, even anonymously."""
     harness = _agent(features={"first-contact": False})
-    state: dict[str, Any] = {}
 
-    assert harness._needs_onboarding(state, None) is True  # greet first
-    state["is_greeted"] = True
-    assert harness._needs_onboarding(state, None) is False
+    assert harness._needs_onboarding({}, None) is False
+    assert harness._needs_onboarding({}, UID) is False
+
+
+def test_both_stages_off_never_calls_the_welcoming_agent(monkeypatch):
+    """The turn goes straight to the main agent when nothing is enabled."""
+    harness = _agent(
+        features={
+            "first-contact": False,
+            "summarization": False,
+            "interaction-assessment": False,
+        }
+    )
+    called = {"welcoming": False}
+
+    def _welcoming(*args, **kwargs):
+        called["welcoming"] = True
+        return StepOutput(content="should not run")
+
+    monkeypatch.setattr(harness, "_run_welcoming_agent", _welcoming)
+    monkeypatch.setattr(
+        harness, "_run_single_agent", lambda *args, **kwargs: StepOutput(content="answer")
+    )
+
+    output = harness.run(user_id=UID, session_id="s", input="hello")
+
+    assert output.content == "answer"
+    assert called["welcoming"] is False
 
 
 def test_first_contact_disabled_still_requires_terms_acceptance(db):
-    """Off only disables the name/role meeting; terms remain a hard gate."""
+    """First contact off only leaves the terms gate in place."""
     features = {"first-contact": False, "terms-acceptance": TermsConfig(enable=True)}
     harness = _agent(features=features)
     state: dict[str, Any] = {}
 
     assert harness._needs_onboarding(state, UID) is True
-    state["is_greeted"] = True
     assert harness._needs_onboarding(state, UID) is True  # terms still pending
 
     _accept_terms(db)
@@ -300,29 +321,22 @@ def test_first_contact_disabled_still_requires_terms_acceptance(db):
 
 
 def test_first_contact_disabled_loads_terms_acceptance_from_db(db):
-    """A returning user who accepted the terms is greeted once and released."""
+    """Terms on: a stored acceptance releases the user immediately."""
     _accept_terms(db)
     features = {"first-contact": False, "terms-acceptance": TermsConfig(enable=True)}
     harness = _agent(features=features)
     state: dict[str, Any] = {}
 
-    assert harness._needs_onboarding(state, UID) is True  # the greeting turn
+    assert harness._needs_onboarding(state, UID) is False
     assert state["terms_accepted"] is True
 
-    state["is_greeted"] = True
-    assert harness._needs_onboarding(state, UID) is False
 
+def test_first_contact_disabled_without_user_id_keeps_terms_pending(db):
+    """Terms on but no identifier: the acceptance cannot be verified."""
+    features = {"first-contact": False, "terms-acceptance": TermsConfig(enable=True)}
+    harness = _agent(features=features)
 
-def test_first_contact_disabled_greets_even_with_a_complete_profile(db):
-    """The greeting is per session; it does not re-open the persona gate."""
-    _accept_terms(db)
-    _save_profile(db, name="João", role="Producer")
-    harness = _agent(features={"first-contact": False})
-    state: dict[str, Any] = {}
-
-    assert harness._needs_onboarding(state, UID) is True
-    state["is_greeted"] = True
-    assert harness._needs_onboarding(state, UID) is False
+    assert harness._needs_onboarding({}, None) is True
 
 
 def test_first_contact_enabled_by_default_and_explicitly(db):
@@ -330,18 +344,5 @@ def test_first_contact_enabled_by_default_and_explicitly(db):
     assert _agent(features={"first-contact": True})._needs_onboarding({}, UID) is True
     assert (
         _agent(features={"first-contact": {"enable": False}})._needs_onboarding({}, UID)
-        is True
+        is False
     )
-
-
-def test_welcoming_turn_marks_the_session_as_greeted(monkeypatch):
-    harness = _agent(features={"first-contact": False})
-    session = Session(user_id=UID, session_id="s", session_state={})
-    monkeypatch.setattr(
-        harness, "_invoke_agent", lambda *args, **kwargs: StepOutput(content="hi")
-    )
-
-    output = harness._run_welcoming_agent(session, "hello", None, None)
-
-    assert output.content == "hi"
-    assert session.session_state["is_greeted"] is True

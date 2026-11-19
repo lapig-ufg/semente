@@ -62,31 +62,23 @@ def test_terms_off_complete_persona_is_complete():
 # ---------------------------------------------------------------------
 # First contact (features.first-contact)
 # ---------------------------------------------------------------------
-def test_first_contact_off_starts_with_the_greeting():
+def test_first_contact_off_is_complete_without_terms():
     assert _get_onboarding_status(
         {}, terms_enabled=False, first_contact_enabled=False
-    ) == OnboardingStatus.GREETING
-
-
-def test_first_contact_off_after_greeting_is_complete():
-    state = {"is_greeted": True}
-    assert _get_onboarding_status(
-        state, terms_enabled=False, first_contact_enabled=False
     ) == OnboardingStatus.COMPLETE
 
 
 def test_first_contact_off_still_starts_with_the_terms():
-    state = {}
     assert _get_onboarding_status(
-        state, terms_enabled=True, first_contact_enabled=False
+        {}, terms_enabled=True, first_contact_enabled=False
     ) == OnboardingStatus.NOT_ACCEPTED_TERMS
 
 
-def test_first_contact_off_greets_after_the_terms_are_accepted():
+def test_first_contact_off_completes_after_the_terms_are_accepted():
     state = {"terms_accepted": True}
     assert _get_onboarding_status(
         state, terms_enabled=True, first_contact_enabled=False
-    ) == OnboardingStatus.GREETING
+    ) == OnboardingStatus.COMPLETE
 
 
 # ---------------------------------------------------------------------
@@ -162,22 +154,15 @@ def test_terms_on_closes_the_terms_step_in_the_persona_stage(capture, tmp_path):
     assert "first contact" not in instructions
 
 
-def test_first_contact_off_greets_without_persona_tools(capture):
+def test_first_contact_off_has_no_instructions_or_persona_tools(capture):
     spec = capture(terms=None, first_contact=False, app_name="Demo App")
     state: dict = {}
 
-    instructions = spec.instructions(_context(state))
-    assert "Demo App" in instructions
-    assert "first contact" in instructions
-    assert "never ask" in instructions.lower()
-
-    tools = _tool_names(spec, state)
-    assert "accept_terms_and_conditions" not in tools
-    assert "update_persona_name" not in tools
-    assert "update_persona_role" not in tools
+    assert spec.instructions(_context(state)) == ""
+    assert _tool_names(spec, state) == set()
 
 
-def test_first_contact_off_after_terms_still_greets_without_persona_tools(capture, tmp_path):
+def test_first_contact_off_after_terms_has_no_persona_tools(capture, tmp_path):
     (tmp_path / "terms.md").write_text("TERMS", encoding="utf-8")
     spec = capture(
         terms=TermsConfig(enable=True, file="terms.md"),
@@ -187,13 +172,8 @@ def test_first_contact_off_after_terms_still_greets_without_persona_tools(captur
     )
     state = {"terms_accepted": True}
 
-    instructions = spec.instructions(_context(state))
-    assert "already been accepted" in instructions
-    assert "identification step is disabled" in instructions
-
-    tools = _tool_names(spec, state)
-    assert "update_persona_name" not in tools
-    assert "update_persona_role" not in tools
+    assert spec.instructions(_context(state)) == ""
+    assert _tool_names(spec, state) == set()
 
 
 def test_first_contact_off_tells_the_terms_stage_not_to_ask_personal_data(
