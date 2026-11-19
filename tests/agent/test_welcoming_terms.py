@@ -60,6 +60,36 @@ def test_terms_off_complete_persona_is_complete():
 
 
 # ---------------------------------------------------------------------
+# First contact (features.first-contact)
+# ---------------------------------------------------------------------
+def test_first_contact_off_starts_with_the_greeting():
+    assert _get_onboarding_status(
+        {}, terms_enabled=False, first_contact_enabled=False
+    ) == OnboardingStatus.GREETING
+
+
+def test_first_contact_off_after_greeting_is_complete():
+    state = {"is_greeted": True}
+    assert _get_onboarding_status(
+        state, terms_enabled=False, first_contact_enabled=False
+    ) == OnboardingStatus.COMPLETE
+
+
+def test_first_contact_off_still_starts_with_the_terms():
+    state = {}
+    assert _get_onboarding_status(
+        state, terms_enabled=True, first_contact_enabled=False
+    ) == OnboardingStatus.NOT_ACCEPTED_TERMS
+
+
+def test_first_contact_off_greets_after_the_terms_are_accepted():
+    state = {"terms_accepted": True}
+    assert _get_onboarding_status(
+        state, terms_enabled=True, first_contact_enabled=False
+    ) == OnboardingStatus.GREETING
+
+
+# ---------------------------------------------------------------------
 # Terms text loading
 # ---------------------------------------------------------------------
 def test_terms_file_is_resolved_relative_to_the_manifest(tmp_path):
@@ -130,3 +160,64 @@ def test_terms_on_closes_the_terms_step_in_the_persona_stage(capture, tmp_path):
     instructions = spec.instructions(_context(state))
     assert "already been accepted" in instructions
     assert "first contact" not in instructions
+
+
+def test_first_contact_off_greets_without_persona_tools(capture):
+    spec = capture(terms=None, first_contact=False, app_name="Demo App")
+    state: dict = {}
+
+    instructions = spec.instructions(_context(state))
+    assert "Demo App" in instructions
+    assert "first contact" in instructions
+    assert "never ask" in instructions.lower()
+
+    tools = _tool_names(spec, state)
+    assert "accept_terms_and_conditions" not in tools
+    assert "update_persona_name" not in tools
+    assert "update_persona_role" not in tools
+
+
+def test_first_contact_off_after_terms_still_greets_without_persona_tools(capture, tmp_path):
+    (tmp_path / "terms.md").write_text("TERMS", encoding="utf-8")
+    spec = capture(
+        terms=TermsConfig(enable=True, file="terms.md"),
+        first_contact=False,
+        app_name="Demo App",
+        base_dir=tmp_path,
+    )
+    state = {"terms_accepted": True}
+
+    instructions = spec.instructions(_context(state))
+    assert "already been accepted" in instructions
+    assert "identification step is disabled" in instructions
+
+    tools = _tool_names(spec, state)
+    assert "update_persona_name" not in tools
+    assert "update_persona_role" not in tools
+
+
+def test_first_contact_off_tells_the_terms_stage_not_to_ask_personal_data(
+    capture, tmp_path
+):
+    (tmp_path / "terms.md").write_text("TERMS", encoding="utf-8")
+    spec = capture(
+        terms=TermsConfig(enable=True, file="terms.md"),
+        first_contact=False,
+        app_name="Demo App",
+        base_dir=tmp_path,
+    )
+
+    instructions = spec.instructions(_context({}))
+    assert "never ask for name, role" in instructions
+
+
+def test_first_contact_on_keeps_the_name_role_after_terms_note(capture, tmp_path):
+    (tmp_path / "terms.md").write_text("TERMS", encoding="utf-8")
+    spec = capture(
+        terms=TermsConfig(enable=True, file="terms.md"),
+        app_name="Demo App",
+        base_dir=tmp_path,
+    )
+
+    instructions = spec.instructions(_context({}))
+    assert "name and role are collected after acceptance" in instructions

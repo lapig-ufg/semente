@@ -10,7 +10,8 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
     _input_preprocessing   media -> text, geo files -> GeoJSON (always)
     _run_input_guardrails  pluggable guardrail chain: redaction or a
                            blocked turn with a reply (guardrails)
-    _needs_onboarding      terms (terms-acceptance) + profile gate
+    _needs_onboarding      terms (terms-acceptance) + first contact
+                           (first-contact) + profile gate
     ├─ True:  _run_welcoming_agent
     └─ False: _summarize_conversation (summarization)
               _process_feedback      (interaction_assessment; returns whether a
@@ -199,7 +200,8 @@ class Harness:
 
     Args:
         agent: The single backend agent built from the DomainSpec.
-        welcoming_agent: The onboarding agent (terms + persona stages).
+        welcoming_agent: The onboarding agent (terms, persona or greeting-only
+            stage, depending on the feature toggles).
         manifest: The parsed ``semente.yaml`` — name and feature toggles.
         store: Optional :class:`SessionStore` for cross-run persistence.
         guardrails: The :class:`GuardrailChain` composed from the domain's
@@ -579,17 +581,37 @@ class Harness:
             return bool(value.get("enable", False))
         return bool(value)
 
+    def _first_contact_enabled(self) -> bool:
+        """The ``features.first-contact`` gate (absent means on).
+
+        On: the first contact is a greeting plus the name/role persona
+        meeting. Off: the welcoming agent only greets and then the main agent
+        takes over — the persona system keeps working, but name/role are never
+        asked during onboarding. Accepts a bare boolean, a dict, or anything
+        carrying an ``enable`` attribute.
+        """
+        value = self.features.get("first-contact", True)
+        if hasattr(value, "enable"):
+            return bool(value.enable)
+        if isinstance(value, dict):
+            return bool(value.get("enable", True))
+        return bool(value)
+
     def _needs_onboarding(self, state: dict, user_id: Optional[str]) -> bool:
         """Return True if the user still needs to go through onboarding.
 
         Onboarding covers the formal acceptance of the terms (only when
-        ``features.terms-acceptance`` is enabled) and the identification
-        profile (name + role). Both are resolved from ``session_state`` when
-        present and only looked up in the database for the parts still
-        missing, so a user who already completed them is never asked again —
-        not even in a brand new session. On the way out, the stored profile is
-        copied into ``session_state`` so the agent can personalise from the
-        first reply.
+        ``features.terms-acceptance`` is enabled) and, when
+        ``features.first-contact`` is on, the identification profile (name +
+        role). Both are resolved from ``session_state`` when present and only
+        looked up in the database for the parts still missing, so a user who
+        already completed them is never asked again — not even in a brand new
+        session. On the way out, the stored profile is copied into
+        ``session_state`` so the agent can personalise from the first reply.
+
+        ``features.first-contact: false`` disables only the persona meeting:
+        the welcoming agent greets the user once per session and the gate then
+        releases (terms acceptance, when enabled, is still required).
 
         ``features.onboarding: false`` turns the whole gate off (terms and
         profile): every turn goes straight to the main agent — meant for
@@ -614,8 +636,38 @@ class Harness:
             return False
 
         terms_enabled = self._terms_enabled()
+        first_contact_enabled = self._first_contact_enabled()
         terms_accepted = bool(state.get("terms_accepted")) or not terms_enabled
         persona = state.get("user_persona") or {}
+
+        # First-contact off: no name/role gate. The welcoming agent greets the
+        # user once per session and every following turn goes to the main
+        # agent. Terms acceptance (when enabled) is still a hard gate.
+        if not first_contact_enabled:
+            greeted = bool(state.get("is_greeted"))
+            if terms_accepted and greeted:
+                return False
+
+            if terms_enabled and not terms_accepted:
+                user_id = user_id or state.get("user_id")
+                if not user_id:
+                    return True
+
+                db_session = SessionLocal()
+                try:
+                    acceptance = db_session.query(UserTermsAcceptance).filter(
+                        UserTermsAcceptance.user_id == user_id,
+                        UserTermsAcceptance.accepted == True,  # noqa: E712
+                    ).first()
+                finally:
+                    db_session.close()
+
+                if not acceptance:
+                    return True
+
+                state["terms_accepted"] = True
+
+            return not greeted
 
         if terms_accepted and is_persona_complete(persona):
             return False
@@ -669,12 +721,15 @@ class Harness:
         images: Optional[list],
         audio: Optional[list],
     ) -> StepOutput:
-        """Run the staged welcoming agent (terms, then persona).
+        """Run the staged welcoming agent (terms, persona, or greeting only).
 
         Onboarding turns (terms acceptance, persona setup) are SFT noise:
-        they are never recorded into ``recent_agent_runs``.
+        they are never recorded into ``recent_agent_runs``. A successful turn
+        marks the session as greeted: with ``features.first-contact`` off the
+        gate uses that flag to hand the conversation over to the main agent
+        after the single greeting.
         """
-        return self._invoke_agent(
+        output = self._invoke_agent(
             self.welcoming_agent,
             self._build_agent_input(session, user_text, session.session_state),
             images,
@@ -684,6 +739,8 @@ class Harness:
             user_id=session.user_id,
             record=False,
         )
+        session.session_state["is_greeted"] = True
+        return output
 
     def _summarize_conversation(
         self, session: Session, user_text: str, state: dict
@@ -1450,6 +1507,7 @@ def get_harness(manifest_path: str | None = None) -> Harness:
     welcoming_agent = build_welcoming_agent(
         tts_enabled=manifest.features.get("tts", True),
         terms=manifest.features.get("terms-acceptance"),
+        first_contact=manifest.features.get("first-contact", True),
         app_name=manifest.name,
         base_dir=manifest.source_dir,
     )

@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 
 from semente.core.harness import Harness
+from semente.core.types import Session, StepOutput
 from semente.database.models import UserProfile, UserTermsAcceptance
 from semente.database.session import SessionLocal, engine
 from semente.services.session_migration import CURRENT_SCHEMA_VERSION
@@ -256,3 +257,91 @@ def test_onboarding_enabled_by_default_and_explicitly(db):
     assert _agent(features={})._needs_onboarding({}, UID) is True
     assert _agent(features={"onboarding": True})._needs_onboarding({}, UID) is True
     assert _agent(features={"onboarding": {"enable": False}})._needs_onboarding({}, UID) is False
+
+
+# ---------------------------------------------------------------------
+# features.first-contact (on by default)
+# ---------------------------------------------------------------------
+def test_first_contact_disabled_greets_once_then_releases(db):
+    """Off: one greeting turn, then the main agent takes over."""
+    harness = _agent(features={"first-contact": False})
+    state: dict[str, Any] = {}
+
+    assert harness._needs_onboarding(state, UID) is True
+    assert state.get("is_greeted") is None
+
+    state["is_greeted"] = True
+    assert harness._needs_onboarding(state, UID) is False
+
+
+def test_first_contact_disabled_needs_no_profile_or_user_id(db):
+    """Off: the persona gate is gone, so even an anonymous user is released."""
+    harness = _agent(features={"first-contact": False})
+    state: dict[str, Any] = {}
+
+    assert harness._needs_onboarding(state, None) is True  # greet first
+    state["is_greeted"] = True
+    assert harness._needs_onboarding(state, None) is False
+
+
+def test_first_contact_disabled_still_requires_terms_acceptance(db):
+    """Off only disables the name/role meeting; terms remain a hard gate."""
+    features = {"first-contact": False, "terms-acceptance": TermsConfig(enable=True)}
+    harness = _agent(features=features)
+    state: dict[str, Any] = {}
+
+    assert harness._needs_onboarding(state, UID) is True
+    state["is_greeted"] = True
+    assert harness._needs_onboarding(state, UID) is True  # terms still pending
+
+    _accept_terms(db)
+    assert harness._needs_onboarding(state, UID) is False
+    assert state["terms_accepted"] is True
+
+
+def test_first_contact_disabled_loads_terms_acceptance_from_db(db):
+    """A returning user who accepted the terms is greeted once and released."""
+    _accept_terms(db)
+    features = {"first-contact": False, "terms-acceptance": TermsConfig(enable=True)}
+    harness = _agent(features=features)
+    state: dict[str, Any] = {}
+
+    assert harness._needs_onboarding(state, UID) is True  # the greeting turn
+    assert state["terms_accepted"] is True
+
+    state["is_greeted"] = True
+    assert harness._needs_onboarding(state, UID) is False
+
+
+def test_first_contact_disabled_greets_even_with_a_complete_profile(db):
+    """The greeting is per session; it does not re-open the persona gate."""
+    _accept_terms(db)
+    _save_profile(db, name="João", role="Producer")
+    harness = _agent(features={"first-contact": False})
+    state: dict[str, Any] = {}
+
+    assert harness._needs_onboarding(state, UID) is True
+    state["is_greeted"] = True
+    assert harness._needs_onboarding(state, UID) is False
+
+
+def test_first_contact_enabled_by_default_and_explicitly(db):
+    assert _agent(features={})._needs_onboarding({}, UID) is True
+    assert _agent(features={"first-contact": True})._needs_onboarding({}, UID) is True
+    assert (
+        _agent(features={"first-contact": {"enable": False}})._needs_onboarding({}, UID)
+        is True
+    )
+
+
+def test_welcoming_turn_marks_the_session_as_greeted(monkeypatch):
+    harness = _agent(features={"first-contact": False})
+    session = Session(user_id=UID, session_id="s", session_state={})
+    monkeypatch.setattr(
+        harness, "_invoke_agent", lambda *args, **kwargs: StepOutput(content="hi")
+    )
+
+    output = harness._run_welcoming_agent(session, "hello", None, None)
+
+    assert output.content == "hi"
+    assert session.session_state["is_greeted"] is True

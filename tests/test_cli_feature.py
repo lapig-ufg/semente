@@ -25,6 +25,8 @@ def test_catalog_is_the_single_source():
     assert KNOWN_FEATURES == list(FEATURES)
     assert [f.name for f in FEATURES.values()] == [
         "tts",
+        "onboarding",
+        "first-contact",
         "summarization",
         "interaction-assessment",
         "guardrails",
@@ -101,9 +103,18 @@ def test_actives_lists_enabled_and_defaults(app_dir, monkeypatch):
     feature_cmd.cmd_feature_actives()
     out = out_stream.getvalue()
     assert "tts" in out and "summarization" in out  # defaults count as active
+    assert "first-contact" in out  # on by default
     assert "guardrails" not in out or "Active" not in out.split("guardrails")[0]  # excluded
     assert "interaction-assessment" in out
     assert "terms-acceptance" not in out  # default off
+
+
+def test_first_contact_defaults_on(app_dir, capsys):
+    feature_cmd.cmd_feature_toggle("first-contact", None)
+    assert "default (on)" in capsys.readouterr().out
+
+    feature_cmd.cmd_feature_toggle("first-contact", False)
+    assert _manifest(app_dir).features["first-contact"] is False
 
 
 def test_terms_acceptance_defaults_off(app_dir, capsys):

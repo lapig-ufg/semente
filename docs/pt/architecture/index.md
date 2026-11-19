@@ -75,7 +75,9 @@ Etapas, em ordem:
    quando a feature `terms-acceptance` está habilitada, do aceite dos termos.
    Quando necessário, o **agente de boas-vindas** assume o turno e executa o
    fluxo de onboarding em etapas (termos → persona, ou só persona), uma etapa por
-   turno.
+   turno. Com `first-contact` desligada, o agente apenas saúda o usuário uma vez
+   e a conversa de persona (nome/função) é pulada; o aceite dos termos continua
+   valendo.
 4. **Sumarização** (feature `summarization`) — um resumo contínuo atualizado a
    cada 6 turnos (`SUMMARY_THRESHOLD`).
 5. **Avaliação da interação** (feature `interaction-assessment`) — o ciclo por

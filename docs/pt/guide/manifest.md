@@ -12,6 +12,7 @@ engine: agno                 # agno (padrão) | adk | bare
 channels: [streamlit]        # streamlit, whatsapp e/ou a2a
 features:                    # booleanos valem true por padrão (terms-acceptance: false)
   onboarding: true           # etapa de boas-vindas + nome/função antes do agente principal; false = responde direto
+  first-contact: true        # primeira conversa de persona (saudação + nome/função); false = só saúda
   tts: true                  # anexa a ferramenta TTS ao agente de boas-vindas
   interaction-assessment: true  # ciclo de satisfação/persona + captura DPO/SFT, ou {enable: true, window_size: 5}
   summarization: true        # resumo contínuo da conversa
@@ -52,6 +53,7 @@ export SEMENTE_ENGINE=adk    # vale quando o manifesto não tem o campo engine
 | Interruptor | Quando desligado |
 |---|---|
 | `onboarding` | Todo o portão de onboarding (termos + nome/função) é ignorado: cada turno vai direto ao agente principal, mesmo para um usuário novo e anônimo. Pensado para bots de propósito único como o [Groot](/pt/showcase/groot). Ligado por padrão. |
+| `first-contact` | Apenas a conversa de persona é pulada: o agente de boas-vindas saúda o usuário uma vez por sessão e o agente principal assume. O aceite dos termos, quando habilitado, continua obrigatório. O sistema de persona segue funcionando — só nome/função nunca são pedidos. Ligado por padrão. |
 | `tts` | O agente de boas-vindas é construído sem a ferramenta TTS. |
 | `interaction-assessment` | Todo o ciclo — agente de satisfação, persistência e captura DPO/SFT, atualizações de persona e remediação — é omitido da execução. Booleano ou `{enable, window_size}` — veja [Feedback e Fine-Tuning](feedback.md). |
 | `summarization` | A etapa de resumo contínuo da conversa é omitida. |
@@ -78,6 +80,17 @@ O primeiro `semente feature terms-acceptance --enable` (ou
 `feature add terms-acceptance`) cria `domain/terms_example.md` e configura o
 `file` para você; substitua esse exemplo pelos seus termos reais. Arquivos
 existentes e um `file` já configurado nunca são sobrescritos.
+
+### Primeiro contato
+
+`first-contact` controla a conversa de persona que normalmente vem depois dos
+termos: o agente de boas-vindas pergunta o nome e a função do usuário uma vez.
+Com ela desligada, o agente apenas saúda o usuário (e explica o app) no
+primeiro turno; o agente principal responde a partir do turno seguinte e
+nome/função nunca são pedidos. O aceite dos termos, quando habilitado, continua
+rodando e segue sendo um portão obrigatório. O ciclo de gestão de persona
+(`interaction-assessment`) não muda — ele continua refinando preferências e
+regionalidade; só a declaração de nome/função é pulada.
 
 ### `terms_text` legado
 

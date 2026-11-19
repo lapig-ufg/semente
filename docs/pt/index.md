@@ -52,7 +52,7 @@ Usuário (WhatsApp / Streamlit)
    Harness (pipeline de objeto único)
     ├── Pré-processamento da entrada (mídia → texto, geo → GeoJSON)
     ├── Cadeia de guardrails (plugável: oculta ou bloqueia)
-    ├── Portão de onboarding (persona; termos opcionais)
+    ├── Portão de onboarding (termos e primeira conversa de persona opcionais)
     ├── Sumarização, ciclo de feedback e então o seu agente
     ├── Remediação (pedido de desculpas no lugar de uma resposta frustrante)
     └── Finalização da saída (TTS)

@@ -15,6 +15,7 @@ from semente.schemas.user_persona import (
 class OnboardingStatus(Enum):
     NOT_ACCEPTED_TERMS = auto()
     NOT_INFORMED_PERSONA = auto()
+    GREETING = auto()
     COMPLETE = auto()
 
 
@@ -54,19 +55,28 @@ def _load_terms_text(config: TermsConfig, base_dir: Path | None) -> str:
 
 
 def _get_onboarding_status(
-    session_state: Dict[str, Any], terms_enabled: bool = True
+    session_state: Dict[str, Any],
+    terms_enabled: bool = True,
+    first_contact_enabled: bool = True,
 ) -> OnboardingStatus:
     """Decide which onboarding stage the user is currently on.
 
-    Reads ``terms_accepted`` and ``user_persona`` (a plain dict) from the
-    session state and drives both the instructions and the toolset: the terms
-    prompt/tool only while the terms are pending and the gate is enabled, the
-    persona prompt/tools only while name or role are missing. Completeness is
-    judged with the shared ``is_persona_complete`` rule, so it can never drift
-    from the workflow gate.
+    Reads ``terms_accepted``, ``is_greeted`` and ``user_persona`` (a plain
+    dict) from the session state and drives both the instructions and the
+    toolset: the terms prompt/tool only while the terms are pending and the
+    gate is enabled, the persona prompt/tools only while name or role are
+    missing and the first contact is enabled. With ``first_contact_enabled``
+    off the agent greets once and then reports COMPLETE (no name/role
+    meeting). Completeness is judged with the shared ``is_persona_complete``
+    rule, so it can never drift from the workflow gate.
     """
     if terms_enabled and not session_state.get("terms_accepted", False):
         return OnboardingStatus.NOT_ACCEPTED_TERMS
+
+    if not first_contact_enabled:
+        if not session_state.get("is_greeted", False):
+            return OnboardingStatus.GREETING
+        return OnboardingStatus.COMPLETE
 
     if not is_persona_complete(session_state.get("user_persona")):
         return OnboardingStatus.NOT_INFORMED_PERSONA
@@ -77,6 +87,7 @@ def _get_onboarding_status(
 def build_welcoming_agent(
     tts_enabled: bool = True,
     terms=None,
+    first_contact=True,
     app_name: str = "this assistant",
     base_dir: Path | None = None,
 ):
@@ -84,16 +95,20 @@ def build_welcoming_agent(
 
     One stage per prompt: the terms stage (``instructions`` +
     ``accept_terms_and_conditions``, only when ``features.terms-acceptance``
-    is enabled) and the persona stage (``instructions_persona`` + name/role
-    tools). Only the current stage's tools are exposed (TTS always, when
-    enabled). Prompts are loaded lazily so the language/prompts dir can be set
-    before this is called; the loaded values are closed over by the callables
-    below.
+    is enabled), the persona stage (``instructions_persona`` + name/role
+    tools, when ``features.first-contact`` is on) and the greeting-only stage
+    (``instructions_first_contact``, when the first contact is off). Only the
+    current stage's tools are exposed (TTS always, when enabled). Prompts are
+    loaded lazily so the language/prompts dir can be set before this is
+    called; the loaded values are closed over by the callables below.
 
     Args:
         tts_enabled: Attach the TTS tool on every stage.
         terms: The manifest's ``features.terms-acceptance`` value
             (TermsConfig/bool/dict/None). Absent means the terms stage is off.
+        first_contact: The manifest's ``features.first-contact`` value
+            (bool/dict). On means greet and collect name/role; off means greet
+            only and then release to the main agent. Absent means on.
         app_name: The manifest app name, formatted into the prompts.
         base_dir: Directory used to resolve a relative ``terms.file``.
     """
@@ -102,6 +117,13 @@ def build_welcoming_agent(
     terms_config = _normalize_terms(terms)
     terms_enabled = terms_config.enable
     terms_text = _load_terms_text(terms_config, base_dir) if terms_enabled else ""
+
+    if hasattr(first_contact, "enable"):
+        first_contact_enabled = bool(first_contact.enable)
+    elif isinstance(first_contact, dict):
+        first_contact_enabled = bool(first_contact.get("enable", True))
+    else:
+        first_contact_enabled = bool(first_contact)
 
     if terms_enabled and terms_config.url:
         terms_link_instruction = (
@@ -114,10 +136,19 @@ def build_welcoming_agent(
             "terms below and ask for consent in your first message."
         )
 
+    if first_contact_enabled:
+        after_terms_note = "name and role are collected after acceptance"
+    else:
+        after_terms_note = (
+            "after acceptance the user goes straight to the app — never ask "
+            "for name, role or any other personal information"
+        )
+
     terms_instruction = welcoming_config["instructions"].strip().format(
         app_name=app_name,
         terms_link_instruction=terms_link_instruction,
         terms_text=terms_text,
+        after_terms_note=after_terms_note,
     )
     persona_instruction = welcoming_config["instructions_persona"].strip()
     persona_not_informed = welcoming_config["persona_not_informed"].strip()
@@ -133,10 +164,17 @@ def build_welcoming_agent(
             "and explain what this app does."
         )
 
+    greeting_instruction = welcoming_config["instructions_first_contact"].strip().format(
+        app_name=app_name,
+        terms_closed_note=terms_closed_note,
+    )
+
     def _get_tools(run_context) -> List:
         session_state = run_context.session_state or {}
         onboarding_status = _get_onboarding_status(
-            session_state=session_state, terms_enabled=terms_enabled
+            session_state=session_state,
+            terms_enabled=terms_enabled,
+            first_contact_enabled=first_contact_enabled,
         )
 
         tools: list = []
@@ -163,11 +201,16 @@ def build_welcoming_agent(
     def get_instructions(run_context) -> str:
         session_state = run_context.session_state or {}
         onboarding_status = _get_onboarding_status(
-            session_state=session_state, terms_enabled=terms_enabled
+            session_state=session_state,
+            terms_enabled=terms_enabled,
+            first_contact_enabled=first_contact_enabled,
         )
 
         if onboarding_status == OnboardingStatus.NOT_ACCEPTED_TERMS:
             return terms_instruction
+
+        if onboarding_status == OnboardingStatus.GREETING:
+            return greeting_instruction
 
         if onboarding_status == OnboardingStatus.NOT_INFORMED_PERSONA:
             user_persona = session_state.get("user_persona") or {}

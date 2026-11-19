@@ -12,6 +12,7 @@ engine: agno                 # agno (default) | adk | bare
 channels: [streamlit]        # streamlit, whatsapp and/or a2a
 features:                    # booleans default to true (terms-acceptance: false)
   onboarding: true           # welcome + name/role step before the main agent; false = answer right away
+  first-contact: true        # first-contact persona meeting (greet + name/role); false = greet only
   tts: true                  # attach TTS tool to the welcoming agent
   interaction-assessment: true  # satisfaction/persona loop + DPO/SFT capture, or {enable: true, window_size: 5}
   summarization: true        # rolling conversation summary
@@ -52,6 +53,7 @@ export SEMENTE_ENGINE=adk    # applies when the manifest has no engine field
 | Toggle | When off |
 |---|---|
 | `onboarding` | The whole onboarding gate (terms + name/role) is skipped: every turn goes straight to the main agent, even for a brand-new anonymous user. Meant for single-purpose bots such as [Groot](/showcase/groot). On by default. |
+| `first-contact` | Only the persona meeting is skipped: the welcoming agent greets the user once per session and the main agent takes over. Terms acceptance, when enabled, is still required. The persona system keeps working — only name/role are never asked. On by default. |
 | `tts` | The welcoming agent is built without the TTS tool. |
 | `interaction-assessment` | The whole loop — satisfaction agent, DPO/SFT persistence and capture, persona updates, and remediation — is omitted from the run. Boolean or `{enable, window_size}` — see [Feedback & Fine-Tuning](feedback.md). |
 | `summarization` | The rolling conversation summary stage is omitted. |
@@ -77,6 +79,16 @@ The first `semente feature terms-acceptance --enable` (or
 `feature add terms-acceptance`) scaffolds `domain/terms_example.md` and
 configures `file` for you; replace that example with your real terms. Existing
 files and an already-configured `file` are never overwritten.
+
+### First contact
+
+`first-contact` controls the persona meeting that normally follows the terms:
+the welcoming agent asks for the user's name and role once. With it off, the
+agent only greets the user (and explains the app) on the first turn; the main
+agent answers from the next turn on and name/role are never requested. Terms
+acceptance, when enabled, still runs and remains a hard gate. The persona
+management loop (`interaction-assessment`) is unaffected — it keeps refining
+preferences and regionality; only the declaration of name/role is skipped.
 
 ### Legacy `terms_text`
 
