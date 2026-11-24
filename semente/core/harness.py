@@ -10,7 +10,8 @@ Pipeline (feature toggles from the manifest ``features`` in parentheses):
     _input_preprocessing   media -> text, geo files -> GeoJSON (always)
     _run_input_guardrails  pluggable guardrail chain: redaction or a
                            blocked turn with a reply (guardrails)
-    _needs_onboarding      terms (terms-acceptance) + profile gate
+    _needs_onboarding      terms (terms-acceptance) + first contact
+                           (first-contact) + profile gate
     ├─ True:  _run_welcoming_agent
     └─ False: _summarize_conversation (summarization)
               _process_feedback      (interaction_assessment; returns whether a
@@ -58,7 +59,7 @@ from semente.backends.base import AgentInput
 from semente.configs.prompts import set_prompts_dir
 from semente.core.types import Session, SessionStore, StepOutput
 from semente.guardrails.base import GuardrailChain, GuardrailContext, GuardrailResult
-from semente.logging import log_debug, log_error, log_info
+from semente.logging import log_debug, log_error, log_info, log_warning
 from semente.manifest import Manifest
 from semente.schemas.input_manager import InputManager
 from semente.schemas.interaction_assessment import (
@@ -71,7 +72,7 @@ from semente.schemas.user_persona import (
 )
 from semente.schemas.workflow_state import WorkflowState
 from semente.services.session_migration import migrate_session_state
-from semente.tools.types import File
+from semente.tools.types import File, Video
 
 # ---------------------------------------------------------------------------
 # Geo intake helpers
@@ -199,7 +200,8 @@ class Harness:
 
     Args:
         agent: The single backend agent built from the DomainSpec.
-        welcoming_agent: The onboarding agent (terms + persona stages).
+        welcoming_agent: The onboarding agent (terms, persona or greeting-only
+            stage, depending on the feature toggles).
         manifest: The parsed ``semente.yaml`` — name and feature toggles.
         store: Optional :class:`SessionStore` for cross-run persistence.
         guardrails: The :class:`GuardrailChain` composed from the domain's
@@ -219,6 +221,7 @@ class Harness:
         self.welcoming_agent = welcoming_agent
         self.name = manifest.name
         self.features = manifest.features or {}
+        self.base_dir = manifest.source_dir or Path.cwd()
         self.store = store
         self.guardrails = guardrails or GuardrailChain([])
 
@@ -299,6 +302,9 @@ class Harness:
             final = StepOutput(content=guardrail_block.response or "")
         elif self._needs_onboarding(session.session_state, user_id):
             final = self._run_welcoming_agent(session, user_text, images, audio)
+            # terminou a identificação neste turno → manda o tutorial
+            if not self._needs_onboarding(session.session_state, user_id):
+                final = self._attach_onboarding_video(final, session.session_state)
         else:
             needs_remediation = False
             if self.features.get("summarization", True):
@@ -334,6 +340,10 @@ class Harness:
 
             if needs_remediation:
                 routed = self._generate_apology(routed)
+
+            # users onboarded before this feature get the video once
+            if (self.features.get("onboarding-video") or {}).get("send-to-existing"):
+                routed = self._attach_onboarding_video(routed, session.session_state)
 
             final = routed
 
@@ -579,17 +589,42 @@ class Harness:
             return bool(value.get("enable", False))
         return bool(value)
 
+    def _first_contact_enabled(self) -> bool:
+        """The ``features.first-contact`` gate (absent means on).
+
+        On: the first contact is a greeting plus the name/role persona
+        meeting. Off: no greeting and no persona meeting — the persona system
+        keeps working, but name/role are never asked during onboarding. The
+        terms stage, when enabled, still greets while asking for consent.
+        Accepts a bare boolean, a dict, or anything carrying an ``enable``
+        attribute.
+        """
+        value = self.features.get("first-contact", True)
+        if hasattr(value, "enable"):
+            return bool(value.enable)
+        if isinstance(value, dict):
+            return bool(value.get("enable", True))
+        return bool(value)
+
     def _needs_onboarding(self, state: dict, user_id: Optional[str]) -> bool:
         """Return True if the user still needs to go through onboarding.
 
         Onboarding covers the formal acceptance of the terms (only when
-        ``features.terms-acceptance`` is enabled) and the identification
-        profile (name + role). Both are resolved from ``session_state`` when
-        present and only looked up in the database for the parts still
-        missing, so a user who already completed them is never asked again —
-        not even in a brand new session. On the way out, the stored profile is
-        copied into ``session_state`` so the agent can personalise from the
-        first reply.
+        ``features.terms-acceptance`` is enabled) and, when
+        ``features.first-contact`` is on, the identification profile (name +
+        role). Both are resolved from ``session_state`` when present and only
+        looked up in the database for the parts still missing, so a user who
+        already completed them is never asked again — not even in a brand new
+        session. On the way out, the stored profile is copied into
+        ``session_state`` so the agent can personalise from the first reply.
+
+        ``features.first-contact: false`` disables the greeting and the
+        persona meeting. Only the terms stage (when enabled) still needs the
+        welcoming agent; its prompt greets the user while asking for consent.
+
+        When neither the terms nor the first contact is enabled there is
+        nothing for the welcoming agent to do, so the gate returns False
+        immediately and the main agent handles every turn.
 
         ``features.onboarding: false`` turns the whole gate off (terms and
         profile): every turn goes straight to the main agent — meant for
@@ -614,8 +649,40 @@ class Harness:
             return False
 
         terms_enabled = self._terms_enabled()
+        first_contact_enabled = self._first_contact_enabled()
+
+        # Nothing to onboard: no terms to accept and no first contact
+        # (greeting + persona meeting). Never call the welcoming agent.
+        if not terms_enabled and not first_contact_enabled:
+            return False
+
         terms_accepted = bool(state.get("terms_accepted")) or not terms_enabled
         persona = state.get("user_persona") or {}
+
+        # First-contact off: terms only (the both-off case returned above).
+        # No persona gate, no greeting and no profile lookup.
+        if not first_contact_enabled:
+            if terms_accepted:
+                return False
+
+            user_id = user_id or state.get("user_id")
+            if not user_id:
+                return True
+
+            db_session = SessionLocal()
+            try:
+                acceptance = db_session.query(UserTermsAcceptance).filter(
+                    UserTermsAcceptance.user_id == user_id,
+                    UserTermsAcceptance.accepted == True,  # noqa: E712
+                ).first()
+            finally:
+                db_session.close()
+
+            if not acceptance:
+                return True
+
+            state["terms_accepted"] = True
+            return False
 
         if terms_accepted and is_persona_complete(persona):
             return False
@@ -669,7 +736,7 @@ class Harness:
         images: Optional[list],
         audio: Optional[list],
     ) -> StepOutput:
-        """Run the staged welcoming agent (terms, then persona).
+        """Run the staged welcoming agent (terms or persona stage).
 
         Onboarding turns (terms acceptance, persona setup) are SFT noise:
         they are never recorded into ``recent_agent_runs``.
@@ -684,6 +751,29 @@ class Harness:
             user_id=session.user_id,
             record=False,
         )
+
+    def _attach_onboarding_video(self, output: StepOutput, state: dict) -> StepOutput:
+        """Attach the onboarding tutorial video once per user.
+
+        Driven by ``features.onboarding-video.file`` (relative to the app
+        root). A missing file only logs a warning: onboarding never breaks
+        because of the video.
+        """
+        cfg = self.features.get("onboarding-video")
+        if not cfg or state.get("onboarding_video_sent"):
+            return output
+
+        path = Path(cfg["file"])
+        if not path.is_absolute():
+            path = Path(self.base_dir) / path
+        if not path.is_file():
+            log_warning(f"onboarding-video: file not found ({path})")
+            return output
+
+        video = Video(content=path.read_bytes(), mime_type="video/mp4")
+        output.videos = (output.videos or []) + [video]
+        state["onboarding_video_sent"] = True
+        return output
 
     def _summarize_conversation(
         self, session: Session, user_text: str, state: dict
@@ -750,7 +840,7 @@ class Harness:
         # dynamic instructions can read it (wrapped in <conversation_summary>
         # tags).
         state["conversation_summary"] = summary_state.summary or ""
-        
+
     def _interaction_assessment_enabled(self) -> bool:
         """The interaction_assessment gate: bool or {enable, window_size}."""
         value = self.features.get("interaction-assessment", True)
@@ -1244,7 +1334,7 @@ class Harness:
                     "tools": [],
                     "messages": []
                 }
-                
+
                 if hasattr(turn, "tools") and turn.tools:
                     for tool in turn.tools:
                         turn_record["tools"].append({
@@ -1252,7 +1342,7 @@ class Harness:
                             "tool_args": getattr(tool, "tool_args", {}),
                             "result": getattr(tool, "result", None)
                         })
-                        
+
                 if hasattr(turn, "messages") and turn.messages:
                     for msg in turn.messages:
                         msg_dict = {
@@ -1262,15 +1352,15 @@ class Harness:
                         if hasattr(msg, "tool_calls") and msg.tool_calls:
                             msg_dict["tool_calls"] = msg.tool_calls
                         turn_record["messages"].append(msg_dict)
-                
+
                 recent_runs = state.get("recent_agent_runs", [])
                 recent_runs.append(turn_record)
-                
+
                 if len(recent_runs) > window_size:
                     recent_runs = recent_runs[-window_size:]
-                    
+
                 state["recent_agent_runs"] = recent_runs
-                
+
         except Exception as exc:
             log_error(f"agent failed: {exc}")
             return StepOutput(
@@ -1285,7 +1375,7 @@ class Harness:
             files=turn.files,
             metrics=turn.metrics,
         )
-        
+
     def _generate_apology(self, routed: StepOutput) -> StepOutput:
         """Wrap the new answer with an apology + evaluation request.
 
@@ -1450,6 +1540,7 @@ def get_harness(manifest_path: str | None = None) -> Harness:
     welcoming_agent = build_welcoming_agent(
         tts_enabled=manifest.features.get("tts", True),
         terms=manifest.features.get("terms-acceptance"),
+        first_contact=manifest.features.get("first-contact", True),
         app_name=manifest.name,
         base_dir=manifest.source_dir,
     )

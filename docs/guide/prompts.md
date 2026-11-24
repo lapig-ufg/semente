@@ -43,9 +43,10 @@ single_agent:
 
 The framework also formats a few onboarding placeholders: `{app_name}` and
 `{terms_closed_note}` in `welcoming_agent.instructions_persona`, and
-`{terms_link_instruction}` / `{terms_text}` in `welcoming_agent.instructions`
-(the terms content comes from `features.terms-acceptance` — see
-[Manifest](manifest.md)).
+`{terms_link_instruction}` / `{terms_text}` / `{after_terms_note}` in
+`welcoming_agent.instructions` (the terms content comes from
+`features.terms-acceptance`, and `{after_terms_note}` changes with
+`features.first-contact` — see [Manifest](manifest.md)).
 
 Dynamic agents keep runtime values in code (context blocks, persona text,
 candidate properties); the YAML holds the static template blocks, and Python

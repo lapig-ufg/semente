@@ -51,10 +51,11 @@ welcoming_agent:
   name: "Welcoming Agent"
   role: "Onboarding concierge."
   description: "Welcomes new users, explains the app, and collects onboarding information."
-  # Terms stage. {app_name}, {terms_link_instruction} and {terms_text} are
-  # filled by the framework from the manifest (features.terms-acceptance).
+  # Terms stage. {app_name}, {terms_link_instruction}, {terms_text} and
+  # {after_terms_note} are filled by the framework from the manifest
+  # (features.terms-acceptance / features.first-contact).
   instructions: |
-    You are the onboarding agent of {app_name}. Your CURRENT step is to collect the user's acceptance of the Terms of Use. Until the user accepts, your focus is only the terms — name and role are collected after acceptance.
+    You are the onboarding agent of {app_name}. Your CURRENT step is to collect the user's acceptance of the Terms of Use. Until the user accepts, your focus is only the terms — {after_terms_note}.
 
     CRITICAL REQUIREMENT: You MUST communicate entirely in the user's language, in an accessible and friendly tone.
 

@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 
 from semente.core.harness import Harness
+from semente.core.types import StepOutput
 from semente.database.models import UserProfile, UserTermsAcceptance
 from semente.database.session import SessionLocal, engine
 from semente.services.session_migration import CURRENT_SCHEMA_VERSION
@@ -256,3 +257,92 @@ def test_onboarding_enabled_by_default_and_explicitly(db):
     assert _agent(features={})._needs_onboarding({}, UID) is True
     assert _agent(features={"onboarding": True})._needs_onboarding({}, UID) is True
     assert _agent(features={"onboarding": {"enable": False}})._needs_onboarding({}, UID) is False
+
+
+# ---------------------------------------------------------------------
+# features.first-contact (on by default)
+# ---------------------------------------------------------------------
+def test_no_terms_and_no_first_contact_never_needs_onboarding(db):
+    """Both stages off: the welcoming agent is never called."""
+    harness = _agent(features={"first-contact": False})
+    state: dict[str, Any] = {}
+
+    assert harness._needs_onboarding(state, UID) is False
+    assert harness._needs_onboarding({}, None) is False
+    assert state["workflow_state"] is not None  # bootstrap still ran
+
+
+def test_first_contact_disabled_terms_off_ignores_profile_and_user_id(db):
+    """No terms and no first contact: nothing to onboard, even anonymously."""
+    harness = _agent(features={"first-contact": False})
+
+    assert harness._needs_onboarding({}, None) is False
+    assert harness._needs_onboarding({}, UID) is False
+
+
+def test_both_stages_off_never_calls_the_welcoming_agent(monkeypatch):
+    """The turn goes straight to the main agent when nothing is enabled."""
+    harness = _agent(
+        features={
+            "first-contact": False,
+            "summarization": False,
+            "interaction-assessment": False,
+        }
+    )
+    called = {"welcoming": False}
+
+    def _welcoming(*args, **kwargs):
+        called["welcoming"] = True
+        return StepOutput(content="should not run")
+
+    monkeypatch.setattr(harness, "_run_welcoming_agent", _welcoming)
+    monkeypatch.setattr(
+        harness, "_run_single_agent", lambda *args, **kwargs: StepOutput(content="answer")
+    )
+
+    output = harness.run(user_id=UID, session_id="s", input="hello")
+
+    assert output.content == "answer"
+    assert called["welcoming"] is False
+
+
+def test_first_contact_disabled_still_requires_terms_acceptance(db):
+    """First contact off only leaves the terms gate in place."""
+    features = {"first-contact": False, "terms-acceptance": TermsConfig(enable=True)}
+    harness = _agent(features=features)
+    state: dict[str, Any] = {}
+
+    assert harness._needs_onboarding(state, UID) is True
+    assert harness._needs_onboarding(state, UID) is True  # terms still pending
+
+    _accept_terms(db)
+    assert harness._needs_onboarding(state, UID) is False
+    assert state["terms_accepted"] is True
+
+
+def test_first_contact_disabled_loads_terms_acceptance_from_db(db):
+    """Terms on: a stored acceptance releases the user immediately."""
+    _accept_terms(db)
+    features = {"first-contact": False, "terms-acceptance": TermsConfig(enable=True)}
+    harness = _agent(features=features)
+    state: dict[str, Any] = {}
+
+    assert harness._needs_onboarding(state, UID) is False
+    assert state["terms_accepted"] is True
+
+
+def test_first_contact_disabled_without_user_id_keeps_terms_pending(db):
+    """Terms on but no identifier: the acceptance cannot be verified."""
+    features = {"first-contact": False, "terms-acceptance": TermsConfig(enable=True)}
+    harness = _agent(features=features)
+
+    assert harness._needs_onboarding({}, None) is True
+
+
+def test_first_contact_enabled_by_default_and_explicitly(db):
+    assert _agent(features={})._needs_onboarding({}, UID) is True
+    assert _agent(features={"first-contact": True})._needs_onboarding({}, UID) is True
+    assert (
+        _agent(features={"first-contact": {"enable": False}})._needs_onboarding({}, UID)
+        is False
+    )
