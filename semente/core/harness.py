@@ -344,7 +344,7 @@ class Harness:
             # users onboarded before this feature get the video once
             if (self.features.get("onboarding-video") or {}).get("send-to-existing"):
                 routed = self._attach_onboarding_video(routed, session.session_state)
-                
+
             final = routed
 
         final = self._finalize_output(final, user_id)
