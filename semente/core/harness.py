@@ -59,7 +59,7 @@ from semente.backends.base import AgentInput
 from semente.configs.prompts import set_prompts_dir
 from semente.core.types import Session, SessionStore, StepOutput
 from semente.guardrails.base import GuardrailChain, GuardrailContext, GuardrailResult
-from semente.logging import log_debug, log_error, log_info
+from semente.logging import log_debug, log_error, log_info, log_warning
 from semente.manifest import Manifest
 from semente.schemas.input_manager import InputManager
 from semente.schemas.interaction_assessment import (
@@ -72,7 +72,7 @@ from semente.schemas.user_persona import (
 )
 from semente.schemas.workflow_state import WorkflowState
 from semente.services.session_migration import migrate_session_state
-from semente.tools.types import File
+from semente.tools.types import File, Video
 
 # ---------------------------------------------------------------------------
 # Geo intake helpers
@@ -221,6 +221,7 @@ class Harness:
         self.welcoming_agent = welcoming_agent
         self.name = manifest.name
         self.features = manifest.features or {}
+        self.base_dir = manifest.source_dir or Path.cwd()
         self.store = store
         self.guardrails = guardrails or GuardrailChain([])
 
@@ -301,6 +302,9 @@ class Harness:
             final = StepOutput(content=guardrail_block.response or "")
         elif self._needs_onboarding(session.session_state, user_id):
             final = self._run_welcoming_agent(session, user_text, images, audio)
+            # terminou a identificação neste turno → manda o tutorial
+            if not self._needs_onboarding(session.session_state, user_id):
+                final = self._attach_onboarding_video(final, session.session_state)
         else:
             needs_remediation = False
             if self.features.get("summarization", True):
@@ -337,6 +341,10 @@ class Harness:
             if needs_remediation:
                 routed = self._generate_apology(routed)
 
+            # users onboarded before this feature get the video once
+            if (self.features.get("onboarding-video") or {}).get("send-to-existing"):
+                routed = self._attach_onboarding_video(routed, session.session_state)
+                
             final = routed
 
         final = self._finalize_output(final, user_id)
@@ -744,6 +752,29 @@ class Harness:
             record=False,
         )
 
+    def _attach_onboarding_video(self, output: StepOutput, state: dict) -> StepOutput:
+        """Attach the onboarding tutorial video once per user.
+
+        Driven by ``features.onboarding-video.file`` (relative to the app
+        root). A missing file only logs a warning: onboarding never breaks
+        because of the video.
+        """
+        cfg = self.features.get("onboarding-video")
+        if not cfg or state.get("onboarding_video_sent"):
+            return output
+
+        path = Path(cfg["file"])
+        if not path.is_absolute():
+            path = Path(self.base_dir) / path
+        if not path.is_file():
+            log_warning(f"onboarding-video: file not found ({path})")
+            return output
+
+        video = Video(content=path.read_bytes(), mime_type="video/mp4")
+        output.videos = (output.videos or []) + [video]
+        state["onboarding_video_sent"] = True
+        return output
+
     def _summarize_conversation(
         self, session: Session, user_text: str, state: dict
     ) -> None:
@@ -809,7 +840,7 @@ class Harness:
         # dynamic instructions can read it (wrapped in <conversation_summary>
         # tags).
         state["conversation_summary"] = summary_state.summary or ""
-        
+
     def _interaction_assessment_enabled(self) -> bool:
         """The interaction_assessment gate: bool or {enable, window_size}."""
         value = self.features.get("interaction-assessment", True)
@@ -1303,7 +1334,7 @@ class Harness:
                     "tools": [],
                     "messages": []
                 }
-                
+
                 if hasattr(turn, "tools") and turn.tools:
                     for tool in turn.tools:
                         turn_record["tools"].append({
@@ -1311,7 +1342,7 @@ class Harness:
                             "tool_args": getattr(tool, "tool_args", {}),
                             "result": getattr(tool, "result", None)
                         })
-                        
+
                 if hasattr(turn, "messages") and turn.messages:
                     for msg in turn.messages:
                         msg_dict = {
@@ -1321,15 +1352,15 @@ class Harness:
                         if hasattr(msg, "tool_calls") and msg.tool_calls:
                             msg_dict["tool_calls"] = msg.tool_calls
                         turn_record["messages"].append(msg_dict)
-                
+
                 recent_runs = state.get("recent_agent_runs", [])
                 recent_runs.append(turn_record)
-                
+
                 if len(recent_runs) > window_size:
                     recent_runs = recent_runs[-window_size:]
-                    
+
                 state["recent_agent_runs"] = recent_runs
-                
+
         except Exception as exc:
             log_error(f"agent failed: {exc}")
             return StepOutput(
@@ -1344,7 +1375,7 @@ class Harness:
             files=turn.files,
             metrics=turn.metrics,
         )
-        
+
     def _generate_apology(self, routed: StepOutput) -> StepOutput:
         """Wrap the new answer with an apology + evaluation request.
 
